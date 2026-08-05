@@ -1,0 +1,33 @@
+name: ReminderApp
+options:
+  bundleIdPrefix: com.reminder
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "15.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    INFOPLIST_FILE: ReminderApp/Info.plist
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  ReminderApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: ReminderApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.reminder.app
+        PRODUCT_NAME: "循环提醒"
+        INFOPLIST_FILE: ReminderApp/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+    preBuildScripts:
+      - name: "SwiftLint"
+        script: |
+          if which swiftlint > /dev/null; then
+            swiftlint
+          fi
+        basedOnDependencyAnalysis: false
