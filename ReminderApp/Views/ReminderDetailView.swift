@@ -125,6 +125,12 @@ struct ReminderDetailView: View {
             if reminder.kind == .cycle && reminder.cycle == .custom && reminder.customDays > 0 {
                 infoRow(label: "自定义天数", value: "\(reminder.customDays) 天")
             }
+            if reminder.kind == .rule {
+                infoRow(label: "频率", value: reminder.rulePeriod.rawValue)
+                infoRow(label: "周次", value: reminder.ruleWeek.label)
+                infoRow(label: "星期", value: reminder.ruleWeekday.label)
+                infoRow(label: "提醒时间", value: String(format: "%02d:%02d", reminder.reminderHour, reminder.reminderMinute))
+            }
             if reminder.kind == .date {
                 infoRow(label: "提醒类型", value: reminder.dateType?.rawValue ?? "")
                 infoRow(label: "提前提醒", value: "\(reminder.advanceDays) 天")

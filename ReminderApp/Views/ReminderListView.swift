@@ -45,36 +45,59 @@ struct ReminderListView: View {
     // MARK: - 空状态
 
     private var emptyView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "bell.badge")
-                .font(.system(size: 64))
-                .foregroundStyle(.secondary)
-
-            Text("暂无提醒")
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            Text("点击右上角 + 创建你的第一个循环提醒")
-                .font(.subheadline)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-
-            Button {
-                showCreateSheet = true
-            } label: {
-                Label("创建提醒", systemImage: "plus.circle.fill")
-                    .font(.headline)
+        List {
+            // 日历
+            Section {
+                CalendarCardView(reminders: reminders)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
-            .buttonStyle(.borderedProminent)
-            .padding(.top, 8)
+
+            Section {
+                VStack(spacing: 20) {
+                    Image(systemName: "bell.badge")
+                        .font(.system(size: 64))
+                        .foregroundStyle(.secondary)
+
+                    Text("暂无提醒")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    Text("点击右上角 + 创建你的第一个循环提醒")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+
+                    Button {
+                        showCreateSheet = true
+                    } label: {
+                        Label("创建提醒", systemImage: "plus.circle.fill")
+                            .font(.headline)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding(.top, 8)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+                .listRowBackground(Color.clear)
+            }
         }
-        .padding(40)
+        .listStyle(.insetGrouped)
     }
 
     // MARK: - 提醒列表
 
     private var listView: some View {
         List {
+            // 日历卡片
+            Section {
+                CalendarCardView(reminders: reminders)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+
             // 正在提醒中（active / snoozed / overdue）
             let activeReminders = reminders.filter {
                 $0.status == .active || $0.status == .snoozed || $0.status == .overdue
@@ -87,6 +110,9 @@ struct ReminderListView: View {
                         } label: {
                             ReminderRowView(reminder: reminder)
                         }
+                    }
+                    .onDelete { offsets in
+                        deleteReminders(offsets, from: activeReminders)
                     }
                 }
             }
@@ -102,7 +128,9 @@ struct ReminderListView: View {
                             ReminderRowView(reminder: reminder)
                         }
                     }
-                    .onDelete(perform: deleteReminders)
+                    .onDelete { offsets in
+                        deleteReminders(offsets, from: pendingReminders)
+                    }
                 }
             }
 
@@ -117,6 +145,9 @@ struct ReminderListView: View {
                             ReminderRowView(reminder: reminder)
                         }
                     }
+                    .onDelete { offsets in
+                        deleteReminders(offsets, from: confirmedReminders)
+                    }
                 }
             }
         }
@@ -126,10 +157,10 @@ struct ReminderListView: View {
         }
     }
 
-    private func deleteReminders(at offsets: IndexSet) {
-        let pendingReminders = reminders.filter { $0.status == .pending }
+    private func deleteReminders(_ offsets: IndexSet, from items: [Reminder]) {
         for index in offsets {
-            let reminder = pendingReminders[index]
+            guard index < items.count else { continue }
+            let reminder = items[index]
             Task {
                 await NotificationManager.shared.removePendingNotification(for: reminder.id)
             }

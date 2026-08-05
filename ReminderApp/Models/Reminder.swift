@@ -5,6 +5,32 @@ import SwiftData
 enum ReminderKind: String, Codable, CaseIterable {
     case cycle = "周期提醒"    // 每N天/周/月循环
     case date  = "日期提醒"    // 固定日期（生日、节假日等）
+    case rule  = "规则提醒"    // 每月/每季度/每年 第N周周X
+}
+
+/// 规则提醒的频率
+enum RulePeriod: String, Codable, CaseIterable {
+    case monthly = "每月"
+    case quarterly = "每季度"
+    case yearly = "每年"
+}
+
+/// 规则提醒：第几周（1-5）
+enum RuleWeek: Int, Codable, CaseIterable {
+    case w1 = 1
+    case w2 = 2
+    case w3 = 3
+    case w4 = 4
+    case w5 = 5
+    var label: String { "第\(rawValue)周" }
+}
+
+/// 规则提醒：星期几（1=周一 ... 7=周日）
+enum RuleWeekday: Int, Codable, CaseIterable {
+    case mon = 1, tue, wed, thu, fri, sat, sun
+    var label: String {
+        ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][rawValue - 1]
+    }
 }
 
 /// 日期提醒子类型
@@ -85,6 +111,11 @@ final class Reminder {
     var reminderMinute: Int    // 提醒时间-分钟（默认 0）
     var holidayID: String?     // 节假日 ID（dateType == .holiday 时有效）
 
+    // MARK: - 规则提醒字段（kind == .rule 时有效）
+    var rulePeriod: RulePeriod        // 频率：每月/每季度/每年
+    var ruleWeek: RuleWeek            // 第几周：1-5
+    var ruleWeekday: RuleWeekday      // 周几：1=周一...7=周日
+
     // MARK: - 通用字段
     /// 首次触发时间的锚点——用于防止周期漂移
     var firstTriggerAt: Date
@@ -115,6 +146,9 @@ final class Reminder {
         reminderHour: Int = 9,
         reminderMinute: Int = 0,
         holidayID: String? = nil,
+        rulePeriod: RulePeriod = .quarterly,
+        ruleWeek: RuleWeek = .w2,
+        ruleWeekday: RuleWeekday = .tue,
         firstTriggerAt: Date,
         nextTriggerAt: Date,
         status: ReminderStatus = .pending,
@@ -136,6 +170,9 @@ final class Reminder {
         self.reminderHour = reminderHour
         self.reminderMinute = reminderMinute
         self.holidayID = holidayID
+        self.rulePeriod = rulePeriod
+        self.ruleWeek = ruleWeek
+        self.ruleWeekday = ruleWeekday
         self.firstTriggerAt = firstTriggerAt
         self.nextTriggerAt = nextTriggerAt
         self.status = status
@@ -158,6 +195,8 @@ final class Reminder {
         case .cycle:
             if cycle == .custom { return "每 \(customDays) 天" }
             return cycle.rawValue
+        case .rule:
+            return "\(rulePeriod.rawValue)\(ruleWeek.label)\(ruleWeekday.label)"
         case .date:
             switch dateType {
             case .solarBirthday:
@@ -182,6 +221,7 @@ final class Reminder {
     var kindIcon: String {
         switch kind {
         case .cycle: return "repeat"
+        case .rule:  return "calendar.badge.clock"
         case .date:
             switch dateType {
             case .solarBirthday: return "gift"

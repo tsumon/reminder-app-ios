@@ -31,6 +31,12 @@ struct CreateReminderView: View {
     @State private var reminderMinute = 0
     @State private var selectedHolidayID = "chunjie"
 
+    // MARK: - 规则提醒（每月/每季度/每年 第N周周X）
+
+    @State private var rulePeriod: RulePeriod = .quarterly
+    @State private var ruleWeek: RuleWeek = .w2
+    @State private var ruleWeekday: RuleWeekday = .tue
+
     // MARK: - 首次触发时间（周期类用）
 
     @State private var triggerDate = Date()
@@ -65,13 +71,18 @@ struct CreateReminderView: View {
                     cycleSection
                 }
 
+                // MARK: 规则提醒设置
+                if kind == .rule {
+                    ruleSection
+                }
+
                 // MARK: 日期提醒设置
                 if kind == .date {
                     dateSection
                 }
 
-                // MARK: 首次触发时间（仅周期类）
-                if kind == .cycle {
+                // MARK: 首次触发时间（周期类 + 规则类）
+                if kind == .cycle || kind == .rule {
                     Section("首次提醒时间") {
                         DatePicker("日期", selection: $triggerDate, displayedComponents: .date)
                         DatePicker("时间", selection: $triggerTime, displayedComponents: .hourAndMinute)
@@ -116,6 +127,61 @@ struct CreateReminderView: View {
                 }
             }
         }
+    }
+
+    // MARK: - 规则 Section
+
+    private var ruleSection: some View {
+        Section("规则设置") {
+            Picker("频率", selection: $rulePeriod) {
+                ForEach(RulePeriod.allCases, id: \.self) { p in
+                    Text(p.rawValue).tag(p)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Picker("第几周", selection: $ruleWeek) {
+                ForEach(RuleWeek.allCases, id: \.self) { w in
+                    Text(w.label).tag(w)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Picker("星期几", selection: $ruleWeekday) {
+                ForEach(RuleWeekday.allCases, id: \.self) { w in
+                    Text(w.label).tag(w)
+                }
+            }
+            .pickerStyle(.menu)
+
+            // 示例预览
+            HStack {
+                Text("下次触发")
+                Spacer()
+                Text(rulePreview)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("例如：每季度第2周周二提醒")
+        } footer: {
+            Text("按所选频率的第 N 周星期 X 触发提醒")
+        }
+    }
+
+    /// 规则提醒预览文本
+    private var rulePreview: String {
+        let engine = ReminderEngine.shared
+        let date = engine.nextRuleDate(
+            period: rulePeriod,
+            week: ruleWeek.rawValue,
+            weekday: ruleWeekday.rawValue,
+            hour: reminderHour,
+            minute: reminderMinute
+        )
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "zh_CN")
+        df.dateFormat = "yyyy年M月d日 E HH:mm"
+        return df.string(from: date)
     }
 
     // MARK: - 日期 Section
@@ -267,6 +333,40 @@ struct CreateReminderView: View {
                 kind: .cycle,
                 cycle: cycle,
                 customDays: days,
+                firstTriggerAt: firstTrigger,
+                nextTriggerAt: firstTrigger
+            )
+
+        case .rule:
+            // 用户选择的首次时间作为锚点，取锚点之后的下一个规则日
+            let dateComponents = calendar.dateComponents([.year, .month, .day], from: triggerDate)
+            let timeComponents = calendar.dateComponents([.hour, .minute], from: triggerTime)
+            var merged = DateComponents()
+            merged.year = dateComponents.year
+            merged.month = dateComponents.month
+            merged.day = dateComponents.day
+            merged.hour = timeComponents.hour
+            merged.minute = timeComponents.minute
+            let anchor = calendar.date(from: merged) ?? triggerDate
+
+            let engine = ReminderEngine.shared
+            let firstTrigger = engine.nextRuleDate(
+                period: rulePeriod,
+                week: ruleWeek.rawValue,
+                weekday: ruleWeekday.rawValue,
+                hour: reminderHour,
+                minute: reminderMinute,
+                from: anchor
+            )
+            reminder = Reminder(
+                title: title.trimmingCharacters(in: .whitespaces),
+                note: note.trimmingCharacters(in: .whitespaces),
+                kind: .rule,
+                rulePeriod: rulePeriod,
+                ruleWeek: ruleWeek,
+                ruleWeekday: ruleWeekday,
+                reminderHour: reminderHour,
+                reminderMinute: reminderMinute,
                 firstTriggerAt: firstTrigger,
                 nextTriggerAt: firstTrigger
             )

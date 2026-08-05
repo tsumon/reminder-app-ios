@@ -33,17 +33,26 @@ jobs:
             -scheme ReminderApp \
             -destination "generic/platform=iOS" \
             -configuration Release \
+            -derivedDataPath ./DerivedData \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             PROVISIONING_PROFILE_SPECIFIER="" \
-            DEVELOPMENT_TEAM="" \
-            -quiet
+            DEVELOPMENT_TEAM=""
+
+      - name: Locate .app
+        run: find ./DerivedData -name '*.app' -type d
 
       - name: Package IPA
         run: |
+          APP_PATH=$(find ./DerivedData -name '*.app' -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: .app not found!"
+            exit 1
+          fi
+          echo "Found: $APP_PATH"
           mkdir -p Payload
-          cp -R "$(find ~/Library/Developer/Xcode/DerivedData -name 'ReminderApp.app' -path '*/Release-iphoneos/*' | head -1)" Payload/
+          cp -R "$APP_PATH" Payload/
           zip -r ReminderApp.ipa Payload
           rm -rf Payload
 

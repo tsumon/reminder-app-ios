@@ -21,7 +21,98 @@ final class ReminderEngine: ObservableObject {
             return calculateNextCycleTrigger(after: confirmedDate, reminder: reminder)
         case .date:
             return calculateNextDateTrigger(from: confirmedDate, reminder: reminder)
+        case .rule:
+            return calculateNextRuleTrigger(from: confirmedDate, reminder: reminder)
         }
+    }
+
+    // MARK: 规则类：每月/每季度/每年 第N周周X
+
+    /// 计算下一个「第 N 周周 X」的日期，例如每季度第 2 周周二
+    private func calculateNextRuleTrigger(from after: Date, reminder: Reminder) -> Date {
+        nextRuleDate(
+            period: reminder.rulePeriod,
+            week: reminder.ruleWeek.rawValue,
+            weekday: reminder.ruleWeekday.rawValue,
+            hour: reminder.reminderHour,
+            minute: reminder.reminderMinute,
+            from: after
+        )
+    }
+
+    /// 规则提醒的首次触发时间（创建时使用）
+    func nextRuleDate(
+        period: RulePeriod,
+        week: Int,
+        weekday: Int,
+        hour: Int,
+        minute: Int,
+        from: Date = Date()
+    ) -> Date {
+        let calendar = Calendar.current
+        let comps = calendar.dateComponents([.year, .month], from: from)
+        let year = comps.year ?? 2026
+        let month = comps.month ?? 1
+
+        let monthStep: Int
+        switch period {
+        case .monthly: monthStep = 1
+        case .yearly: monthStep = 12
+        case .quarterly: monthStep = 3
+        }
+
+        // 当前周期单位的起始月
+        let startMonth: Int
+        switch period {
+        case .monthly: startMonth = month
+        case .yearly: startMonth = 1
+        case .quarterly: startMonth = ((month - 1) / 3) * 3 + 1 // 1/4/7/10 月
+        }
+
+        // 从当前周期开始向后找（最多 16 步）
+        for i in 0...16 {
+            let candMonthIndex = startMonth + i * monthStep
+            let candYear = year + (candMonthIndex - 1) / 12
+            let candMonth = (candMonthIndex - 1) % 12 + 1
+
+            guard let target = ruleDateInMonth(
+                year: candYear,
+                month: candMonth,
+                week: week,
+                weekday: weekday,
+                hour: hour,
+                minute: minute
+            ), target > from else { continue }
+
+            return target
+        }
+        // fallback：明天
+        return calendar.date(byAdding: .day, value: 1, to: from) ?? from
+    }
+
+    /// 计算某年某月「第 week 周的 weekday」的日期；该月无此周次则返回 nil
+    private func ruleDateInMonth(
+        year: Int, month: Int, week: Int, weekday: Int, hour: Int, minute: Int
+    ) -> Date? {
+        var calendar = Calendar.current
+        calendar.firstWeekday = 2 // 周一为一周开始
+
+        var comps = DateComponents()
+        comps.year = year
+        comps.month = month
+        comps.day = 1
+        comps.hour = hour
+        comps.minute = minute
+        guard let firstOfMonth = calendar.date(from: comps) else { return nil }
+
+        // Calendar.weekday: 1=周日...7=周六 → 转成 周一=1...周日=7
+        let firstDayWeek = (calendar.component(.weekday, from: firstOfMonth) + 5) % 7 + 1
+        let day = 1 + ((weekday - firstDayWeek + 7) % 7) + (week - 1) * 7
+
+        guard let range = calendar.range(of: .day, in: .month, for: firstOfMonth),
+              day <= range.count else { return nil }
+
+        return calendar.date(byAdding: .day, value: day - 1, to: firstOfMonth)
     }
 
     // MARK: 周期类：锚点法

@@ -69,6 +69,7 @@ struct ReminderRowView: View {
     private var kindBadgeColor: Color {
         switch reminder.kind {
         case .cycle: return .blue
+        case .rule:  return .teal
         case .date:
             switch reminder.dateType {
             case .solarBirthday: return .pink
