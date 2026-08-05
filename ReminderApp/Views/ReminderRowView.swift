@@ -150,8 +150,8 @@ extension String {
             title: "春节",
             kind: .date,
             dateType: .holiday,
-            holidayID: "chunjie",
             advanceDays: 7,
+            holidayID: "chunjie",
             firstTriggerAt: Date().addingTimeInterval(86400 * 180),
             nextTriggerAt: Date().addingTimeInterval(86400 * 180),
             status: .pending

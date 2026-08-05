@@ -21,24 +21,18 @@ struct ReminderApp: App {
     var body: some Scene {
         WindowGroup {
             ReminderListView()
+                .onAppear {
+                    reminderEngine.configure(with: sharedModelContainer.mainContext)
+                }
+                .task {
+                    _ = await notificationManager.requestAuthorization()
+                    _ = await VoiceRecognizer.shared.requestAuthorization()
+                    let descriptor = FetchDescriptor<Reminder>()
+                    if let reminders = try? sharedModelContainer.mainContext.fetch(descriptor) {
+                        await reminderEngine.checkMissedReminders(reminders: reminders)
+                    }
+                }
         }
         .modelContainer(sharedModelContainer)
-        .onAppear {
-            // 注入 SwiftData 上下文到引擎
-            reminderEngine.configure(with: sharedModelContainer.mainContext)
-        }
-        .task {
-            // 1. 请求通知权限
-            _ = await notificationManager.requestAuthorization()
-
-            // 2. 预请求语音识别权限（静默，等用户进 AI 页面再弹）
-            _ = await VoiceRecognizer.shared.requestAuthorization()
-
-            // 3. 检查遗漏的提醒
-            let descriptor = FetchDescriptor<Reminder>()
-            if let reminders = try? sharedModelContainer.mainContext.fetch(descriptor) {
-                await reminderEngine.checkMissedReminders(reminders: reminders)
-            }
-        }
     }
 }
