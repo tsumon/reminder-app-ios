@@ -31,7 +31,10 @@ struct ReminderApp: App {
             // 1. 请求通知权限
             _ = await notificationManager.requestAuthorization()
 
-            // 2. 检查遗漏的提醒
+            // 2. 预请求语音识别权限（静默，等用户进 AI 页面再弹）
+            _ = await VoiceRecognizer.shared.requestAuthorization()
+
+            // 3. 检查遗漏的提醒
             let descriptor = FetchDescriptor<Reminder>()
             if let reminders = try? sharedModelContainer.mainContext.fetch(descriptor) {
                 await reminderEngine.checkMissedReminders(reminders: reminders)

@@ -18,6 +18,15 @@ struct ReminderListView: View {
             }
             .navigationTitle("提醒事项")
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    NavigationLink {
+                        AIChatView()
+                    } label: {
+                        Image(systemName: "sparkles")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.purple)
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         showCreateSheet = true

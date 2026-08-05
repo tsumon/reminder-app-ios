@@ -35,6 +35,12 @@ struct HolidayService {
         allHolidays.first { $0.id == id }
     }
 
+    /// 根据名称模糊搜索节假日（给 AI 用）
+    static func search(by name: String) -> Holiday? {
+        let lower = name.lowercased()
+        return allHolidays.first { $0.name.lowercased().contains(lower) }
+    }
+
     /// 计算指定节假日的下一个日期
     static func nextDate(for holiday: Holiday, from now: Date = Date()) -> Date? {
         if holiday.isLunar {
