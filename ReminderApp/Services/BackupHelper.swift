@@ -35,6 +35,11 @@ enum BackupHelper {
 
     /// 将 [Reminder] 导出为 JSON 字符串
     static func exportJSON(_ reminders: [Reminder]) -> String {
+        exportJSON(reminders, exportedAt: Date().timeIntervalSince1970)
+    }
+
+    /// 带指定 exportedAt（秒）的导出，用于同步时保证版本递增
+    static func exportJSON(_ reminders: [Reminder], exportedAt: TimeInterval) -> String {
         let items = reminders.map { r in
             BackupItem(
                 title: r.title,
@@ -59,11 +64,20 @@ enum BackupHelper {
                 isActive: r.isEnabled
             )
         }
-        let root = BackupRoot(version: 1, exportedAt: Date().timeIntervalSince1970, reminders: items)
+        let root = BackupRoot(version: 1, exportedAt: exportedAt, reminders: items)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(root) else { return "{}" }
         return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    /// 读取 JSON 中的 exportedAt（秒）
+    static func exportedAt(of json: String) -> TimeInterval? {
+        guard let data = json.data(using: .utf8),
+              let root = try? JSONDecoder().decode(BackupRoot.self, from: data) else {
+            return nil
+        }
+        return root.exportedAt
     }
 
     /// 从 JSON 解析提醒列表

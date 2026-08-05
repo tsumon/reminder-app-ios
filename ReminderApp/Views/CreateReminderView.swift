@@ -461,6 +461,7 @@ struct CreateReminderView: View {
 
         modelContext.insert(reminder)
         try? modelContext.save()
+        SyncStore.touchLocalChange()
 
         Task {
             await ReminderEngine.shared.scheduleAllNotifications(for: reminder)

@@ -33,6 +33,9 @@ struct ReminderListView: View {
     @State private var exportDocument: ReminderBackupDocument?
     @State private var showImportImporter = false
 
+    // 同步提示
+    @State private var syncMessage: String?
+
     var body: some View {
         NavigationStack {
             Group {
@@ -59,6 +62,17 @@ struct ReminderListView: View {
                             showCreateSheet = true
                         } label: {
                             Label("新建提醒", systemImage: "plus.circle")
+                        }
+                        Divider()
+                        Button {
+                            syncNow()
+                        } label: {
+                            Label("立即同步", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        NavigationLink {
+                            SyncSettingsView()
+                        } label: {
+                            Label("同步设置", systemImage: "gearshape")
                         }
                         Divider()
                         Button {
@@ -98,9 +112,24 @@ struct ReminderListView: View {
             }
             .onAppear {
                 saveWidgetSnapshot(reminders)
+                // 自动同步（限频 5 分钟）
+                if SyncStore.autoSync && SyncStore.isConfigured &&
+                    Date().timeIntervalSince1970 - SyncStore.lastSyncAt > 300 {
+                    Task {
+                        _ = await WebDavSync.syncNow(reminders: reminders, modelContext: modelContext)
+                    }
+                }
             }
             .onChange(of: reminders) { _, newValue in
                 saveWidgetSnapshot(newValue)
+            }
+            .alert("同步", isPresented: Binding(
+                get: { syncMessage != nil },
+                set: { if !$0 { syncMessage = nil } }
+            )) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text(syncMessage ?? "")
             }
         }
     }
@@ -136,6 +165,20 @@ struct ReminderListView: View {
         showExportExporter = true
     }
 
+    // MARK: - 同步
+
+    private func syncNow() {
+        Task {
+            let result = await WebDavSync.syncNow(reminders: reminders, modelContext: modelContext)
+            switch result {
+            case .success:
+                syncMessage = "同步完成"
+            case .failure(let msg):
+                syncMessage = msg
+            }
+        }
+    }
+
     private func importBackup(_ result: Result<URL, Error>) {
         switch result {
         case .success(let url):
@@ -154,6 +197,7 @@ struct ReminderListView: View {
                 modelContext.insert(reminder)
             }
             try? modelContext.save()
+            SyncStore.touchLocalChange()
 
             // 重新调度通知
             Task {
@@ -165,7 +209,6 @@ struct ReminderListView: View {
             print("[导入] 失败: \(error)")
         }
     }
-}
 
     // MARK: - 空状态
 
@@ -292,5 +335,6 @@ struct ReminderListView: View {
             modelContext.delete(reminder)
         }
         try? modelContext.save()
+        SyncStore.touchLocalChange()
     }
 }

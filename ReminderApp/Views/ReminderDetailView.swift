@@ -278,6 +278,7 @@ struct ReminderDetailView: View {
         }
         modelContext.delete(reminder)
         try? modelContext.save()
+        SyncStore.touchLocalChange()
         dismiss()
     }
 }

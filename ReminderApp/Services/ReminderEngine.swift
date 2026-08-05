@@ -212,6 +212,7 @@ final class ReminderEngine: ObservableObject {
         reminder.updatedAt = now
 
         try? context.save()
+        SyncStore.touchLocalChange()
 
         // 重新调度通知
         Task {
@@ -237,6 +238,7 @@ final class ReminderEngine: ObservableObject {
         reminder.updatedAt = now
 
         try? context.save()
+        SyncStore.touchLocalChange()
 
         Task {
             await NotificationManager.shared.scheduleNotification(for: reminder)
@@ -277,6 +279,7 @@ final class ReminderEngine: ObservableObject {
         reminder.records.append(record)
 
         try? context.save()
+        SyncStore.touchLocalChange()
 
         Task {
             await NotificationManager.shared.scheduleNotification(for: reminder)
