@@ -63,7 +63,7 @@ struct ReminderRowView: View {
     // MARK: - 类型标签
 
     private var kindLabel: String {
-        reminder.dateDisplayText
+        "\(reminder.priority.emoji) \(reminder.dateDisplayText)"
     }
 
     private var kindBadgeColor: Color {

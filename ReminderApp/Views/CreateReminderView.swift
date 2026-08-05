@@ -37,6 +37,10 @@ struct CreateReminderView: View {
     @State private var ruleWeek: RuleWeek = .w2
     @State private var ruleWeekday: RuleWeekday = .tue
 
+    // MARK: - 优先级
+
+    @State private var priority: ReminderPriority = .normal
+
     // MARK: - 首次触发时间（周期类用）
 
     @State private var triggerDate = Date()
@@ -64,6 +68,13 @@ struct CreateReminderView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+
+                    Picker("优先级", selection: $priority) {
+                        ForEach(ReminderPriority.allCases, id: \.self) { p in
+                            Text("\(p.emoji) \(p.rawValue)").tag(p)
+                        }
+                    }
+                    .pickerStyle(.menu)
                 }
 
                 // MARK: 周期提醒设置
@@ -132,7 +143,7 @@ struct CreateReminderView: View {
     // MARK: - 规则 Section
 
     private var ruleSection: some View {
-        Section("规则设置") {
+        Section {
             Picker("频率", selection: $rulePeriod) {
                 ForEach(RulePeriod.allCases, id: \.self) { p in
                     Text(p.rawValue).tag(p)
@@ -162,7 +173,7 @@ struct CreateReminderView: View {
                     .foregroundStyle(.secondary)
             }
         } header: {
-            Text("例如：每季度第2周周二提醒")
+            Text("规则设置（例如：每季度第2周周二）")
         } footer: {
             Text("按所选频率的第 N 周星期 X 触发提醒")
         }
@@ -334,7 +345,8 @@ struct CreateReminderView: View {
                 cycle: cycle,
                 customDays: days,
                 firstTriggerAt: firstTrigger,
-                nextTriggerAt: firstTrigger
+                nextTriggerAt: firstTrigger,
+                priority: priority
             )
 
         case .rule:
@@ -362,13 +374,14 @@ struct CreateReminderView: View {
                 title: title.trimmingCharacters(in: .whitespaces),
                 note: note.trimmingCharacters(in: .whitespaces),
                 kind: .rule,
+                reminderHour: reminderHour,
+                reminderMinute: reminderMinute,
                 rulePeriod: rulePeriod,
                 ruleWeek: ruleWeek,
                 ruleWeekday: ruleWeekday,
-                reminderHour: reminderHour,
-                reminderMinute: reminderMinute,
                 firstTriggerAt: firstTrigger,
-                nextTriggerAt: firstTrigger
+                nextTriggerAt: firstTrigger,
+                priority: priority
             )
 
         case .date:
@@ -441,7 +454,8 @@ struct CreateReminderView: View {
                 reminderMinute: reminderMinute,
                 holidayID: dateType == .holiday ? selectedHolidayID : nil,
                 firstTriggerAt: nextDate,
-                nextTriggerAt: nextDate
+                nextTriggerAt: nextDate,
+                priority: priority
             )
         }
 

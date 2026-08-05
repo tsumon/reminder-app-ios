@@ -33,6 +33,20 @@ enum RuleWeekday: Int, Codable, CaseIterable {
     }
 }
 
+/// 优先级
+enum ReminderPriority: String, Codable, CaseIterable {
+    case high = "高"
+    case normal = "中"
+    case low = "低"
+    var emoji: String {
+        switch self {
+        case .high: return "🔴"
+        case .normal: return "🟢"
+        case .low: return "⚪"
+        }
+    }
+}
+
 /// 日期提醒子类型
 enum DateReminderType: String, Codable, CaseIterable {
     case solarBirthday = "新历生日"
@@ -121,6 +135,7 @@ final class Reminder {
     var firstTriggerAt: Date
     var nextTriggerAt: Date
     var status: ReminderStatus
+    var priority: ReminderPriority
     var retryStage: Int
     var lastRetryAt: Date?
     var isEnabled: Bool
@@ -152,6 +167,7 @@ final class Reminder {
         firstTriggerAt: Date,
         nextTriggerAt: Date,
         status: ReminderStatus = .pending,
+        priority: ReminderPriority = .normal,
         retryStage: Int = 0,
         isEnabled: Bool = true,
         createdAt: Date = Date(),
@@ -176,6 +192,7 @@ final class Reminder {
         self.firstTriggerAt = firstTriggerAt
         self.nextTriggerAt = nextTriggerAt
         self.status = status
+        self.priority = priority
         self.retryStage = retryStage
         self.isEnabled = isEnabled
         self.createdAt = createdAt

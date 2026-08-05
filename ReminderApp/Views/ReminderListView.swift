@@ -1,11 +1,37 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
+import WidgetKit
+
+/// 导入/导出用的 JSON 文件文档
+struct ReminderBackupDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json, .plainText] }
+
+    var text: String
+
+    init(text: String) {
+        self.text = text
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        text = String(data: configuration.file.regularFileContents ?? Data(), encoding: .utf8) ?? ""
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(text.utf8))
+    }
+}
 
 /// 首页：提醒列表
 struct ReminderListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Reminder.nextTriggerAt) private var reminders: [Reminder]
     @State private var showCreateSheet = false
+
+    // 导入/导出
+    @State private var showExportExporter = false
+    @State private var exportDocument: ReminderBackupDocument?
+    @State private var showImportImporter = false
 
     var body: some View {
         NavigationStack {
@@ -28,10 +54,25 @@ struct ReminderListView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showCreateSheet = true
+                    Menu {
+                        Button {
+                            showCreateSheet = true
+                        } label: {
+                            Label("新建提醒", systemImage: "plus.circle")
+                        }
+                        Divider()
+                        Button {
+                            exportBackup()
+                        } label: {
+                            Label("导出提醒", systemImage: "square.and.arrow.up")
+                        }
+                        Button {
+                            showImportImporter = true
+                        } label: {
+                            Label("导入提醒", systemImage: "square.and.arrow.down")
+                        }
                     } label: {
-                        Image(systemName: "plus")
+                        Image(systemName: "ellipsis.circle")
                             .font(.title3.weight(.semibold))
                     }
                 }
@@ -39,8 +80,92 @@ struct ReminderListView: View {
             .sheet(isPresented: $showCreateSheet) {
                 CreateReminderView()
             }
+            .fileExporter(
+                isPresented: $showExportExporter,
+                document: exportDocument,
+                contentType: .json,
+                defaultFilename: "reminder_backup_\(Int(Date().timeIntervalSince1970))"
+            ) { result in
+                if case .failure(let error) = result {
+                    print("[导出] 失败: \(error)")
+                }
+            }
+            .fileImporter(
+                isPresented: $showImportImporter,
+                allowedContentTypes: [.json, .plainText]
+            ) { result in
+                importBackup(result)
+            }
+            .onAppear {
+                saveWidgetSnapshot(reminders)
+            }
+            .onChange(of: reminders) { _, newValue in
+                saveWidgetSnapshot(newValue)
+            }
         }
     }
+
+    // MARK: - 小组件数据快照
+
+    private func saveWidgetSnapshot(_ reminders: [Reminder]) {
+        let now = Date()
+        let unhandled = reminders.filter {
+            $0.isEnabled && ($0.status == .active || $0.status == .snoozed ||
+                ($0.status == .pending && $0.nextTriggerAt <= now))
+        }
+        let next = reminders
+            .filter { $0.isEnabled && $0.nextTriggerAt > now }
+            .min { $0.nextTriggerAt < $1.nextTriggerAt }
+
+        WidgetSnapshot.save(WidgetReminderData(
+            unhandledCount: unhandled.count,
+            nextTitle: next?.title ?? "暂无提醒",
+            nextTime: next?.nextTriggerAt,
+            updatedAt: now
+        ))
+
+        // 主动刷新已添加的小组件
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    // MARK: - 导入/导出
+
+    private func exportBackup() {
+        let json = BackupHelper.exportJSON(reminders)
+        exportDocument = ReminderBackupDocument(text: json)
+        showExportExporter = true
+    }
+
+    private func importBackup(_ result: Result<URL, Error>) {
+        switch result {
+        case .success(let url):
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+
+            guard let data = try? Data(contentsOf: url),
+                  let json = String(data: data, encoding: .utf8),
+                  let items = BackupHelper.importJSON(json) else {
+                print("[导入] 解析失败")
+                return
+            }
+
+            for item in items {
+                let reminder = BackupHelper.makeReminder(from: item)
+                modelContext.insert(reminder)
+            }
+            try? modelContext.save()
+
+            // 重新调度通知
+            Task {
+                for reminder in reminders where reminder.isEnabled {
+                    await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
+                }
+            }
+        case .failure(let error):
+            print("[导入] 失败: \(error)")
+        }
+    }
+}
 
     // MARK: - 空状态
 

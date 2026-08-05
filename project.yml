@@ -17,6 +17,11 @@ targets:
     platform: iOS
     sources:
       - path: ReminderApp
+    entitlements:
+      path: ReminderApp/ReminderApp.entitlements
+    dependencies:
+      - target: ReminderWidget
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.reminder.app
@@ -31,3 +36,29 @@ targets:
             swiftlint
           fi
         basedOnDependencyAnalysis: false
+
+  ReminderWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ReminderWidget
+      - path: ReminderApp/Services/WidgetSnapshot.swift
+    entitlements:
+      path: ReminderWidget/ReminderWidget.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.reminder.app.widget
+        PRODUCT_NAME: "ReminderWidget"
+        INFOPLIST_FILE: ReminderWidget/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        APPLICATION_EXTENSION_API_ONLY: "YES"
+        SKIP_INSTALL: "YES"
+        SWIFT_EMIT_LOC_STRINGS: "YES"
+    info:
+      path: ReminderWidget/Info.plist
+      properties:
+        CFBundleDisplayName: 循环提醒小组件
+        CFBundleShortVersionString: "1.4.0"
+        CFBundleVersion: "1"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
