@@ -26,6 +26,7 @@ struct AIChatView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var scrollToID: UUID?
+    @State private var showNoAPISheet = false
 
     @Query(sort: \Reminder.title) private var reminders: [Reminder]
 
@@ -47,8 +48,12 @@ struct AIChatView: View {
                         if isLoading {
                             HStack {
                                 Spacer()
-                                ProgressView()
-                                    .padding(12)
+                                if settings.useNoAPIMode {
+                                    noAPILoadingView
+                                } else {
+                                    ProgressView()
+                                        .padding(12)
+                                }
                                 Spacer()
                             }
                         }
@@ -79,7 +84,7 @@ struct AIChatView: View {
             // 底部输入栏
             inputBar
         }
-        .navigationTitle("AI 助手")
+        .navigationTitle(settings.useNoAPIMode ? "AI 助手 · 免 API" : "AI 助手")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -90,11 +95,24 @@ struct AIChatView: View {
                 }
             }
         }
+        .confirmationDialog("选择 AI 服务", isPresented: $showNoAPISheet, titleVisibility: .visible) {
+            ForEach(ExternalAppService.Provider.allCases) { p in
+                Button("\(p.name)") {
+                    ExternalAppService.openWeb(for: p, withText: inputText)
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("文字已复制到剪贴板，选择服务后将在网页中粘贴发送。")
+        }
         .onAppear {
             if !settings.isConfigured {
+                let guide = settings.useNoAPIMode
+                    ? "👋 免 API 模式已开启！\n\n输入提醒需求后，会自动复制文字并跳转到网页版 AI，在那里粘贴发送即可。\n\n我能帮你：\n• 创建提醒「每天提醒我喝水」\n• 查看列表「有什么提醒」\n• 确认完成「确认喝水」\n• 推迟/删除提醒"
+                    : "👋 你好！请先在右上角设置中配置 API Key，或者开启「免 API 模式」无需 Key 直接使用。\n\n我能帮你：\n• 创建提醒「每天提醒我喝水」\n• 查看列表「有什么提醒」\n• 确认完成「确认喝水」\n• 推迟/删除提醒"
                 messages.append(ChatMessage(
                     role: .assistant,
-                    content: "👋 你好！请先在右上角设置中配置 API Key，然后就可以用语音或文字跟我说话了。\n\n我能帮你：\n• 创建提醒「每天提醒我喝水」\n• 查看列表「有什么提醒」\n• 确认完成「确认喝水」\n• 推迟/删除提醒",
+                    content: guide,
                     timestamp: Date()
                 ))
             }
@@ -105,18 +123,36 @@ struct AIChatView: View {
 
     private var welcomeView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "sparkles")
+            Image(systemName: settings.useNoAPIMode ? "bolt.fill" : "sparkles")
                 .font(.system(size: 48))
-                .foregroundStyle(.purple)
+                .foregroundStyle(settings.useNoAPIMode ? .orange : .purple)
                 .padding(.top, 40)
-            Text("跟我说你想提醒什么")
+            Text(settings.useNoAPIMode ? "免 API 模式" : "跟我说你想提醒什么")
                 .font(.title3.weight(.semibold))
-            Text("\"每天8点提醒我吃药\"\n\"每年提醒我妈生日\"\n\"每周一早上开会\"")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            if settings.useNoAPIMode {
+                Text("输入需求 → 自动跳转网页版 AI\n粘贴即用，无需 Key")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("\"每天8点提醒我吃药\"\n\"每年提醒我妈生日\"\n\"每周一早上开会\"")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
             Spacer().frame(height: 40)
         }
+    }
+
+    // MARK: - No-API loading
+
+    private var noAPILoadingView: some View {
+        VStack(spacing: 8) {
+            Text("文字已复制，正在跳转...")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
     }
 
     // MARK: - Input Bar
@@ -150,13 +186,17 @@ struct AIChatView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 18))
                     .disabled(isLoading)
 
-                // 发送按钮
+                // 发送按钮（免 API 模式下也允许发送）
                 Button {
                     sendMessage()
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.title2)
-                        .foregroundStyle(inputText.trimmingCharacters(in: .whitespaces).isEmpty ? .gray : .purple)
+                        .foregroundStyle(
+                            inputText.trimmingCharacters(in: .whitespaces).isEmpty || isLoading
+                                ? .gray
+                                : (settings.useNoAPIMode ? .orange : .purple)
+                        )
                 }
                 .disabled(inputText.trimmingCharacters(in: .whitespaces).isEmpty || isLoading)
             }
@@ -205,7 +245,38 @@ struct AIChatView: View {
 
     private func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty, settings.isConfigured else { return }
+        guard !text.isEmpty else { return }
+
+        // ── 免 API 模式：复制 + 跳转网页 ──
+        if settings.useNoAPIMode {
+            messages.append(ChatMessage(role: .user, content: text, timestamp: Date()))
+            let savedText = text
+            inputText = ""
+            errorMessage = nil
+            isLoading = true
+
+            // 复制到剪贴板
+            UIPasteboard.general.string = savedText
+
+            // 用默认提供商打开
+            let provider = ExternalAppService.Provider.allCases.first(where: { $0.rawValue == settings.noAPIProvider })
+                ?? .deepseek
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                isLoading = false
+                messages.append(ChatMessage(
+                    role: .assistant,
+                    content: "⚠️ 已复制「\(savedText.prefix(30))\(savedText.count > 30 ? "..." : "")」到剪贴板，请在弹出的「\(provider.name)」网页中粘贴发送。\n\n如果页面未自动弹出，你也可以手动打开：\(provider.webURL.absoluteString)",
+                    timestamp: Date()
+                ))
+            }
+
+            ExternalAppService.openWeb(for: provider, withText: savedText)
+            return
+        }
+
+        // ── API 模式 ──
+        guard settings.isConfigured else { return }
 
         inputText = ""
         errorMessage = nil
@@ -319,7 +390,6 @@ struct AIChatView: View {
         let reminderMinute = args["reminder_minute"] as? Int ?? 0
         let holidayName = args["holiday_name"] as? String
 
-        // 解析触发日期
         let dateFormatter = DateFormatter(); dateFormatter.locale = Locale(identifier: "zh_CN")
         dateFormatter.dateFormat = "yyyy-MM-dd HH:mm"
 
@@ -333,7 +403,6 @@ struct AIChatView: View {
             firstTrigger = nearestFuture()
         }
 
-        // 查找 holidayID
         var holidayID: String? = nil
         if let hn = holidayName {
             holidayID = HolidayService.search(by: hn)?.id
