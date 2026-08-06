@@ -13,6 +13,8 @@ enum ThemeTokens {
 
     // MARK: 状态色（与 Android 一致）
 
+    /// 品牌深色主色（渐变末端，与 Android BrandPrimaryDark 一致）
+    static let brandPrimaryDark = Color(red: 0x4F / 255.0, green: 0x3B / 255.0, blue: 0x7A / 255.0)
     static let statusReminding = Color(red: 0xE7 / 255.0, green: 0x4C / 255.0, blue: 0x3C / 255.0)
     static let statusWaiting = Color(red: 0x34 / 255.0, green: 0x98 / 255.0, blue: 0xDB / 255.0)
     static let statusCompleted = Color(red: 0x27 / 255.0, green: 0xAE / 255.0, blue: 0x60 / 255.0)

@@ -1,14 +1,22 @@
 # 循环提醒器 - iOS 原生 App
 
+![App UI](docs/screenshots/ios.png)
+
 ## 功能概述
 
 一个纯原生 SwiftUI iOS 提醒应用，支持：
 - 设置循环周期：每天、每周、每月、每季度、每年、自定义天数
 - 到期推送通知，带「确认完成」和「稍后提醒」两个操作按钮
-- 未确认递增轰炸：1小时 → 4小时 → 12小时 → 每天
-- 周期锚点防漂移：基于首次触发时间计算，不会因延迟确认而偏移
+- 未确认递增重试（v1.9.7 对齐双端）：1小时 → 4小时 → 12小时 → 24小时 → 24小时
+  - 第 5 次到达后标 `overdue`（逾期），停止轰炸，等用户手动确认/重新打开
+- 周期锚点防漂移：基于首次触发时间计算，不会因延迟确认而偏移（月末对齐、闰年正确）
 - 完整操作历史记录
 - SwiftData 本地持久化，离线可用
+- **日期提醒提前预告**：提前 N 天每日推送预告（上限 14 天）
+- **AI 语音助手**：自然语言建提醒、Function Calling
+- **WebDAV 同步**：坚果云/通用 WebDAV 双向同步
+- **近场传输**：同一局域网扫描二维码互传提醒
+- **在线升级**：检查 GitHub Releases 并下载最新 .ipa
 
 ## 方式一：XcodeGen（推荐，一键生成）
 
@@ -49,13 +57,31 @@ ReminderApp/
 ├── Models/
 │   └── Reminder.swift             # SwiftData 数据模型 + 枚举
 ├── Views/
-│   ├── ReminderListView.swift     # 首页列表（分组：提醒中/等待中/已完成）
+│   ├── ReminderListView.swift     # 首页列表（分组：提醒中/等待中/已完成，含逾期）
 │   ├── ReminderRowView.swift      # 列表行组件
 │   ├── CreateReminderView.swift   # 新建提醒表单
-│   └── ReminderDetailView.swift   # 详情页 + 确认/稍后操作 + 历史记录
-└── Services/
-    ├── NotificationManager.swift  # 通知权限/分类注册/本地推送
-    └── ReminderEngine.swift       # 周期计算/确认/递增重试/遗漏检查
+│   ├── ReminderDetailView.swift   # 详情页 + 确认/稍后操作 + 历史记录
+│   ├── CalendarView.swift         # 日历视图
+│   ├── StatsView.swift            # 统计/热力图
+│   ├── AIChatView.swift           # AI 对话
+│   ├── AISettingsView.swift       # AI 配置
+│   ├── NearbyShareView.swift      # 近场传输（二维码 + TCP）
+│   ├── SyncSettingsView.swift     # WebDAV 同步设置
+│   └── SettingsView.swift         # 设置（检查更新等）
+├── Services/
+│   ├── ReminderEngine.swift       # 周期计算 / 确认 / 递增重试 / 遗漏检查
+│   ├── NotificationManager.swift  # 通知权限/分类注册/本地推送
+│   ├── HolidayService.swift       # 节假日服务（含联网兜底）
+│   ├── LunarCalendarCheck.swift   # 农历转换
+│   ├── BackupHelper.swift         # JSON 备份导入导出
+│   ├── WebDavSync.swift           # WebDAV 双向同步
+│   ├── NearbyShareService.swift   # 局域网 TCP 47823 互传
+│   ├── QRCodeService.swift        # 二维码生成与扫码（AVFoundation）
+│   ├── UpdateService.swift        # GitHub releases.atom 检查更新
+│   ├── TelemetryService.swift     # 埋点（confirm/escalate/...）
+│   └── LiquidGlass.swift          # 液态玻璃样式库
+└── Widgets/
+    └── ReminderWidget.swift       # 桌面小部件
 ```
 
 ## 技术栈
@@ -75,13 +101,33 @@ ReminderApp/
 - **稍后提醒** → 15 分钟后重推
 
 如果用户什么都不做（滑动消除），进入递增重试：
-- 第 1 次：1 小时后
-- 第 2 次：4 小时后
-- 第 3 次：12 小时后
-- 第 4 次起：每天一次
+
+| 阶段 | 间隔 | 状态 |
+|------|------|------|
+| 第 1 次 | 1 小时后 | active（提醒中） |
+| 第 2 次 | 4 小时后 | active |
+| 第 3 次 | 12 小时后 | active |
+| 第 4 次 | 24 小时后 | active |
+| 第 5 次 | 24 小时后 | **overdue**（逾期，停止轰炸） |
+
+> v1.9.7 起：递增重试期间不推进周期；标 overdue 后不再自动响，等用户手动确认或重新打开。
 
 ## 系统要求
 
 - Xcode 15.0+
 - iOS 17.0+
 - Swift 5.9+
+
+## 版本历史
+
+| 版本 | 日期 | 更新内容 |
+|------|------|----------|
+| v1.9.7 | 2026-08 | 递增重试上限封顶 overdue、液态玻璃 UI、扫码互传 |
+| v1.9.6 | 2026-08 | 五轮审查 70 项修复 + 近场传输 + 删除 AI 免 API 模式 |
+| v1.9.5 | 2026-08 | 检查更新改 `releases.atom` 防 API 限流 |
+| v1.9.4 | 2026-08 | WebDAV 同步 404 → 自动 MKCOL 建目录 |
+| v1.9.3 | 2026-08 | 设置页（版本号/检查更新/更新日志） |
+| v1.9.2 | 2026-08 | 更新检查超时重试 + WebDAV 友好提示 |
+| v1.9.1 | 2026-08 | AI 规则提醒 + 首页菜单「检查更新」 |
+| v1.9.0 | 2026-08 | UI 优化（液态玻璃）+ 在线升级 + App 图标 |
+| v1.8.7 | 2026-08 | 小组件增强 / 节假日联网 / 统计洞察 / .ics 导出 / 设计令牌 / 崩溃监控 |

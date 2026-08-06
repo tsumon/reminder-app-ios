@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family:-apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+  html, body { width:1420px; height:1060px; overflow:hidden; }
+  body {
+    background: linear-gradient(135deg, #F1EDFB 0%, #E6DDF8 45%, #DCD1F5 100%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+  }
+  .page-title { font-size:34px; font-weight:800; color:#3B2A63; letter-spacing:1px; margin-bottom:26px; display:flex; align-items:center; gap:12px; }
+  .page-title .dot { width:14px; height:14px; border-radius:50%; background:#6750A4; box-shadow:0 0 0 5px rgba(103,80,164,.18); }
+  .phone {
+    width:392px; height:842px; border-radius:56px; background:#0E0E12;
+    padding:13px; box-shadow: 0 30px 70px -18px rgba(80,60,140,.55), inset 0 0 0 2px rgba(255,255,255,.10);
+    position:relative; flex-shrink:0;
+  }
+  .screen { width:100%; height:100%; border-radius:44px; overflow:hidden; background:#F5F3FA; position:relative; display:flex; flex-direction:column; }
+  .island { position:absolute; top:12px; left:50%; transform:translateX(-50%); width:118px; height:30px; background:#0E0E12; border-radius:16px; z-index:50; }
+  .statusbar { display:flex; justify-content:space-between; align-items:center; padding:14px 28px 0; height:46px; flex-shrink:0; color:#1A1A1A; font-size:14px; font-weight:600; }
+  .statusbar .icons { display:flex; gap:7px; align-items:center; font-size:11px; }
+  .statusbar .signal { display:flex; gap:2px; align-items:flex-end; }
+  .statusbar .signal i { width:3px; background:#1A1A1A; border-radius:1px; display:block; }
+  .statusbar .signal i:nth-child(1){height:4px} .statusbar .signal i:nth-child(2){height:7px}
+  .statusbar .signal i:nth-child(3){height:10px} .statusbar .signal i:nth-child(4){height:13px}
+  .statusbar .battery { width:22px; height:11px; border:1.5px solid #1A1A1A; border-radius:3px; position:relative; padding:1px; }
+  .statusbar .battery::after { content:""; position:absolute; right:-3.5px; top:2.5px; width:2px; height:5px; background:#1A1A1A; border-radius:1px; }
+  .statusbar .battery i { display:block; width:82%; height:100%; background:#1A1A1A; border-radius:1.5px; }
+
+  .appbar { display:flex; align-items:center; justify-content:space-between; padding:8px 22px 12px; }
+  .appbar .title { font-size:25px; font-weight:800; color:#1E1830; letter-spacing:.5px; }
+  .appbar .avatar { width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,#8A74CC,#5B4891); display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; font-weight:700; }
+  .content { flex:1; overflow:hidden; padding:0 16px; }
+  .sec { font-size:13px; font-weight:800; color:#8A7FB0; margin:12px 8px 8px; display:flex; align-items:center; gap:7px; }
+  .sec .bar { width:4px; height:13px; border-radius:2px; }
+  .glass {
+    background:rgba(255,255,255,.68); backdrop-filter:blur(28px) saturate(180%); border-radius:24px;
+    box-shadow:0 10px 28px -12px rgba(70,50,120,.22), inset 0 0 0 1px rgba(255,255,255,.75);
+    padding:15px 17px; margin-bottom:11px; display:flex; align-items:center; gap:14px;
+  }
+  .glass .ic { width:46px; height:46px; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:21px; flex-shrink:0; }
+  .glass .body { flex:1; min-width:0; }
+  .glass .name { font-size:16px; font-weight:700; color:#211A33; }
+  .glass .meta { font-size:12px; color:#8B84A3; margin-top:3px; }
+  .glass .right { text-align:right; flex-shrink:0; }
+  .glass .time { font-size:13px; font-weight:700; }
+  .chip { display:inline-block; font-size:10.5px; padding:3px 10px; border-radius:20px; font-weight:700; margin-top:5px; }
+
+  .navbar { display:flex; justify-content:space-around; align-items:center; padding:10px 16px 22px; background:rgba(255,255,255,.6); backdrop-filter:blur(24px); border-top:1px solid rgba(120,100,180,.10); flex-shrink:0; }
+  .navitem { display:flex; flex-direction:column; align-items:center; gap:3px; font-size:10px; color:#9A93B5; }
+  .navitem .ni { width:26px; height:26px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:14px; }
+  .navitem.active { color:#6750A4; font-weight:700; }
+  .navitem.active .ni { background:#EADDFF; }
+
+  /* 详情页 */
+  .backrow { display:flex; align-items:center; gap:10px; padding:8px 22px 4px; }
+  .backrow .back { width:32px; height:32px; border-radius:50%; background:rgba(255,255,255,.8); display:flex; align-items:center; justify-content:center; color:#6750A4; font-size:16px; box-shadow:0 4px 12px -4px rgba(70,50,120,.25); }
+  .backrow .t { font-size:17px; font-weight:700; color:#211A33; }
+  .statuscard { border-radius:28px; padding:22px 20px; display:flex; align-items:center; gap:16px; margin:8px 16px 14px; box-shadow:0 12px 30px -14px rgba(231,76,60,.5); }
+  .statuscard .bigic { width:58px; height:58px; border-radius:20px; display:flex; align-items:center; justify-content:center; font-size:27px; }
+  .statuscard .lbl { font-size:15px; font-weight:600; color:rgba(255,255,255,.85); }
+  .statuscard .val { font-size:23px; font-weight:800; color:#fff; margin-top:3px; }
+  .inforow { display:flex; justify-content:space-between; align-items:center; padding:13px 18px; }
+  .inforow .k { font-size:13px; color:#8B84A3; }
+  .inforow .v { font-size:14px; font-weight:600; color:#2A2340; }
+  .inforow + .inforow { border-top:1px solid rgba(120,100,180,.10); }
+  .hrow { display:flex; gap:9px; padding:8px 18px; }
+  .hist { flex:1; border-radius:16px; background:rgba(255,255,255,.7); padding:10px 12px; }
+  .hist .h-t { font-size:12.5px; font-weight:600; color:#2A2340; }
+  .hist .h-d { font-size:10.5px; color:#9B94B2; margin-top:2px; }
+  .actionbar { display:flex; gap:12px; padding:14px 16px 22px; }
+  .btn { flex:1; text-align:center; padding:15px 0; border-radius:20px; font-size:15px; font-weight:700; }
+  .btn.primary { background:linear-gradient(135deg,#7C66C2,#6750A4); color:#fff; box-shadow:0 10px 22px -8px rgba(103,80,164,.55); }
+  .btn.ghost { background:rgba(255,255,255,.8); color:#6750A4; box-shadow:0 6px 16px -8px rgba(70,50,120,.25); }
+
+  /* 统计 */
+  .stat-top { display:flex; gap:12px; padding:4px 4px 14px; }
+  .stat-card { flex:1; border-radius:22px; padding:14px 16px; background:rgba(255,255,255,.7); box-shadow:0 8px 22px -12px rgba(70,50,120,.2); }
+  .stat-card .n { font-size:24px; font-weight:800; color:#211A33; }
+  .stat-card .k { font-size:11px; color:#8B84A3; margin-top:2px; }
+  .heat { display:grid; grid-template-columns:repeat(7,1fr); gap:5px; padding:6px 4px; }
+  .heat .c { aspect-ratio:1; border-radius:6px; background:#EDEAF6; }
+  .heat .c.l1 { background:#C9BDE8; } .heat .c.l2 { background:#9E8BCF; } .heat .c.l3 { background:#7C66C2; } .heat .c.l4 { background:#5B4891; }
+  .heat .c.today { outline:2px solid #E74C3C; outline-offset:1px; }
+  .legend { display:flex; align-items:center; gap:6px; padding:8px 6px 12px; font-size:10.5px; color:#9B94B2; }
+  .legend .sw { width:12px; height:12px; border-radius:4px; }
+  .donut-row { display:flex; align-items:center; gap:18px; padding:6px 6px 10px; }
+  .donut { width:104px; height:104px; border-radius:50%; position:relative; flex-shrink:0;
+    background:conic-gradient(#6750A4 0 42%, #3498DB 42% 68%, #27AE60 68% 86%, #C9C2DA 86% 100%); }
+  .donut::after { content:""; position:absolute; inset:22px; border-radius:50%; background:#F2EFF9; }
+  .donut .mid { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:2; }
+  .donut .mid .p { font-size:20px; font-weight:800; color:#211A33; }
+  .donut .mid .l { font-size:9.5px; color:#8B84A3; }
+  .dlist { flex:1; display:flex; flex-direction:column; gap:8px; }
+  .ditem { display:flex; align-items:center; gap:8px; font-size:12px; color:#5A5373; }
+  .ditem .sw2 { width:10px; height:10px; border-radius:3px; }
+  .ditem .cnt { margin-left:auto; font-weight:700; color:#2A2340; }
+
+  .row { display:flex; gap:34px; align-items:center; }
+</style>
+</head>
+<body>
+  <div class="page-title"><span class="dot"></span>循环提醒 · iOS</div>
+  <div class="row">
+
+    <!-- 屏 1：首页 -->
+    <div class="phone">
+      <div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span>9:41</span><span class="icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span>Wi‑Fi</span><span class="battery"><i></i></span></span></div>
+        <div class="appbar"><div class="title">循环提醒</div><div class="avatar">周</div></div>
+        <div class="content">
+          <div class="sec"><span class="bar" style="background:#E74C3C"></span>提醒中</div>
+          <div class="glass">
+            <div class="ic" style="background:#FDECEC;color:#E74C3C">💊</div>
+            <div class="body"><div class="name">吃降压药</div><div class="meta">每天 09:00 · 第 2 次重试</div><span class="chip" style="background:#FDECEC;color:#E74C3C">需要确认</span></div>
+            <div class="right"><div class="time" style="color:#E74C3C">09:00</div></div>
+          </div>
+          <div class="glass">
+            <div class="ic" style="background:#F9E7E3;color:#C0392B">📋</div>
+            <div class="body"><div class="name">提交季度报表</div><div class="meta">每季度 · 已逾期</div><span class="chip" style="background:#F9E7E3;color:#C0392B">已逾期</span></div>
+            <div class="right"><div class="time" style="color:#C0392B">08-05</div></div>
+          </div>
+          <div class="sec"><span class="bar" style="background:#3498DB"></span>等待中</div>
+          <div class="glass">
+            <div class="ic" style="background:#E8F1FC;color:#3498DB">🐕</div>
+            <div class="body"><div class="name">遛狗</div><div class="meta">每天 20:00</div></div>
+            <div class="right"><div class="time" style="color:#3498DB">20:00</div></div>
+          </div>
+          <div class="glass">
+            <div class="ic" style="background:#EDE7FB;color:#6750A4">🎂</div>
+            <div class="body"><div class="name">妈妈的生日</div><div class="meta">农历八月十五 · 提前 3 天预告</div></div>
+            <div class="right"><div class="time" style="color:#6750A4">08-27</div></div>
+          </div>
+        </div>
+        <div class="navbar">
+          <div class="navitem active"><div class="ni">🏠</div>首页</div>
+          <div class="navitem"><div class="ni">📅</div>日历</div>
+          <div class="navitem"><div class="ni">📊</div>统计</div>
+          <div class="navitem"><div class="ni">⚙️</div>设置</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 屏 2：详情 -->
+    <div class="phone">
+      <div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span>9:41</span><span class="icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span>Wi‑Fi</span><span class="battery"><i></i></span></span></div>
+        <div class="backrow"><div class="back">‹</div><div class="t">提醒详情</div></div>
+        <div class="statuscard" style="background:linear-gradient(135deg,#F27C6D,#E74C3C)">
+          <div class="bigic" style="background:rgba(255,255,255,.22)">⏰</div>
+          <div>
+            <div class="lbl">当前状态</div>
+            <div class="val">需要确认 · 第 2 次重试</div>
+          </div>
+        </div>
+        <div class="content" style="padding-top:2px">
+          <div class="glass" style="display:block; padding:6px 0">
+            <div class="inforow"><span class="k">提醒内容</span><span class="v">吃降压药</span></div>
+            <div class="inforow"><span class="k">周期</span><span class="v">每天 · 09:00</span></div>
+            <div class="inforow"><span class="k">下次提醒</span><span class="v">14:00（4 小时后）</span></div>
+            <div class="inforow"><span class="k">重试阶段</span><span class="v" style="color:#E74C3C">第 2 次 / 共 5 次</span></div>
+            <div class="inforow"><span class="k">创建时间</span><span class="v">2026-08-01 21:00</span></div>
+          </div>
+          <div class="sec"><span class="bar" style="background:#6750A4"></span>最近记录</div>
+          <div class="hrow">
+            <div class="hist"><div class="h-t">⏰ 重试阶段 2</div><div class="h-d">今天 10:00</div></div>
+            <div class="hist"><div class="h-t">🔔 到点触发</div><div class="h-d">今天 09:00</div></div>
+          </div>
+          <div class="hrow" style="padding-top:0">
+            <div class="hist"><div class="h-t">⏰ 重试阶段 1</div><div class="h-d">昨天 20:00</div></div>
+            <div class="hist"><div class="h-t">✅ 确认完成</div><div class="h-d">昨天 08:55</div></div>
+          </div>
+        </div>
+        <div class="actionbar">
+          <div class="btn primary">✓ 确认完成</div>
+          <div class="btn ghost">稍后提醒</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 屏 3：统计 -->
+    <div class="phone">
+      <div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span>9:41</span><span class="icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span>Wi‑Fi</span><span class="battery"><i></i></span></span></div>
+        <div class="appbar"><div class="title">统计</div><div class="avatar" style="background:#EADDFF;color:#6750A4">📊</div></div>
+        <div class="content">
+          <div class="stat-top">
+            <div class="stat-card"><div class="n">42</div><div class="k">本月已完成</div></div>
+            <div class="stat-card"><div class="n">13</div><div class="k">连续完成天数</div></div>
+            <div class="stat-card"><div class="n">96%</div><div class="k">按时完成率</div></div>
+          </div>
+          <div class="sec"><span class="bar" style="background:#6750A4"></span>近 12 周完成热力图</div>
+          <div class="glass" style="display:block; padding:14px 16px">
+            <div class="heat">
+              <div class="c"></div><div class="c l1"></div><div class="c l2"></div><div class="c"></div><div class="c l1"></div><div class="c l3"></div><div class="c l2"></div>
+              <div class="c l1"></div><div class="c l3"></div><div class="c l2"></div><div class="c l1"></div><div class="c"></div><div class="c l4"></div><div class="c l2"></div>
+              <div class="c l2"></div><div class="c"></div><div class="c l1"></div><div class="c l3"></div><div class="c l2"></div><div class="c l1"></div><div class="c l3"></div>
+              <div class="c l4"></div><div class="c l2"></div><div class="c l1"></div><div class="c l3"></div><div class="c l4"></div><div class="c l2"></div><div class="c"></div>
+              <div class="c l1"></div><div class="c l2"></div><div class="c l4"></div><div class="c"></div><div class="c l2"></div><div class="c l3"></div><div class="c l1"></div>
+              <div class="c l3"></div><div class="c l1"></div><div class="c l2"></div><div class="c l4"></div><div class="c l3"></div><div class="c today l4"></div><div class="c l2"></div>
+            </div>
+            <div class="legend"><span>少</span><span class="sw" style="background:#EDEAF6"></span><span class="sw" style="background:#C9BDE8"></span><span class="sw" style="background:#9E8BCF"></span><span class="sw" style="background:#7C66C2"></span><span class="sw" style="background:#5B4891"></span><span>多</span></div>
+          </div>
+          <div class="sec"><span class="bar" style="background:#6750A4"></span>提醒类型分布</div>
+          <div class="glass" style="display:block; padding:16px">
+            <div class="donut-row">
+              <div class="donut"><div class="mid"><div class="p">42%</div><div class="l">周期提醒</div></div></div>
+              <div class="dlist">
+                <div class="ditem"><span class="sw2" style="background:#6750A4"></span>周期提醒<span class="cnt">42%</span></div>
+                <div class="ditem"><span class="sw2" style="background:#3498DB"></span>日期提醒<span class="cnt">26%</span></div>
+                <div class="ditem"><span class="sw2" style="background:#27AE60"></span>规则提醒<span class="cnt">18%</span></div>
+                <div class="ditem"><span class="sw2" style="background:#C9C2DA"></span>其他<span class="cnt">14%</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="navbar">
+          <div class="navitem"><div class="ni">🏠</div>首页</div>
+          <div class="navitem"><div class="ni">📅</div>日历</div>
+          <div class="navitem active"><div class="ni">📊</div>统计</div>
+          <div class="navitem"><div class="ni">⚙️</div>设置</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

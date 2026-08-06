@@ -28,7 +28,6 @@ struct SettingsView: View {
                         Label("WebDAV 同步", systemImage: "arrow.triangle.2.circlepath")
                     }
                 }
-
                 // MARK: AI
                 Section("AI") {
                     NavigationLink {
@@ -76,6 +75,9 @@ struct SettingsView: View {
             }
             .navigationTitle("设置")
             .navigationBarTitleDisplayMode(.inline)
+            .glassPageBackground()
+            .glassNavigationBar()
+            .scrollContentBackground(.hidden)
             .alert(
                 "检查更新",
                 isPresented: Binding(

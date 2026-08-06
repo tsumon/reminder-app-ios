@@ -72,6 +72,8 @@ struct ReminderListView: View {
                 }
             }
             .navigationTitle("提醒事项")
+            .glassPageBackground()
+            .glassNavigationBar()
             .searchable(text: $searchText, prompt: "搜索标题或备注")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -86,7 +88,7 @@ struct ReminderListView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button {
-                            showCreateSheet = true
+                            menuAction { showCreateSheet = true }
                         } label: {
                             Label("新建提醒", systemImage: "plus.circle")
                         }
@@ -110,25 +112,25 @@ struct ReminderListView: View {
                         }
                         Divider()
                         Button {
-                            exportBackup()
+                            menuAction { exportBackup() }
                         } label: {
                             Label("导出提醒", systemImage: "square.and.arrow.up")
                         }
                         // v1.8.7 任务④: 导出 .ics 日历（可导入系统日历/Google 日历）
                         Button {
-                            exportICS()
+                            menuAction { exportICS() }
                         } label: {
                             Label("导出日历(.ics)", systemImage: "calendar.badge.plus")
                         }
                         // 近场传输: 同一局域网互传提醒
                         Button {
-                            showNearbyShare = true
+                            menuAction { showNearbyShare = true }
                         } label: {
                             Label("附近传输", systemImage: "wifi")
                         }
                         // v1.9.0: 主动检查更新
                         Button {
-                            checkForUpdates()
+                            menuAction { checkForUpdates() }
                         } label: {
                             Label("检查更新", systemImage: "arrow.clockwise")
                         }
@@ -140,7 +142,7 @@ struct ReminderListView: View {
                             Label("设置", systemImage: "gearshape")
                         }
                         Button {
-                            showImportImporter = true
+                            menuAction { showImportImporter = true }
                         } label: {
                             Label("导入提醒", systemImage: "square.and.arrow.down")
                         }
@@ -318,6 +320,14 @@ struct ReminderListView: View {
 
     // MARK: - 导入/导出
 
+    /// iOS 17 Menu+sheet 竞争修复：Menu 内 Button 同步触发弹层会与菜单关闭动画
+    /// 竞争导致不弹出，统一延迟一帧再触发
+    private func menuAction(_ action: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            action()
+        }
+    }
+
     private func exportBackup() {
         let json = BackupHelper.exportJSON(reminders)
         exportDocument = ReminderBackupDocument(text: json)
@@ -463,6 +473,23 @@ struct ReminderListView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
 
+                    // 主操作：分享给签名工具（AirDrop 到电脑等）
+                    ShareLink(item: ipaURL) {
+                        Label("分享 ipa 给签名工具", systemImage: "square.and.arrow.up")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(ThemeTokens.brandPrimary)
+                    .padding(.horizontal)
+
+                    // 引导说明
+                    Text("⚠️ 在「文件」App 里直接点击 .ipa 没反应是正常的——\niOS 不提供 .ipa 安装器，需要先签名。\n\n推荐流程：\n① 点上方「分享 ipa」→ AirDrop 到电脑\n② 用 AltStore / 爱思助手 / Sideloadly 签名安装\n③ 或先点「在文件 App 中查看」确认文件已下载")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .padding(.horizontal, 24)
+
                     VStack(spacing: 10) {
                         Button {
                             if let dir = try? UpdateService.downloadsDirectory() {
@@ -473,13 +500,6 @@ struct ReminderListView: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
-
-                        ShareLink(item: ipaURL) {
-                            Label("分享 ipa 给签名工具", systemImage: "square.and.arrow.up")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(ThemeTokens.brandPrimary)
                     }
                     .padding(.horizontal)
                 } else if let err = downloadError {
@@ -508,7 +528,7 @@ struct ReminderListView: View {
                 }
             }
         }
-        .presentationDetents([.height(380)])
+        .presentationDetents([.height(520)])
     }
 
     // MARK: - 提醒列表
@@ -528,6 +548,9 @@ struct ReminderListView: View {
             let next = reminders.filter { $0.isEnabled && $0.nextTriggerAt > Date() }.min { $0.nextTriggerAt < $1.nextTriggerAt }
             Section {
                 OverviewCard(unhandledCount: unhandled, nextReminder: next)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
 
             // 日历卡片
@@ -558,6 +581,9 @@ struct ReminderListView: View {
                             ReminderDetailView(reminder: reminder)
                         } label: {
                             ReminderRowView(reminder: reminder)
+                                .listRowInsets(EdgeInsets())
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
                         }
                         .swipeActions(edge: .leading) {
                             completeSwipe(for: reminder)
@@ -578,6 +604,9 @@ struct ReminderListView: View {
                             ReminderDetailView(reminder: reminder)
                         } label: {
                             ReminderRowView(reminder: reminder)
+                                .listRowInsets(EdgeInsets())
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
                         }
                         .swipeActions(edge: .leading) {
                             completeSwipe(for: reminder)
@@ -598,6 +627,9 @@ struct ReminderListView: View {
                             ReminderDetailView(reminder: reminder)
                         } label: {
                             ReminderRowView(reminder: reminder)
+                                .listRowInsets(EdgeInsets())
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
                         }
                         .swipeActions(edge: .leading) {
                             reopenSwipe(for: reminder)
@@ -611,6 +643,7 @@ struct ReminderListView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: searchText)
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .refreshable {
             await ReminderEngine.shared.checkMissedReminders(reminders: reminders)
         }
@@ -802,12 +835,13 @@ struct OverviewCard: View {
     let nextReminder: Reminder?
 
     var body: some View {
-        // v1.8.7 UI 优化: 品牌色渐变卡（滴答清单风格）
+        // 液态玻璃版：品牌渐变玻璃 + 顶部高光 + 大圆角柔和阴影
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Image(systemName: "bell.badge.fill")
                         .font(.title3)
+                        .symbolEffect(.bounce, value: unhandledCount)
                     Text("待处理 \(unhandledCount) 项")
                         .font(.headline)
                 }
@@ -833,13 +867,27 @@ struct OverviewCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             LinearGradient(
-                colors: [ThemeTokens.brandPrimary, ThemeTokens.brandPrimary.opacity(0.78)],
+                colors: [ThemeTokens.brandPrimary, ThemeTokens.brandPrimaryDark],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: ThemeTokens.brandPrimary.opacity(0.28), radius: 10, y: 4)
+        // 玻璃高光：顶部白色渐变
+        .overlay(
+            LinearGradient(
+                colors: [.white.opacity(0.28), .white.opacity(0.0)],
+                startPoint: .top,
+                endPoint: .center
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .allowsHitTesting(false)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(.white.opacity(0.35), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: ThemeTokens.brandPrimary.opacity(0.30), radius: 16, y: 8)
         .listRowInsets(EdgeInsets())
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)

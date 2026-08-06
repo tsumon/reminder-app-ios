@@ -27,6 +27,8 @@ struct StatsView: View {
             }
             .navigationTitle("统计洞察")
             .navigationBarTitleDisplayMode(.inline)
+            .glassPageBackground()
+            .glassNavigationBar()
         }
     }
 
@@ -253,8 +255,21 @@ struct StatsView: View {
     }
 
     private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(Color(.secondarySystemGroupedBackground))
+        // 液态玻璃卡片：材质 + 高光描边
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .fill(.regularMaterial)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [.white.opacity(0.55), .white.opacity(0.12)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: ThemeTokens.brandPrimary.opacity(0.08), radius: 12, y: 5)
     }
 }
 

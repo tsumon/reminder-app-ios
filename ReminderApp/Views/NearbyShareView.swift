@@ -18,6 +18,7 @@ struct NearbyShareView: View {
     @State private var isReceiving = false
     @State private var resultMsg: String?
     @State private var isError = false
+    @State private var showScanner = false
     /// 当前提醒的导出 JSON 缓存（@Query 变化时刷新，发送线程只读字符串，
     /// 避免在后台队列直接读 SwiftData 模型，也保证发送的是最新数据）
     @State private var shareJSON = ""
@@ -46,6 +47,8 @@ struct NearbyShareView: View {
             }
             .navigationTitle("附近传输")
             .navigationBarTitleDisplayMode(.inline)
+            .glassPageBackground()
+            .glassNavigationBar()
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("完成") { dismiss() }
@@ -75,6 +78,28 @@ struct NearbyShareView: View {
                 Text("http://\(ip):\(NearbyShareService.port)")
                     .font(.title3.monospaced().weight(.semibold))
                     .textSelection(.enabled)
+
+                // 二维码：对方扫码即自动填入地址
+                VStack(spacing: 4) {
+                    if let qr = QRCodeService.generateQRCode(from: "http://\(ip):\(NearbyShareService.port)\(NearbyShareService.path)") {
+                        Image(uiImage: qr)
+                            .interpolation(.none)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 190, height: 190)
+                            .padding(8)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.6), lineWidth: 1)
+                            )
+                            .shadow(color: .black.opacity(0.15), radius: 10, y: 4)
+                    }
+                    Text("对方用「扫码」扫这里，自动开始接收")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 Text("无法获取局域网 IP\n请确认已连接 Wi-Fi")
                     .multilineTextAlignment(.center)
@@ -161,10 +186,29 @@ struct NearbyShareView: View {
                 .foregroundStyle(.purple)
                 .padding(.top, 24)
 
-            Text("输入发送方显示的地址\n（支持 192.168.1.100 或完整 http://192.168.1.100:47823）")
+            Text("扫发送方二维码，或手动输入地址\n（支持 192.168.1.100 或完整 http://192.168.1.100:47823）")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+
+            // 扫码主操作
+            Button {
+                showScanner = true
+            } label: {
+                Label("扫码接收（扫对方二维码）", systemImage: "qrcode.viewfinder")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(ThemeTokens.brandPrimary)
+            .padding(.horizontal)
+
+            HStack(spacing: 8) {
+                Rectangle().fill(.secondary.opacity(0.3)).frame(height: 1)
+                Text("或手动输入").font(.caption2).foregroundStyle(.secondary)
+                Rectangle().fill(.secondary.opacity(0.3)).frame(height: 1)
+            }
+            .padding(.horizontal)
 
             TextField("192.168.1.100", text: $receiveIP)
                 .keyboardType(.numbersAndPunctuation)
@@ -177,7 +221,7 @@ struct NearbyShareView: View {
                 ProgressView("正在下载...")
             } else {
                 Button {
-                    receive()
+                    receive(from: receiveIP)
                 } label: {
                     Label("下载并导入", systemImage: "arrow.down.circle")
                 }
@@ -195,10 +239,55 @@ struct NearbyShareView: View {
             Spacer()
         }
         .padding()
+        // 扫码 sheet：扫到后自动下载导入
+        .sheet(isPresented: $showScanner) {
+            NavigationStack {
+                ZStack {
+                    Color.black.ignoresSafeArea()
+                    QRScannerView(
+                        onScanned: { value in
+                            showScanner = false
+                            // 二维码内容是 http://ip:port/reminders.json → 解析后接收
+                            if let url = URL(string: value), let host = url.host {
+                                receive(from: host)
+                            } else {
+                                receive(from: value)
+                            }
+                        },
+                        onError: { msg in
+                            showScanner = false
+                            isError = true
+                            resultMsg = msg
+                        }
+                    )
+                    .ignoresSafeArea()
+
+                    VStack {
+                        Spacer()
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(.white.opacity(0.8), lineWidth: 3)
+                            .frame(width: 240, height: 240)
+                        Text("对准对方的二维码")
+                            .font(.caption)
+                            .foregroundStyle(.white)
+                            .padding(.top, 12)
+                        Spacer().frame(height: 80)
+                    }
+                }
+                .navigationTitle("扫码接收")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("取消") { showScanner = false }
+                    }
+                }
+            }
+            .presentationDetents([.large])
+        }
     }
 
-    private func receive() {
-        let host = receiveIP.trimmingCharacters(in: .whitespaces)
+    private func receive(from hostInput: String) {
+        let host = hostInput.trimmingCharacters(in: .whitespaces)
         guard !host.isEmpty else { return }
         isReceiving = true
         resultMsg = nil

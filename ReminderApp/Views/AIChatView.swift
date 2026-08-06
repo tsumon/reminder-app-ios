@@ -75,6 +75,7 @@ struct AIChatView: View {
                 }
             }
             .background(Color(.systemGroupedBackground))
+            .glassPageBackground()
 
             // 底部输入栏
             inputBar

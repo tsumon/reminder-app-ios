@@ -65,7 +65,18 @@ struct ReminderRowView: View {
                 }
             }
         }
-        .padding(.vertical, 4)
+        // 液态玻璃行：ultraThinMaterial + 高光描边 + 柔和阴影
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(.white.opacity(0.35), lineWidth: 0.8)
+        )
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
         .opacity(reminder.isEnabled ? 1 : 0.5)
     }
 

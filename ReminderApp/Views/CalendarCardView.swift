@@ -72,9 +72,24 @@ struct CalendarCardView: View {
             dayGrid
         }
         .padding(.vertical, 12)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
+        // 液态玻璃：材质 + 高光描边 + 大圆角柔和阴影
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(.regularMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [.white.opacity(0.55), .white.opacity(0.12)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .shadow(color: ThemeTokens.brandPrimary.opacity(0.10), radius: 14, y: 6)
         .sheet(isPresented: $showMonthPicker) {
             MonthYearPickerSheet(
                 year: displayYear,
