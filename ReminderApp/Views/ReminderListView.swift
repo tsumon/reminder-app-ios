@@ -31,6 +31,9 @@ struct ReminderListView: View {
     // 智能清单筛选
     @State private var smartList: SmartList = .all
 
+    // 搜索
+    @State private var searchText = ""
+
     // 导入/导出
     @State private var showExportExporter = false
     @State private var exportDocument: ReminderBackupDocument?
@@ -52,6 +55,7 @@ struct ReminderListView: View {
                 }
             }
             .navigationTitle("提醒事项")
+            .searchable(text: $searchText, prompt: "搜索标题或备注")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     NavigationLink {
@@ -313,8 +317,14 @@ struct ReminderListView: View {
                     .listRowSeparator(.hidden)
             }
 
-            // 应用智能清单筛选后的全集
-            let filtered = reminders.filter { matchSmartList($0) }
+            // 应用智能清单筛选后的全集（叠加搜索）
+            let query = searchText.trimmingCharacters(in: .whitespaces)
+            let filtered = reminders.filter {
+                matchSmartList($0) &&
+                (query.isEmpty ||
+                 $0.title.localizedCaseInsensitiveContains(query) ||
+                 $0.note.localizedCaseInsensitiveContains(query))
+            }
 
             // 正在提醒中（active / snoozed / overdue）
             let activeReminders = filtered.filter {
@@ -378,6 +388,7 @@ struct ReminderListView: View {
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: searchText)
         .listStyle(.insetGrouped)
         .refreshable {
             await ReminderEngine.shared.checkMissedReminders(reminders: reminders)

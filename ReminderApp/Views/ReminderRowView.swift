@@ -6,9 +6,15 @@ struct ReminderRowView: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            // 状态图标
-            statusIcon
-                .font(.title2)
+            // 状态图标（带状态色底盘）
+            ZStack {
+                Circle()
+                    .fill(statusColor.opacity(0.14))
+                    .frame(width: 38, height: 38)
+                statusIcon
+                    .font(.title3)
+            }
+            .accessibilityLabel("状态：\(reminder.status.rawValue)")
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(reminder.title)

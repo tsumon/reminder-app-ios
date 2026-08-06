@@ -8,6 +8,7 @@ struct ReminderDetailView: View {
 
     let reminder: Reminder
     @State private var showDeleteAlert = false
+    @State private var appeared = false
 
     var body: some View {
         ScrollView {
@@ -15,6 +16,9 @@ struct ReminderDetailView: View {
                 // MARK: 状态大卡片
                 statusCard
                     .padding(.horizontal)
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : 16)
+                    .animation(.spring(response: 0.45, dampingFraction: 0.8), value: appeared)
 
                 // MARK: 操作按钮
                 actionButtons
@@ -47,6 +51,7 @@ struct ReminderDetailView: View {
         }
         .onAppear {
             ReminderEngine.shared.configure(with: modelContext)
+            appeared = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .reminderConfirmed)) { notification in
             if let id = notification.userInfo?["reminderID"] as? UUID,
