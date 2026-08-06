@@ -53,11 +53,17 @@ final class VoiceRecognizer: ObservableObject {
         transcribedText = ""
 
         recognitionTask = recognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
+            // SFSpeechRecognitionTask 的 resultHandler 不保证主线程回调，
+            // 而本类标注 @MainActor——必须显式切回主线程再写 @Published / 操作 AVAudioEngine
             if let result = result {
-                self?.transcribedText = result.bestTranscription.formattedString
+                Task { @MainActor [weak self] in
+                    self?.transcribedText = result.bestTranscription.formattedString
+                }
             }
             if error != nil || result?.isFinal == true {
-                self?.stopRecordingInternal()
+                Task { @MainActor [weak self] in
+                    self?.stopRecordingInternal()
+                }
             }
         }
     }

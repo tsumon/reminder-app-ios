@@ -65,14 +65,28 @@ final class ReminderEngine: ObservableObject {
         let diff = daysBetween(aStart, target)
         guard diff >= 0 else { return false }
 
+        // 短月对齐：锚点日 31 在 2 月触发日被回钳到 28/29，日历标记用同一规则
+        func effectiveAnchorDay(_ y: Int, _ m: Int, _ aD: Int) -> Int {
+            guard let first = startOfDay(y, m, 1),
+                  let range = Calendar.current.range(of: .day, in: .month, for: first) else { return aD }
+            return min(aD, range.count)
+        }
+
         switch r.cycle {
         case .once:      return diff == 0
         case .daily:     return true
         case .weekly:    return tWeekday == aWeekday
         case .biweekly:  return tWeekday == aWeekday && diff % 14 == 0
-        case .monthly:   return day == aD
-        case .quarterly: return day == aD && (month - aM) % 3 == 0
-        case .yearly:    return month == aM && day == aD
+        case .monthly:   return day == effectiveAnchorDay(year, month, aD)
+        case .quarterly: return day == effectiveAnchorDay(year, month, aD) && (month - aM) % 3 == 0
+        case .yearly:
+            // 2/29 锚点：非闰年 2 月调度侧跳过（不触发）→ 这里也不显示，避免「显示但不响」幻影
+            if aD == 29 && aM == 2 {
+                guard month == 2 else { return false }
+                let isLeap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+                return isLeap && day == 29
+            }
+            return month == aM && day == effectiveAnchorDay(year, month, aD)
         case .custom:
             let cd = r.customDays
             // P2 修复：每 N 天提醒不能要求同星期 —— 每 3 天第 2 次起星期必然不同，
@@ -211,11 +225,49 @@ final class ReminderEngine: ObservableObject {
 
         switch reminder.cycle {
         case .monthly, .quarterly, .yearly:
-            // 按日历月累加，避免固定 30/90/365 天在大小月、闰年下漂移
+            // 按日历月累加，但要把「锚点日号」保持在目标月内：
+            // 直接用 date(byAdding:.month) 会漂移（1/31→2/28→3/28 永久停在 28 号），
+            // 累加后回钳到「目标月第 anchorDay 天，超出取该月最后一天」。
+            // yearly + 2/29（闰日）例外：非闰年 2 月无 29 日 → 跳过该年，下个闰年再触发。
             let amount = reminder.cycle == .monthly ? 1 : (reminder.cycle == .quarterly ? 3 : 12)
+            let anchorDay = Calendar.current.component(.day, from: anchor)
             var cursor = anchor
+            var attempts = 0
             while cursor <= confirmedDate {
-                cursor = Calendar.current.date(byAdding: .month, value: amount, to: cursor) ?? confirmedDate
+                guard let next = Calendar.current.date(byAdding: .month, value: amount, to: cursor) else { break }
+                let nextDay = Calendar.current.component(.day, from: next)
+                let maxDay = Calendar.current.range(of: .day, in: .month, for: next)?.count ?? nextDay
+                if anchorDay <= maxDay {
+                    // 目标月有 anchorDay 天（含 2/29 闰年）→ 设回锚点日
+                    cursor = Calendar.current.date(bySetting: .day, value: anchorDay, of: next) ?? next
+                } else if reminder.cycle == .yearly && anchorDay == 29 {
+                    // 非闰年 2 月没有 29 日 → 保留 2/28 继续累加（下轮跳 12 个月）
+                    cursor = next
+                } else {
+                    // 目标月不足 anchorDay 天（如 2 月）→ 钳到月末
+                    cursor = Calendar.current.date(bySetting: .day, value: maxDay, of: next) ?? next
+                }
+                attempts += 1
+                if attempts > 1200 { break } // 防御：最多推进 100 年
+            }
+            // yearly + 2/29：主循环可能停在「非闰年的 2/28」就退出（cursor > confirmed），
+            // 必须继续逐月 +12 找到下一个闰年 2/29，否则提醒永久漂移到 28 号
+            if reminder.cycle == .yearly && anchorDay == 29,
+               Calendar.current.component(.day, from: cursor) != 29 {
+                var leapCursor = cursor
+                var leapAttempts = 0
+                while Calendar.current.component(.day, from: leapCursor) != 29 {
+                    guard let nxt = Calendar.current.date(byAdding: .month, value: 12, to: leapCursor) else { break }
+                    leapCursor = nxt
+                    let maxD = Calendar.current.range(of: .day, in: .month, for: leapCursor)?.count ?? 28
+                    if maxD >= 29 {
+                        leapCursor = Calendar.current.date(bySetting: .day, value: 29, of: leapCursor) ?? leapCursor
+                        break
+                    }
+                    leapAttempts += 1
+                    if leapAttempts > 1200 { break }
+                }
+                cursor = leapCursor
             }
             return cursor
         default:
@@ -469,7 +521,8 @@ final class ReminderEngine: ObservableObject {
     /// 日期类的提前预告通知
     private func scheduleAdvanceNotifications(reminder: Reminder) async {
         let calendar = Calendar.current
-        let advanceDays = min(max(reminder.advanceDays, 0), 30)
+        // 上限 14：iOS pending 通知上限 64 条/App，30 天预告 ×3 个提醒就会超限被静默丢弃
+        let advanceDays = min(max(reminder.advanceDays, 0), 14)
 
         guard advanceDays > 0 else { return }
 
@@ -512,6 +565,16 @@ final class ReminderEngine: ObservableObject {
             // 过期未触发：自动推进到下一次触发时间并重新调度。
             // 这样周期提醒即使用户未点「确认完成」也会继续滚动，
             // 不会再每次打开 App 都对旧日期误响。
+            if reminder.cycle == .once {
+                // 一次性提醒过期未确认 → 标记逾期归档，不再推进/重排：
+                // calculateNextTrigger 对 once 会返回过去的锚点，若推进则每次启动立即重弹
+                reminder.status = .overdue
+                reminder.updatedAt = now
+                try? modelContext?.save()
+                SyncStore.touchLocalChange()
+                print("[ReminderEngine] 一次性提醒已逾期归档: \(reminder.title)")
+                continue
+            }
             reminder.nextTriggerAt = calculateNextTrigger(after: now, reminder: reminder)
             reminder.status = .pending
             reminder.retryStage = 0

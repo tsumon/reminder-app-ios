@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 import WidgetKit
+import Combine
 
 /// 导入/导出用的 JSON 文件文档
 struct ReminderBackupDocument: FileDocument {
@@ -40,6 +41,7 @@ struct ReminderListView: View {
     @State private var showImportImporter = false
     // v1.8.7 任务④: .ics 日历导出
     @State private var showIcsExporter = false
+    @State private var showNearbyShare = false
     @State private var icsDocument: ReminderBackupDocument?
     // v1.8.7 在线升级
     @State private var updateInfo: AppUpdateInfo?
@@ -57,7 +59,12 @@ struct ReminderListView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            mainContent
+        }
+    }
+
+    private var mainContent: some View {
+        Group {
                 if reminders.isEmpty {
                     emptyView
                 } else {
@@ -113,6 +120,12 @@ struct ReminderListView: View {
                         } label: {
                             Label("导出日历(.ics)", systemImage: "calendar.badge.plus")
                         }
+                        // 近场传输: 同一局域网互传提醒
+                        Button {
+                            showNearbyShare = true
+                        } label: {
+                            Label("附近传输", systemImage: "wifi")
+                        }
                         // v1.9.0: 主动检查更新
                         Button {
                             checkForUpdates()
@@ -139,6 +152,10 @@ struct ReminderListView: View {
             }
             .sheet(isPresented: $showCreateSheet) {
                 CreateReminderView()
+            }
+            // 近场传输: 同一局域网互传提醒
+            .sheet(isPresented: $showNearbyShare) {
+                NearbyShareView()
             }
             .fileExporter(
                 isPresented: $showExportExporter,
@@ -184,6 +201,12 @@ struct ReminderListView: View {
             }
             .onChange(of: reminders) { _, newValue in
                 saveWidgetSnapshot(newValue)
+            }
+            // v1.9.6 fix: 通知动作全局处理（合并 publisher 减链长，处理逻辑在独立方法）。
+            // 原实现只在详情页 onReceive → 其他页点通知按钮操作静默丢失；
+            // dismiss(滑动消除) 也从未触发递增重试 → 统计「漏掉」恒为 0。
+            .onReceive(notificationActionPublisher) { notification in
+                handleNotificationAction(notification.name, notification)
             }
             .alert("同步", isPresented: Binding(
                 get: { syncMessage != nil },
@@ -251,7 +274,6 @@ struct ReminderListView: View {
                     DayTasksSheet(day: day, reminders: reminders)
                 }
             }
-        }
     }
 
     // MARK: - 小组件数据快照
@@ -309,6 +331,33 @@ struct ReminderListView: View {
         showIcsExporter = true
     }
 
+    // MARK: - 通知动作（全局处理）
+
+    /// 通知栏「确认/稍后/消除」合并 publisher（类型显式化，避免 body 链类型检查超时）
+    private var notificationActionPublisher: AnyPublisher<Notification, Never> {
+        NotificationCenter.default.publisher(for: .reminderConfirmed)
+            .merge(with: NotificationCenter.default.publisher(for: .reminderSnoozed))
+            .merge(with: NotificationCenter.default.publisher(for: .reminderDismissed))
+            .eraseToAnyPublisher()
+    }
+
+    /// 处理通知栏「确认/稍后/消除」广播：在根视图统一监听，
+    /// 避免只在详情页监听导致其他页面操作静默丢失
+    private func handleNotificationAction(_ name: Notification.Name, _ notification: Notification) {
+        guard let id = notification.userInfo?["reminderID"] as? UUID,
+              let r = reminders.first(where: { $0.id == id }) else { return }
+        switch name {
+        case .reminderConfirmed:
+            ReminderEngine.shared.confirmReminder(r)
+        case .reminderSnoozed:
+            ReminderEngine.shared.snoozeReminder(r)
+        case .reminderDismissed:
+            ReminderEngine.shared.escalateRetry(r)
+        default:
+            break
+        }
+    }
+
     // MARK: - 同步
 
     private func syncNow() {
@@ -336,37 +385,14 @@ struct ReminderListView: View {
                 return
             }
 
-            // 去重：同一份备份文件被导入两次（或用户先同步再导入）时，
-            // 之前会无脑 insert 出一堆一模一样的提醒，通知也会重复响。
-            // 用 id 做主键匹配，id 对不上时退化成「标题 + 触发时间」指纹。
-            var existingIDs = Set(reminders.map(\.id))
-            var existingFingerprints = Set(
-                reminders.map { "\($0.title)|\(Int($0.nextTriggerAt.timeIntervalSince1970))" }
-            )
+            // 通用导入（去重 / 过期重算 / 插入 / 保存 / touch 变更）
+            let result = BackupHelper.importItems(items, existing: reminders, into: modelContext)
+            print("[导入] 新增 \(result.imported) 条，跳过重复 \(result.skipped) 条")
 
-            var importedCount = 0
-            var skippedCount = 0
-            for item in items {
-                let reminder = BackupHelper.makeReminder(from: item)
-                let fingerprint = "\(reminder.title)|\(Int(reminder.nextTriggerAt.timeIntervalSince1970))"
-
-                if existingIDs.contains(reminder.id) || existingFingerprints.contains(fingerprint) {
-                    skippedCount += 1
-                    continue
-                }
-
-                existingIDs.insert(reminder.id)
-                existingFingerprints.insert(fingerprint)
-                modelContext.insert(reminder)
-                importedCount += 1
-            }
-            try? modelContext.save()
-            SyncStore.touchLocalChange()
-            print("[导入] 新增 \(importedCount) 条，跳过重复 \(skippedCount) 条")
-
-            // 重新调度通知
+            // 重新调度通知：必须遍历本次实际导入的模型对象。
+            // 遍历 @Query 的 reminders 快照可能漏掉刚插入的行（SwiftData 刷新时机不确定）。
             Task {
-                for reminder in reminders where reminder.isEnabled {
+                for reminder in result.inserted where reminder.isEnabled {
                     await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
                 }
             }

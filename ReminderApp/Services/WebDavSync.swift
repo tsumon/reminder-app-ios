@@ -18,18 +18,21 @@ enum WebDavSync {
             return .failure("请先配置 WebDAV 服务器")
         }
 
-        let localVersion = SyncStore.lastLocalChange // 秒
-
         do {
             let remoteJson = try await download()
 
+            // ⚠️ localVersion 必须在 download() 之后读取：网络 await 期间主线程
+            // 用户可能新建/编辑提醒（touchLocalChange），用旧快照比较会把新数据误判为「远程新」而覆盖丢失
+            let localVersion = SyncStore.lastLocalChange // 秒
+
             guard let remoteJson else {
                 // 远程无文件 → 上传本地
-                let uploadJson = BackupHelper.exportJSON(
-                    reminders,
-                    exportedAt: max(Date().timeIntervalSince1970, localVersion + 1)
-                )
+                let exportedAt = max(Date().timeIntervalSince1970, localVersion + 1)
+                let uploadJson = BackupHelper.exportJSON(reminders, exportedAt: exportedAt)
                 try await upload(uploadJson)
+                // 对齐版本，但要防止「回退」：上传期间用户编辑会抬高 lastLocalChange，
+                // 直接 set 会把版本回退成旧值，导致该编辑永远不同步
+                SyncStore.setLastLocalChange(max(exportedAt, SyncStore.lastLocalChange))
                 SyncStore.setLastSync()
                 return .success
             }
@@ -45,17 +48,20 @@ enum WebDavSync {
                 guard let items = BackupHelper.importJSON(remoteJson) else {
                     return .failure("远程文件解析失败")
                 }
-                replaceLocal(reminders, items: items, in: modelContext)
+                // 保存失败时不更新版本号，避免本地旧数据与远程版本对齐后永远无法再同步
+                guard replaceLocal(reminders, items: items, in: modelContext) else {
+                    return .failure("本地数据写入失败，未应用远程数据，请检查存储空间后重试")
+                }
                 SyncStore.setLastLocalChange(remoteVersion)
                 SyncStore.setLastSync()
                 return .success
             } else if localVersion > remoteVersion {
                 // 本地新 → 上传
-                let uploadJson = BackupHelper.exportJSON(
-                    reminders,
-                    exportedAt: max(Date().timeIntervalSince1970, remoteVersion + 1)
-                )
+                let exportedAt = max(Date().timeIntervalSince1970, remoteVersion + 1)
+                let uploadJson = BackupHelper.exportJSON(reminders, exportedAt: exportedAt)
                 try await upload(uploadJson)
+                // 同上：max 防止上传期间新编辑的版本被回退
+                SyncStore.setLastLocalChange(max(exportedAt, SyncStore.lastLocalChange))
                 SyncStore.setLastSync()
                 return .success
             } else {
@@ -69,29 +75,107 @@ enum WebDavSync {
 
     // MARK: - 测试连接（添加 WebDAV 时验证账号/路径，坚果云友好提示）
 
-    /// PROPFIND 验证连通性与认证；成功返回 .success
-    static func testConnection() async -> SyncResult {
-        guard SyncStore.isConfigured else {
+    /// 完整读写测试：PROPFIND 根目录 + PUT 测试文件 + DELETE 清理。
+    /// 仅 PROPFIND 通过不算成功——很多账号只读不开写（如坚果云第三方登录受限），
+    /// 必须实际能写才算配置成功。
+    /// 参数可传当前输入（不落盘，供「测试连接」用）；缺省读已保存配置。
+    static func testConnection(
+        url inputURL: String? = nil,
+        username inputUsername: String? = nil,
+        password inputPassword: String? = nil
+    ) async -> SyncResult {
+        let baseURL = (inputURL ?? SyncStore.url).trimmingCharacters(in: .whitespaces)
+        let user = inputUsername ?? SyncStore.username
+        let pass = inputPassword ?? SyncStore.password
+        guard !baseURL.isEmpty, !user.isEmpty, !pass.isEmpty else {
             return .failure("请先填写 WebDAV 地址、用户名和应用密码")
         }
-        do {
-            let url = SyncStore.url.trimmingCharacters(in: .whitespaces)
-            guard let u = URL(string: url) else { throw SyncError.invalidURL }
-            var request = URLRequest(url: u)
-            request.httpMethod = "PROPFIND"
-            request.timeoutInterval = 15
-            request.setValue(authHeader(), forHTTPHeaderField: "Authorization")
-            request.setValue("0", forHTTPHeaderField: "Depth")
+        guard let baseU = URL(string: baseURL), baseU.scheme != nil else {
+            return .failure(friendlyMessage(SyncError.invalidURL))
+        }
+        // 临时使用输入值（不覆盖已保存配置）
+        let auth = "Basic \(Data("\(user):\(pass)".utf8).base64EncodedString())"
 
-            let (_, response) = try await URLSession.shared.data(for: request)
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            // 207 Multi-Status 是 PROPFIND 的正常成功响应
-            guard (200...299).contains(code) || code == 207 else {
-                throw SyncError.http(code)
-            }
-            return .success
+        // 1. 验证读权限
+        do {
+            try await propfindRoot(baseU, auth: auth)
         } catch {
             return .failure(friendlyMessage(error))
+        }
+
+        // 2. 验证写权限：PUT 一个随机文件
+        let testName = ".reminder_test_\(UUID().uuidString.prefix(8))"
+        let testURL = baseU.appendingPathComponent(testName)
+        do {
+            try await putTestFile(at: testURL, auth: auth)
+        } catch let se as SyncError {
+            if case .http(let code) = se {
+                return .failure(writeFailureHint(code: code))
+            }
+            return .failure(friendlyMessage(se))
+        } catch {
+            return .failure(friendlyMessage(error))
+        }
+
+        // 3. 清理测试文件（失败也不影响结论）
+        try? await deleteTestFile(at: testURL, auth: auth)
+        return .success
+    }
+
+    /// PROPFIND 验证读权限
+    private static func propfindRoot(_ url: URL, auth: String) async throws {
+        var request = URLRequest(url: url)
+        request.httpMethod = "PROPFIND"
+        request.timeoutInterval = 15
+        request.setValue(auth, forHTTPHeaderField: "Authorization")
+        request.setValue("0", forHTTPHeaderField: "Depth")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+        // 207 Multi-Status 是 PROPFIND 的正常成功响应
+        guard (200...299).contains(code) || code == 207 else {
+            throw SyncError.http(code)
+        }
+    }
+
+    /// PUT 测试文件验证写权限
+    private static func putTestFile(at url: URL, auth: String) async throws {
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.timeoutInterval = 15
+        request.setValue(auth, forHTTPHeaderField: "Authorization")
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("ok".utf8)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200...299).contains(code) else {
+            throw SyncError.http(code)
+        }
+    }
+
+    /// DELETE 清理测试文件
+    private static func deleteTestFile(at url: URL, auth: String) async throws {
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.timeoutInterval = 10
+        request.setValue(auth, forHTTPHeaderField: "Authorization")
+        _ = try await URLSession.shared.data(for: request)
+    }
+
+    /// 「可读但不可写」的精准提示（testConnection 第二步失败时使用）
+    private static func writeFailureHint(code: Int) -> String {
+        switch code {
+        case 401:
+            return "账号或密码错误（HTTP 401）：坚果云请用「应用密码」——网页端 → 账户信息 → 安全选项 → 添加应用密码，不能用登录密码。"
+        case 403:
+            return "账号只读不可写（HTTP 403）：可能原因：① 第三方登录注册的坚果云账号（如 Google/微信登录）不支持 WebDAV 写入，请用坚果云独立注册的账号；② 账号未在网页端启用 WebDAV（账户信息 → 安全选项）。"
+        case 404:
+            return "账号只读不可写（HTTP 404）：可能原因：① 第三方登录注册的坚果云账号不支持 WebDAV 写入，请用坚果云独立注册的账号；② 应用密码生成后未刷新权限，删除旧密码重新生成一次。"
+        case 405:
+            return "服务器不允许写入（HTTP 405）：地址可能不是 WebDAV 路径，请确认填 https://dav.jianguoyun.com/dav/（坚果云以 /dav/ 结尾）。"
+        default:
+            return "可读但不可写（HTTP \(code)）：账号可能被禁用 WebDAV，或地址权限不足，请联系服务器管理员。"
         }
     }
 
@@ -140,20 +224,39 @@ enum WebDavSync {
         _ current: [Reminder],
         items: [BackupHelper.BackupItem],
         in context: ModelContext
-    ) {
+    ) -> Bool {
+        // 先清空旧通知，避免被删提醒的「幽灵通知」继续到点弹出
+        NotificationManager.shared.removeAllPendingNotifications()
+
+        var inserted: [Reminder] = []
         for r in current {
             context.delete(r)
         }
         for item in items {
             let reminder = BackupHelper.makeReminder(from: item)
             context.insert(reminder)
+            inserted.append(reminder)
         }
-        try? context.save()
+        // 保存失败必须让调用方知道：否则版本号已对齐、本地又是旧数据，后续永远无法恢复
+        do {
+            try context.save()
+        } catch {
+            print("[WebDAV] 覆盖本地保存失败: \(error)")
+            return false
+        }
+
+        // 远程覆盖本地后必须重排通知，否则新导入的提醒「存在但永不提醒」
+        Task {
+            for reminder in inserted where reminder.isEnabled {
+                await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
+            }
+        }
 
         // 刷新小组件
         Task {
             WidgetCenter.shared.reloadAllTimelines()
         }
+        return true
     }
 
     // MARK: - WebDAV 请求

@@ -1,7 +1,15 @@
 import Foundation
+import SwiftData
 
 /// 提醒数据导入/导出（JSON 格式，与 Android 端统一）
 enum BackupHelper {
+
+    /// 导入结果
+    struct ImportResult {
+        let imported: Int
+        let skipped: Int
+        let inserted: [Reminder]
+    }
 
     /// 导出的单条提醒（纯值类型，便于 JSON 编解码）
     struct BackupItem: Codable {
@@ -87,6 +95,52 @@ enum BackupHelper {
         return root.reminders
     }
 
+    /// 通用导入（文件导入 / 近场接收共用）：
+    /// 去重（id + 标题|触发时间指纹）→ 过期重算（once 标记逾期）→ 插入 → 保存 → touch 本地变更
+    @MainActor
+    static func importItems(_ items: [BackupItem], existing: [Reminder], into context: ModelContext) -> ImportResult {
+        var existingIDs = Set(existing.map(\.id))
+        var existingFingerprints = Set(
+            existing.map { "\($0.title)|\(Int($0.nextTriggerAt.timeIntervalSince1970))" }
+        )
+
+        var importedCount = 0
+        var skippedCount = 0
+        var inserted: [Reminder] = []
+        let now = Date()
+
+        for item in items {
+            let reminder = makeReminder(from: item)
+            let fingerprint = "\(reminder.title)|\(Int(reminder.nextTriggerAt.timeIntervalSince1970))"
+
+            if existingIDs.contains(reminder.id) || existingFingerprints.contains(fingerprint) {
+                skippedCount += 1
+                continue
+            }
+
+            // 备份可能来自其他设备，nextTriggerAt 已过期——
+            // 直接调度会用过去的日期排通知 → 导入瞬间弹一堆通知。
+            // 过期且可重复的提醒先推到未来；一次性已过期则标记逾期不再弹。
+            if reminder.nextTriggerAt <= now {
+                if reminder.cycle == .once {
+                    reminder.status = .overdue
+                } else {
+                    reminder.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(after: now, reminder: reminder)
+                }
+            }
+
+            existingIDs.insert(reminder.id)
+            existingFingerprints.insert(fingerprint)
+            context.insert(reminder)
+            inserted.append(reminder)
+            importedCount += 1
+        }
+        try? context.save()
+        SyncStore.touchLocalChange()
+
+        return ImportResult(imported: importedCount, skipped: skippedCount, inserted: inserted)
+    }
+
     // MARK: - 编码映射（与 Android 的字符串值对齐）
 
     private static func cycleCode(_ c: ReminderCycle) -> String {
@@ -150,6 +204,17 @@ enum BackupHelper {
             }
         }()
         let priority: ReminderPriority = item.priority == "high" ? .high : (item.priority == "low" ? .low : .normal)
+        // v1.9.6 fix: 恢复 status——导出时写了该字段但导入从未解析，
+        // 导致已完成的提醒同步/导入后全部变「等待中」
+        let status: ReminderStatus = {
+            switch item.status {
+            case "confirmed": return .confirmed
+            case "overdue": return .overdue
+            case "active": return .active
+            case "snoozed": return .snoozed
+            default: return .pending
+            }
+        }()
 
         return Reminder(
             title: item.title,
@@ -169,6 +234,7 @@ enum BackupHelper {
             ruleWeekday: RuleWeekday(rawValue: item.ruleWeekday ?? 2) ?? .tue,
             firstTriggerAt: Date(timeIntervalSince1970: item.firstTriggerAt / 1000),
             nextTriggerAt: Date(timeIntervalSince1970: item.nextTriggerAt / 1000),
+            status: status,
             priority: priority,
             isEnabled: item.isActive
         )

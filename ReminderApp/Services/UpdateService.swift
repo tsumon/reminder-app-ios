@@ -38,7 +38,7 @@ enum UpdateService {
         return await fetchFromAPI()
     }
 
-    /// releases.atom：解析第一个 <entry> 的 title(=tag) 与 link(=release 页)
+    /// releases.atom：解析第一个 <entry> 的 link(=release 页) 与 tag
     private static func fetchFromAtom() async -> AppUpdateInfo? {
         var request = URLRequest(url: atomURL)
         request.timeoutInterval = 15
@@ -46,10 +46,14 @@ enum UpdateService {
             let (data, _) = try await URLSession.shared.data(for: request)
             guard let xml = String(data: data, encoding: .utf8),
                   let first = regexFirst("<entry>(.*?)</entry>", in: xml),
-                  let tag = regexFirst("<title[^>]*>(.*?)</title>", in: first)?.trimmingCharacters(in: .whitespacesAndNewlines),
                   let link = regexFirst("href=\"([^\"]*releases/tag/[^\"]*)\"", in: first),
                   let url = URL(string: link) else { return nil }
-            let latest = tag.replacingOccurrences(of: "v", with: "")
+            // tag 优先从 link 的 /releases/tag/<tag> 提取：
+            // atom 的 <title> 是 release 的 name，填了中文/描述名时会拿到非版本串
+            let tag = regexFirst("releases/tag/([^/\"]+)", in: link)
+                ?? regexFirst("<title[^>]*>(.*?)</title>", in: first)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                ?? ""
+            let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag // 只去前缀 v，避免删掉版本串里的其它 v
             return AppUpdateInfo(
                 latestVersion: latest,
                 releaseURL: url,
@@ -72,7 +76,7 @@ enum UpdateService {
                   let tag = json["tag_name"] as? String,
                   let html = json["html_url"] as? String,
                   let url = URL(string: html) else { return nil }
-            let latest = tag.replacingOccurrences(of: "v", with: "")
+            let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag // 只去前缀 v，避免删掉版本串里的其它 v
             return AppUpdateInfo(
                 latestVersion: latest,
                 releaseURL: url,

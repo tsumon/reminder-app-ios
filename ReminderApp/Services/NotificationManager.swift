@@ -233,8 +233,13 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             print("[NotificationManager] 用户稍后提醒: \(reminderIDString)")
 
         case UNNotificationDismissActionIdentifier:
-            // 用户滑动消除——不做任何操作，等递增重试
-            print("[NotificationManager] 用户消除通知（将进入递增重试）")
+            // 用户滑动消除 → 进入递增重试（1h→4h→12h→24h），并写入 trigger 记录供统计
+            NotificationCenter.default.post(
+                name: .reminderDismissed,
+                object: nil,
+                userInfo: ["reminderID": reminderID]
+            )
+            print("[NotificationManager] 用户消除通知（进入递增重试）")
 
         default:
             break
@@ -249,4 +254,5 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
 extension Notification.Name {
     static let reminderConfirmed = Notification.Name("reminderConfirmed")
     static let reminderSnoozed = Notification.Name("reminderSnoozed")
+    static let reminderDismissed = Notification.Name("reminderDismissed")
 }

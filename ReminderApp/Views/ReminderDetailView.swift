@@ -53,18 +53,6 @@ struct ReminderDetailView: View {
             ReminderEngine.shared.configure(with: modelContext)
             appeared = true
         }
-        .onReceive(NotificationCenter.default.publisher(for: .reminderConfirmed)) { notification in
-            if let id = notification.userInfo?["reminderID"] as? UUID,
-               id == reminder.id {
-                ReminderEngine.shared.confirmReminder(reminder)
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .reminderSnoozed)) { notification in
-            if let id = notification.userInfo?["reminderID"] as? UUID,
-               id == reminder.id {
-                ReminderEngine.shared.snoozeReminder(reminder)
-            }
-        }
     }
 
     // MARK: - 状态卡片

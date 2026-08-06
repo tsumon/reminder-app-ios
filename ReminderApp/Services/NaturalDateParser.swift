@@ -131,20 +131,48 @@ struct NaturalDateParser {
             let map: [String: Int] = ["一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "日": 7, "天": 7,
                                       "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7]
             let target = map[g[2]] ?? 1
-            let nextWeek = (g[1] == "下")
+            let prefix = g[1] ?? ""
             var curDow = cal.component(.weekday, from: base) // 1=Sun
             curDow = curDow == 1 ? 7 : curDow - 1
             var diff = (target - curDow + 7) % 7
-            if nextWeek { diff += 7 }
-            if !nextWeek && diff == 0 { diff = 7 }
+            // v1.9.6 fix: 支持「上周」——原实现只处理「下」，把「上」静默当本周处理
+            if prefix == "下" {
+                diff += 7
+            } else if prefix == "上" {
+                diff -= 7
+                if diff == 0 { diff = -7 } // 今天就是目标周几 → 上周同日
+            } else if diff == 0 {
+                diff = 7 // 本周且已过 → 下同
+            }
             base = cal.date(byAdding: .day, value: diff, to: base) ?? base
             if repeatMode == "once" { repeatMode = "weekly" }
         }
 
         // 每月X号
         if let g = firstMatch("每月\\s*([0-9]{1,2})\\s*[号日]", in: text) {
-            targetDay = clamp(Int(g[1]) ?? 1, 1, 31)
+            let parsedDay = clamp(Int(g[1]) ?? 1, 1, 31)
+            targetDay = parsedDay
             repeatMode = "monthly"
+            // 锚点必须落在「未来最近一个 X 号」所在月份：
+            // ① date(bySetting:) 在短月返回 nil（2/28 设 31 号）→ 逐月找有 X 号的月份；
+            // ② 若 X 号已过（1/31 说每月30号）→ 找后续月份；
+            // 否则 firstTriggerAt 会被钳到短月末，引擎锚点日丢失（永久漂移 28 号），
+            // 或 nextTriggerAt 落在过去 → 创建瞬间弹通知。
+            var candidate: Date? = cal.date(bySetting: .day, value: parsedDay, of: base)
+            if candidate == nil || candidate! <= base {
+                // 从下月起的 12 个月内找第一个有 parsedDay 的月份
+                candidate = nil
+                for months in 1...12 {
+                    if let next = cal.date(byAdding: .month, value: months, to: base),
+                       let day = cal.date(bySetting: .day, value: parsedDay, of: next) {
+                        candidate = day
+                        break
+                    }
+                }
+            }
+            if let c = candidate {
+                base = c
+            }
         }
 
         // 公历 X月X日 / X月X号

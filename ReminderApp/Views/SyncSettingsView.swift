@@ -89,19 +89,22 @@ struct SyncSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    /// 测试连接：保存当前输入后 PROPFIND 验证（不触发同步）
+    /// 测试连接：用当前输入验证（不持久化——避免手滑填错覆盖已有好配置），通过后再「保存并立即同步」
     private func testConnection() {
-        SyncStore.save(url: url, username: username, password: password, autoSync: autoSync)
         testing = true
         resultMsg = nil
 
         Task {
-            let result = await WebDavSync.testConnection()
+            let result = await WebDavSync.testConnection(
+                url: url,
+                username: username,
+                password: password
+            )
             testing = false
             switch result {
             case .success:
                 isError = false
-                resultMsg = "连接成功 ✓ 账号与路径可用，可以开始同步。"
+                resultMsg = "连接成功 ✓ 账号与路径可用，点「保存并立即同步」开始同步。"
             case .failure(let msg):
                 isError = true
                 resultMsg = msg

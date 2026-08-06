@@ -193,11 +193,16 @@ struct CalendarCardView: View {
             columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7),
             spacing: 4
         ) {
-            ForEach(0..<leadingBlanks, id: \.self) { _ in
-                Color.clear.frame(height: 50)
+            // ⚠️ 两个 ForEach 的 id 必须加前缀区分：空格 id 0..<N 与日期 id 1..N 重叠时
+            // SwiftUI 会丢弃重复元素 → 8 月(leadingBlanks=5)的 1-4 日不显示
+            ForEach(0..<leadingBlanks, id: \.self) { i in
+                Color.clear
+                    .frame(height: 50)
+                    .id("blank-\(i)")
             }
             ForEach(1...daysInMonth, id: \.self) { day in
                 dayCell(day)
+                    .id("day-\(day)")
             }
         }
         .contentShape(Rectangle())

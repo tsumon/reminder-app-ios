@@ -77,7 +77,10 @@ actor AIService {
         endpoint: String,
         apiKey: String
     ) async throws -> ChatMessage {
-        let url = URL(string: "\(endpoint)/chat/completions")!
+        // endpoint 来自用户设置自由输入，可能含空格/中文/无 host，强制解包会崩溃
+        guard let url = URL(string: "\(endpoint)/chat/completions") else {
+            throw AIError.invalidResponse
+        }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")

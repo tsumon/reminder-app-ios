@@ -5,6 +5,7 @@ import SwiftData
 struct ReminderApp: App {
     @StateObject private var notificationManager = NotificationManager.shared
     @StateObject private var reminderEngine = ReminderEngine.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     /// SwiftData 容器
     var sharedModelContainer: ModelContainer = {
@@ -20,11 +21,21 @@ struct ReminderApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ReminderListView()
-                .onAppear {
+            ReminderListView()                .onAppear {
                     reminderEngine.configure(with: sharedModelContainer.mainContext)
                     // v1.8.7 任务⑥: 崩溃监控 + 埋点（启动最先安装）
                     TelemetryService.install()
+                }
+                // v1.9.6 fix: 回前台时同步小组件完成标记 + 清零通知角标。
+                // 原实现只在启动 .task 同步——App 驻留/后台时点小组件「完成」永不落库
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        Task {
+                            await syncWidgetCompletedReminders()
+                        }
+                        // 通知角标：进入前台即清零（原实现从不清零，误导性未读数）
+                        UIApplication.shared.applicationIconBadgeNumber = 0
+                    }
                 }
                 .task {
                     _ = await notificationManager.requestAuthorization()

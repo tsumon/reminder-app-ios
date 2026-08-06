@@ -27,9 +27,12 @@ enum StatsService {
     static func summarize(records: [ReminderRecord]) -> StatsSummary {
         let confirmDates = Set(records.filter { $0.type == "confirm" }.map { startOfDay($0.performedAt) })
         let missed = records.filter { $0.type == "trigger" }
+        // v1.9.6 fix: missed 按天去重——同一次漏掉会有 4 条重试阶段 trigger 记录，
+        // 直接用 count 会把一次漏记成 4 次，完成率严重失真（与 confirm 按天去重口径对齐）
+        let missedDates = Set(missed.map { startOfDay($0.performedAt) })
 
         let confirmCount = confirmDates.count
-        let missedCount = missed.count
+        let missedCount = missedDates.count
         let completionRate: Double? = (confirmCount + missedCount) > 0
             ? Double(confirmCount) / Double(confirmCount + missedCount)
             : nil
