@@ -4,12 +4,14 @@ import SwiftData
 /// 主页日历卡片：公历 + 农历 + 星期几 + 任务缩略标记
 struct CalendarCardView: View {
     let reminders: [Reminder]
+    var onDateTap: (Date) -> Void = { _ in }
 
     private let calendar = Calendar.current
     private let weekdayHeader = ["一", "二", "三", "四", "五", "六", "日"]
 
     @State private var displayYear: Int
     @State private var displayMonth: Int // 1-12
+    @State private var selectedDate: Date?
 
     init(reminders: [Reminder]) {
         self.reminders = reminders
@@ -34,13 +36,18 @@ struct CalendarCardView: View {
 
     // MARK: - 任务日期映射
 
-    private var taskDates: [String: Int] {
+    @MainActor private var taskDates: [String: Int] {
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd"
         var map: [String: Int] = [:]
-        for r in reminders where r.isEnabled {
-            let key = df.string(from: r.nextTriggerAt)
-            map[key, default: 0] += 1
+        let daysInMonth = calendar.range(of: .day, in: .month, for: firstOfDisplayMonth())?.count ?? 30
+        for day in 1...daysInMonth {
+            let count = reminders.filter {
+                $0.isEnabled && ReminderEngine.shared.occursOn(reminder: $0, year: displayYear, month: displayMonth, day: day)
+            }.count
+            if count > 0 {
+                map[String(format: "%04d-%02d-%02d", displayYear, displayMonth, day)] = count
+            }
         }
         return map
     }
@@ -103,7 +110,7 @@ struct CalendarCardView: View {
         .padding(.horizontal, 6)
     }
 
-    private var dayGrid: some View {
+    @MainActor private var dayGrid: some View {
         let firstOfMonth = firstOfDisplayMonth()
         let daysInMonth = calendar.range(of: .day, in: .month, for: firstOfMonth)?.count ?? 30
         // Calendar.weekday: 1=周日...7=周六 → 周一=1...周日=7
@@ -126,26 +133,36 @@ struct CalendarCardView: View {
 
     // MARK: - 日期格子
 
-    private func dayCell(_ day: Int) -> some View {
+    @MainActor private func dayCell(_ day: Int) -> some View {
         let isToday = displayYear == calendar.component(.year, from: today)
             && displayMonth == calendar.component(.month, from: today)
             && day == calendar.component(.day, from: today)
 
         let key = String(format: "%04d-%02d-%02d", displayYear, displayMonth, day)
         let taskCount = taskDates[key] ?? 0
+        let isSelected = selectedDate.map { calendar.isDate($0, inSameDayAs: dateFor(day) ?? Date()) } ?? false
 
         return VStack(spacing: 2) {
             Text("\(day)")
                 .font(.subheadline)
-                .fontWeight(isToday ? .bold : .regular)
-                .foregroundStyle(isToday ? .white : .primary)
+                .fontWeight(isToday || isSelected ? .bold : .regular)
+                .foregroundStyle(
+                    isSelected
+                        ? AnyShapeStyle(.tint)
+                        : (isToday ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                )
                 .frame(width: 28, height: 28)
                 .background(
                     isToday
                         ? AnyShapeStyle(.tint)
-                        : AnyShapeStyle(Color.clear)
+                        : (isSelected ? AnyShapeStyle(.tint.opacity(0.15)) : AnyShapeStyle(Color.clear))
                 )
                 .clipShape(Circle())
+                .overlay(
+                    isSelected && !isToday
+                        ? Circle().stroke(.tint, lineWidth: 1.5)
+                        : nil
+                )
 
             Text(lunarText(day))
                 .font(.system(size: 8))
@@ -158,6 +175,19 @@ struct CalendarCardView: View {
         }
         .frame(height: 46)
         .frame(maxWidth: .infinity)
+        .onTapGesture {
+            let d = dateFor(day) ?? Date()
+            selectedDate = d
+            onDateTap(d)
+        }
+    }
+
+    private func dateFor(_ day: Int) -> Date? {
+        var comps = DateComponents()
+        comps.year = displayYear
+        comps.month = displayMonth
+        comps.day = day
+        return calendar.date(from: comps)
     }
 
     // MARK: - 农历

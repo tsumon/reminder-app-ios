@@ -35,6 +35,8 @@ struct ReminderListView: View {
 
     // 同步提示
     @State private var syncMessage: String?
+    // 点击日历某天 → 查看当日任务
+    @State private var selectedDay: Date?
 
     var body: some View {
         NavigationStack {
@@ -131,6 +133,9 @@ struct ReminderListView: View {
             } message: {
                 Text(syncMessage ?? "")
             }
+            .sheet(item: $selectedDay) { day in
+                DayTasksSheet(day: day, reminders: reminders)
+            }
         }
     }
 
@@ -216,7 +221,7 @@ struct ReminderListView: View {
         List {
             // 日历
             Section {
-                CalendarCardView(reminders: reminders)
+                CalendarCardView(reminders: reminders, onDateTap: { selectedDay = $0 })
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
@@ -258,9 +263,16 @@ struct ReminderListView: View {
 
     private var listView: some View {
         List {
+            // 概览（参考滴答清单：待处理数 + 最近提醒）
+            let unhandled = reminders.filter { $0.isEnabled && $0.status != .confirmed }.count
+            let next = reminders.filter { $0.isEnabled && $0.nextTriggerAt > Date() }.min { $0.nextTriggerAt < $1.nextTriggerAt }
+            Section {
+                OverviewCard(unhandledCount: unhandled, nextReminder: next)
+            }
+
             // 日历卡片
             Section {
-                CalendarCardView(reminders: reminders)
+                CalendarCardView(reminders: reminders, onDateTap: { selectedDay = $0 })
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
@@ -336,5 +348,83 @@ struct ReminderListView: View {
         }
         try? modelContext.save()
         SyncStore.touchLocalChange()
+    }
+}
+
+// MARK: - 点击日历某天 → 当日任务弹窗
+
+struct DayTasksSheet: View {
+    let day: Date
+    let reminders: [Reminder]
+
+    @MainActor private var dateReminders: [Reminder] {
+        let cal = Calendar.current
+        let y = cal.component(.year, from: day)
+        let m = cal.component(.month, from: day)
+        let d = cal.component(.day, from: day)
+        return reminders.filter {
+            $0.isEnabled && ReminderEngine.shared.occursOn(reminder: $0, year: y, month: m, day: d)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                if dateReminders.isEmpty {
+                    Spacer()
+                    Text("这一天没有提醒")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                } else {
+                    List(dateReminders) { r in
+                        NavigationLink {
+                            ReminderDetailView(reminder: r)
+                        } label: {
+                            ReminderRowView(reminder: r)
+                        }
+                    }
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private var title: String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy年M月d日"
+        return f.string(from: day) + " 的任务"
+    }
+}
+
+// MARK: - 首页概览卡片（参考滴答清单：待处理数 + 最近提醒）
+
+struct OverviewCard: View {
+    let unhandledCount: Int
+    let nextReminder: Reminder?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("待处理 \(unhandledCount) 项")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                if let r = nextReminder {
+                    Text("\(r.title) · \(r.nextTriggerAt.formatted(date: .numeric, time: .shortened))")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else {
+                    Text("暂无即将到来的提醒")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .listRowBackground(Color.clear)
     }
 }

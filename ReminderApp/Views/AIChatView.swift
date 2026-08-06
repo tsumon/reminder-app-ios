@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import WebKit
 
 // MARK: - Chat 消息模型
 
@@ -27,6 +28,7 @@ struct AIChatView: View {
     @State private var errorMessage: String?
     @State private var scrollToID: UUID?
     @State private var showNoAPISheet = false
+    @State private var webURL: URL?
 
     @Query(sort: \Reminder.title) private var reminders: [Reminder]
 
@@ -104,6 +106,9 @@ struct AIChatView: View {
             Button("取消", role: .cancel) {}
         } message: {
             Text("文字已复制到剪贴板，选择服务后将在网页中粘贴发送。")
+        }
+        .sheet(item: $webURL) { url in
+            WebViewSheet(url: url)
         }
         .onAppear {
             if !settings.isConfigured {
@@ -253,25 +258,22 @@ struct AIChatView: View {
             let savedText = text
             inputText = ""
             errorMessage = nil
-            isLoading = true
 
             // 复制到剪贴板
             UIPasteboard.general.string = savedText
 
-            // 用默认提供商打开
             let provider = ExternalAppService.Provider.allCases.first(where: { $0.rawValue == settings.noAPIProvider })
                 ?? .deepseek
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                isLoading = false
-                messages.append(ChatMessage(
-                    role: .assistant,
-                    content: "⚠️ 已复制「\(savedText.prefix(30))\(savedText.count > 30 ? "..." : "")」到剪贴板，请在弹出的「\(provider.name)」网页中粘贴发送。\n\n如果页面未自动弹出，你也可以手动打开：\(provider.webURL.absoluteString)",
-                    timestamp: Date()
-                ))
-            }
+            isLoading = false
+            messages.append(ChatMessage(
+                role: .assistant,
+                content: "⚠️ 已复制「\(savedText.prefix(30))\(savedText.count > 30 ? "..." : "")」到剪贴板，并在应用内打开了「\(provider.name)」网页，请直接粘贴发送。\n\n若网页未自动弹出，也可手动打开：\(provider.webURL.absoluteString)",
+                timestamp: Date()
+            ))
 
-            ExternalAppService.openWeb(for: provider, withText: savedText)
+            // 应用内打开网页（修复「免 API 模式切换到网页对话无法返回」）
+            webURL = provider.webURL
             return
         }
 
@@ -390,18 +392,10 @@ struct AIChatView: View {
         let reminderMinute = args["reminder_minute"] as? Int ?? 0
         let holidayName = args["holiday_name"] as? String
 
-        let dateFormatter = DateFormatter(); dateFormatter.locale = Locale(identifier: "zh_CN")
-        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm"
-
-        var firstTrigger: Date
-        if let dateStr = args["trigger_date"] as? String,
-           let timeStr = args["trigger_time"] as? String {
-            firstTrigger = dateFormatter.date(from: "\(dateStr) \(timeStr)") ?? nearestFuture()
-        } else if let dateStr = args["trigger_date"] as? String {
-            firstTrigger = dateFormatter.date(from: "\(dateStr) 09:00") ?? nearestFuture()
-        } else {
-            firstTrigger = nearestFuture()
-        }
+        let now = Date()
+        // 首次锚点：下一个到达 reminderHour:reminderMinute 的时刻（cycle 用作周期锚点）
+        var anchor = Calendar.current.date(bySettingHour: reminderHour, minute: reminderMinute, second: 0, of: now) ?? now
+        if anchor <= now { anchor = Calendar.current.date(byAdding: .day, value: 1, to: anchor) ?? anchor }
 
         var holidayID: String? = nil
         if let hn = holidayName {
@@ -443,11 +437,18 @@ struct AIChatView: View {
             reminderHour: reminderHour,
             reminderMinute: reminderMinute,
             holidayID: holidayID,
-            firstTriggerAt: firstTrigger,
-            nextTriggerAt: firstTrigger
+            firstTriggerAt: anchor,
+            nextTriggerAt: anchor
         )
 
-        await MainActor.run { modelContext.insert(reminder); try? modelContext.save() }
+        await MainActor.run {
+            modelContext.insert(reminder)
+            try? modelContext.save()
+            // 用引擎重算 nextTriggerAt（日期/规则类按目标月日计算，避免落到 +1 分钟）
+            reminder.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(after: now, reminder: reminder)
+            try? modelContext.save()
+        }
+
         await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
 
         return "已创建提醒：「\(title)」"
@@ -532,4 +533,44 @@ struct ChatBubble: View {
             .foregroundStyle(color)
             .frame(width: 32, height: 32)
     }
+}
+
+// MARK: - 应用内网页浏览器（修复免 API 模式「无法返回」）
+
+struct WebViewSheet: View {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            WebView(url: url)
+                .ignoresSafeArea(edges: .bottom)
+                .navigationTitle("网页 AI 助手")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                            Text("返回")
+                        }
+                    }
+                }
+        }
+    }
+}
+
+struct WebView: UIViewRepresentable {
+    let url: URL
+
+    func makeUIView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.allowsBackForwardNavigationGestures = true
+        webView.load(URLRequest(url: url))
+        return webView
+    }
+
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
 }

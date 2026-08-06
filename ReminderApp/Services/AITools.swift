@@ -101,14 +101,23 @@ struct AITools {
     - 用户要删除提醒 → 调用 delete_reminder
     - 用户问'有什么提醒''列表' → 调用 list_reminders
 
-    **周期与日期参数：**
-    - "每天" → kind=cycle, cycle=daily
-    - "每周/周一" → kind=cycle, cycle=weekly
-    - "每月" → kind=cycle, cycle=monthly
-    - "每年/生日" → kind=date, date_type=solar_birthday
-    - "农历生日/阴历生日" → kind=date, date_type=lunar_birthday
-    - "春节/中秋/端午/清明/国庆/元旦" → kind=date, date_type=holiday
+    **生日 / 日期提醒（重要）：**
+    - "X生日:新历/公历 M月D号" → kind=date, date_type=solar_birthday, target_month=M, target_day=D
+    - "X生日:旧历/农历/阴历 M月初D / M月D号" → kind=date, date_type=lunar_birthday, target_month=M, target_day=D
+    - "每年""周年" → kind=date, date_type=solar_birthday
+    - "春节/中秋/端午/清明/国庆/元旦" → kind=date, date_type=holiday, holiday_name=名称
 
-    **回复风格：** 简洁友好，每次只做一件事，执行完告知结果。
+    **批量创建（关键）：** 若用户一次给出多个生日（例如"老公生日:新历9月5号 / 婆婆生日:农历7月初五 / 老娘生日:新历1月14号，旧历12月18 / 啊姨生日:新历7月14号，旧历6月15"），必须为每一个人分别调用一次 create_reminder（一次只创建一条），title 用"XX生日"。优先取"新历/公历"日期；若只给了"旧历/农历"，则使用 lunar_birthday 与对应月日。不要合并、也不要漏掉任何一个人。
+
+    **周期提醒：**
+    - 每天 → kind=cycle, cycle=daily
+    - 每周/周一 → kind=cycle, cycle=weekly
+    - 每月 → kind=cycle, cycle=monthly
+    - 每年 → kind=cycle, cycle=yearly
+    - 每 N 天 → kind=cycle, cycle=custom, custom_days=N
+
+    **提醒时间：** 用 reminder_hour / reminder_minute 指定时分（默认 9:00）。日期类提醒会自动按目标月日计算，无需传 trigger_date。
+
+    **回复风格：** 简洁友好，执行完告知创建了哪些提醒（例如"已创建 5 条生日提醒"）。
     """
 }

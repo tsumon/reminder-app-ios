@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import WidgetKit
 
 /// WebDAV 同步（与 Android 端同一策略：exportedAt 时间戳新者覆盖）
 /// 注意单位：远程文件可能来自 Android（exportedAt 毫秒），统一转成秒比较

@@ -26,6 +26,90 @@ final class ReminderEngine: ObservableObject {
         }
     }
 
+    // MARK: - 判断提醒是否在指定日期触发（日历标记 / 点击某天查看任务）
+
+    /// 判断提醒在指定公历日期（year/month/day，month 1-based）是否触发
+    nonisolated func occursOn(reminder: Reminder, year: Int, month: Int, day: Int) -> Bool {
+        switch reminder.kind {
+        case .cycle: return occursOnCycle(reminder, year: year, month: month, day: day)
+        case .date:  return occursOnDate(reminder, year: year, month: month, day: day)
+        case .rule:  return occursOnRule(reminder, year: year, month: month, day: day)
+        }
+    }
+
+    private nonisolated func weekdayMonday(_ date: Date) -> Int {
+        let w = Calendar.current.component(.weekday, from: date) // 1=周日..7=周六
+        return (w + 5) % 7 + 1 // 1=周一..7=周日
+    }
+
+    private nonisolated func startOfDay(_ y: Int, _ m: Int, _ d: Int) -> Date? {
+        var c = DateComponents()
+        c.year = y; c.month = m; c.day = d
+        return Calendar.current.date(from: c)
+    }
+
+    private nonisolated func daysBetween(_ a: Date, _ b: Date) -> Int {
+        Calendar.current.dateComponents([.day], from: a, to: b).day ?? 0
+    }
+
+    private nonisolated func occursOnCycle(_ r: Reminder, year: Int, month: Int, day: Int) -> Bool {
+        guard let target = startOfDay(year, month, day) else { return false }
+        let anchor = r.firstTriggerAt
+        let aY = Calendar.current.component(.year, from: anchor)
+        let aM = Calendar.current.component(.month, from: anchor)
+        let aD = Calendar.current.component(.day, from: anchor)
+        guard let aStart = startOfDay(aY, aM, aD) else { return false }
+
+        let aWeekday = weekdayMonday(anchor)
+        let tWeekday = weekdayMonday(target)
+        let diff = daysBetween(aStart, target)
+        guard diff >= 0 else { return false }
+
+        switch r.cycle {
+        case .daily:     return true
+        case .weekly:    return tWeekday == aWeekday
+        case .biweekly:  return tWeekday == aWeekday && diff % 14 == 0
+        case .monthly:   return day == aD
+        case .quarterly: return day == aD && (month - aM) % 3 == 0
+        case .yearly:    return month == aM && day == aD
+        case .custom:
+            let cd = r.customDays
+            return cd > 0 && tWeekday == aWeekday && diff % cd == 0
+        }
+    }
+
+    private nonisolated func occursOnDate(_ r: Reminder, year: Int, month: Int, day: Int) -> Bool {
+        switch r.dateType {
+        case .solarBirthday, .none:
+            return month == r.targetMonth && day == r.targetDay
+        case .lunarBirthday:
+            guard let solar = LunarCalendar.lunarToSolar(lunarYear: year, lunarMonth: r.targetMonth, lunarDay: r.targetDay) else { return false }
+            let cm = Calendar.current.component(.month, from: solar)
+            let cd = Calendar.current.component(.day, from: solar)
+            let cy = Calendar.current.component(.year, from: solar)
+            return cy == year && cm == month && cd == day
+        case .holiday:
+            guard let holiday = HolidayService.find(by: r.holidayID ?? "") else { return false }
+            guard let next = HolidayService.nextDate(for: holiday, from: startOfDay(year, month, day) ?? Date()) else { return false }
+            let cy = Calendar.current.component(.year, from: next)
+            let cm = Calendar.current.component(.month, from: next)
+            let cd = Calendar.current.component(.day, from: next)
+            return cy == year && cm == month && cd == day
+        }
+    }
+
+    private nonisolated func occursOnRule(_ r: Reminder, year: Int, month: Int, day: Int) -> Bool {
+        guard let target = ruleDateInMonth(
+            year: year, month: month,
+            week: r.ruleWeek.rawValue, weekday: r.ruleWeekday.rawValue,
+            hour: r.reminderHour, minute: r.reminderMinute
+        ) else { return false }
+        let cy = Calendar.current.component(.year, from: target)
+        let cm = Calendar.current.component(.month, from: target)
+        let cd = Calendar.current.component(.day, from: target)
+        return cy == year && cm == month && cd == day
+    }
+
     // MARK: 规则类：每月/每季度/每年 第N周周X
 
     /// 计算下一个「第 N 周周 X」的日期，例如每季度第 2 周周二
@@ -91,7 +175,7 @@ final class ReminderEngine: ObservableObject {
     }
 
     /// 计算某年某月「第 week 周的 weekday」的日期；该月无此周次则返回 nil
-    private func ruleDateInMonth(
+    private nonisolated func ruleDateInMonth(
         year: Int, month: Int, week: Int, weekday: Int, hour: Int, minute: Int
     ) -> Date? {
         var calendar = Calendar.current
