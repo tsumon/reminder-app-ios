@@ -41,7 +41,12 @@ targets:
     type: app-extension
     platform: iOS
     sources:
+      # Info.plist 已作为实体文件提交进仓库（与下面的 info: 块保持同步）。
+      # 必须从 sources 排除，否则会被当作资源再拷贝一次，
+      # 触发 "Multiple commands produce .../Info.plist" 构建错误。
       - path: ReminderWidget
+        excludes:
+          - "Info.plist"
       - path: ReminderApp/Services/WidgetSnapshot.swift
     entitlements:
       path: ReminderWidget/ReminderWidget.entitlements
@@ -58,7 +63,7 @@ targets:
       path: ReminderWidget/Info.plist
       properties:
         CFBundleDisplayName: 循环提醒小组件
-        CFBundleShortVersionString: "1.8.1"
-        CFBundleVersion: "9"
+        CFBundleShortVersionString: "1.8.2"
+        CFBundleVersion: "10"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension

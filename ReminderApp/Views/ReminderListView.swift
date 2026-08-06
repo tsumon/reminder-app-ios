@@ -203,12 +203,33 @@ struct ReminderListView: View {
                 return
             }
 
+            // 去重：同一份备份文件被导入两次（或用户先同步再导入）时，
+            // 之前会无脑 insert 出一堆一模一样的提醒，通知也会重复响。
+            // 用 id 做主键匹配，id 对不上时退化成「标题 + 触发时间」指纹。
+            var existingIDs = Set(reminders.map(\.id))
+            var existingFingerprints = Set(
+                reminders.map { "\($0.title)|\(Int($0.nextTriggerAt.timeIntervalSince1970))" }
+            )
+
+            var importedCount = 0
+            var skippedCount = 0
             for item in items {
                 let reminder = BackupHelper.makeReminder(from: item)
+                let fingerprint = "\(reminder.title)|\(Int(reminder.nextTriggerAt.timeIntervalSince1970))"
+
+                if existingIDs.contains(reminder.id) || existingFingerprints.contains(fingerprint) {
+                    skippedCount += 1
+                    continue
+                }
+
+                existingIDs.insert(reminder.id)
+                existingFingerprints.insert(fingerprint)
                 modelContext.insert(reminder)
+                importedCount += 1
             }
             try? modelContext.save()
             SyncStore.touchLocalChange()
+            print("[导入] 新增 \(importedCount) 条，跳过重复 \(skippedCount) 条")
 
             // 重新调度通知
             Task {

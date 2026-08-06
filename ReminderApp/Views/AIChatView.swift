@@ -389,12 +389,32 @@ struct AIChatView: View {
         let cycle = args["cycle"] as? String ?? "weekly"
         let customDays = args["custom_days"] as? Int ?? 0
         let dateType = args["date_type"] as? String
-        let targetMonth = args["target_month"] as? Int ?? 1
-        let targetDay = args["target_day"] as? Int ?? 1
+        // 不能给月/日一个「看起来合法」的缺省值（如 1），
+        // 否则模型漏传参数时会被静默当成 1月1日，绕过下面的合法性守卫。
+        let targetMonthRaw = (args["target_month"] as? Int)
+            ?? (args["target_month"] as? Double).map(Int.init)
+            ?? (args["target_month"] as? String).flatMap(Int.init)
+        let targetDayRaw = (args["target_day"] as? Int)
+            ?? (args["target_day"] as? Double).map(Int.init)
+            ?? (args["target_day"] as? String).flatMap(Int.init)
+        let targetMonth = targetMonthRaw ?? 0
+        let targetDay = targetDayRaw ?? 0
         let advanceDays = args["advance_days"] as? Int ?? 3
         let reminderHour = args["reminder_hour"] as? Int ?? 9
         let reminderMinute = args["reminder_minute"] as? Int ?? 0
         let holidayName = args["holiday_name"] as? String
+
+        // 日期类提醒必须带合法月日，否则引擎算不出正确触发时间。
+        // 与其创建一个会误触发的提醒，不如让用户补一句。
+        if kind == "date" {
+            if dateType == "holiday" {
+                if (holidayName ?? "").trimmingCharacters(in: .whitespaces).isEmpty {
+                    return "需要指定节假日名称（例如：春节、中秋节）才能创建节假日提醒。"
+                }
+            } else if !(1...12).contains(targetMonth) || !(1...31).contains(targetDay) {
+                return "需要具体的公历/农历月日才能创建日期提醒（例如：农历八月十五、公历5月1日）。请补充月日，我再为你创建。"
+            }
+        }
 
         let now = Date()
         // 首次锚点：下一个到达 reminderHour:reminderMinute 的时刻（cycle 用作周期锚点）

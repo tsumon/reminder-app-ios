@@ -150,6 +150,16 @@ struct ReminderDetailView: View {
                 set: { newValue in
                     reminder.isEnabled = newValue
                     reminder.updatedAt = Date()
+
+                    // 关闭期间时间会流逝，重新开启时 nextTriggerAt 往往已经过期。
+                    // 不重算的话通知要么立刻炸出来，要么因为是过去时间被系统直接丢弃，
+                    // 结果就是「开关重开后再也不提醒了」。这里必须先把下次时间推到未来。
+                    if newValue, reminder.nextTriggerAt <= Date() {
+                        reminder.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(
+                            after: Date(),
+                            reminder: reminder
+                        )
+                    }
                     try? modelContext.save()
 
                     if newValue {

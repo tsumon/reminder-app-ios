@@ -225,8 +225,23 @@ final class ReminderEngine: ObservableObject {
 
     // MARK: 日期类：下一次目标日期
 
+    /// 日期类提醒算不出来时的兜底：必须是「远未来」而不是 `after`(≈现在)。
+    /// 如果兜底成 now，提醒会在创建后立刻/1 分钟内误触发，这是 v1.8.1 的已知 bug。
+    private func farFutureFallback(from after: Date) -> Date {
+        Calendar.current.date(byAdding: .year, value: 1, to: after)
+            ?? after.addingTimeInterval(365 * 24 * 3600)
+    }
+
     private func calculateNextDateTrigger(from after: Date, reminder: Reminder) -> Date {
         let calendar = Calendar.current
+
+        // 月/日非法（AI 漏传或数据损坏）时不要退化成「马上响」，
+        // 推到一年后，等用户在详情页补全真实日期。
+        let monthValid = (1...12).contains(reminder.targetMonth)
+        let dayValid = (1...31).contains(reminder.targetDay)
+        if reminder.dateType != .holiday, !(monthValid && dayValid) {
+            return farFutureFallback(from: after)
+        }
 
         switch reminder.dateType {
         case .solarBirthday, .none:
@@ -242,7 +257,7 @@ final class ReminderEngine: ObservableObject {
             }
             // 已过→明年
             comps.year = (comps.year ?? 2026) + 1
-            return calendar.date(from: comps) ?? after
+            return calendar.date(from: comps) ?? farFutureFallback(from: after)
 
         case .lunarBirthday:
             // 农历生日→转换为公历
@@ -264,7 +279,7 @@ final class ReminderEngine: ObservableObject {
             fallback.minute = reminder.reminderMinute
             if let fb = calendar.date(from: fallback), fb > after { return fb }
             fallback.year = (fallback.year ?? 2026) + 1
-            return calendar.date(from: fallback) ?? after
+            return calendar.date(from: fallback) ?? farFutureFallback(from: after)
 
         case .holiday:
             // 节假日
@@ -283,7 +298,7 @@ final class ReminderEngine: ObservableObject {
             fb.minute = reminder.reminderMinute
             if let d = calendar.date(from: fb), d > after { return d }
             fb.year = (fb.year ?? 2026) + 1
-            return calendar.date(from: fb) ?? after
+            return calendar.date(from: fb) ?? farFutureFallback(from: after)
         }
     }
 
