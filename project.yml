@@ -63,7 +63,7 @@ targets:
       path: ReminderWidget/Info.plist
       properties:
         CFBundleDisplayName: 循环提醒小组件
-        CFBundleShortVersionString: "1.8.3"
-        CFBundleVersion: "11"
+        CFBundleShortVersionString: "1.8.5"
+        CFBundleVersion: "12"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension

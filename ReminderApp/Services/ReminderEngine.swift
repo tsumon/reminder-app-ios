@@ -75,7 +75,9 @@ final class ReminderEngine: ObservableObject {
         case .yearly:    return month == aM && day == aD
         case .custom:
             let cd = r.customDays
-            return cd > 0 && tWeekday == aWeekday && diff % cd == 0
+            // P2 修复：每 N 天提醒不能要求同星期 —— 每 3 天第 2 次起星期必然不同，
+            // 加 weekday 条件会让日历格/智能清单/点日期全部漏显（调度按纯天数累加正常）。
+            return cd > 0 && diff % cd == 0
         }
     }
 
