@@ -46,6 +46,8 @@ struct ReminderListView: View {
     @State private var downloading = false
     @State private var downloadError: String?
     @State private var downloadedIpaURL: URL?
+    // v1.9.0: 手动检查结果提示（无新版/失败）
+    @State private var updateResultMessage: String?
 
     // 同步提示
     @State private var syncMessage: String?
@@ -110,6 +112,12 @@ struct ReminderListView: View {
                             exportICS()
                         } label: {
                             Label("导出日历(.ics)", systemImage: "calendar.badge.plus")
+                        }
+                        // v1.9.0: 主动检查更新
+                        Button {
+                            checkForUpdates()
+                        } label: {
+                            Label("检查更新", systemImage: "arrow.clockwise")
                         }
                         Button {
                             showImportImporter = true
@@ -219,6 +227,18 @@ struct ReminderListView: View {
             )) {
                 downloadedResultSheet
             }
+            // v1.9.0: 手动检查更新结果
+            .alert(
+                "检查更新",
+                isPresented: Binding(
+                    get: { updateResultMessage != nil },
+                    set: { if !$0 { updateResultMessage = nil } }
+                )
+            ) {
+                Button("好", role: .cancel) { updateResultMessage = nil }
+            } message: {
+                Text(updateResultMessage ?? "")
+            }
             .sheet(isPresented: $showDaySheet) {
                 if let day = selectedDay {
                     DayTasksSheet(day: day, reminders: reminders)
@@ -250,6 +270,21 @@ struct ReminderListView: View {
 
         // 主动刷新已添加的小组件
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// v1.9.0: 手动检查更新（有新版弹窗，无新版/失败提示结果）
+    private func checkForUpdates() {
+        Task {
+            guard let info = await UpdateService.checkLatest() else {
+                updateResultMessage = "检查更新失败（网络或限流），请稍后再试"
+                return
+            }
+            if info.isNewer {
+                updateInfo = info
+            } else {
+                updateResultMessage = "当前已是最新版本 v\(UpdateService.currentVersion)"
+            }
+        }
     }
 
     // MARK: - 导入/导出

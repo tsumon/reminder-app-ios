@@ -403,6 +403,10 @@ struct AIChatView: View {
         let reminderHour = args["reminder_hour"] as? Int ?? 9
         let reminderMinute = args["reminder_minute"] as? Int ?? 0
         let holidayName = args["holiday_name"] as? String
+        // v1.9.0 fix: 规则提醒（第N周周X）参数
+        let rulePeriodRaw = args["rule_period"] as? String
+        let ruleWeekRaw = (args["rule_week"] as? Int) ?? (args["rule_week"] as? Double).map(Int.init)
+        let ruleWeekdayRaw = (args["rule_weekday"] as? Int) ?? (args["rule_weekday"] as? Double).map(Int.init)
 
         // 日期类提醒必须带合法月日，否则引擎算不出正确触发时间。
         // 与其创建一个会误触发的提醒，不如让用户补一句。
@@ -413,6 +417,16 @@ struct AIChatView: View {
                 }
             } else if !(1...12).contains(targetMonth) || !(1...31).contains(targetDay) {
                 return "需要具体的公历/农历月日才能创建日期提醒（例如：农历八月十五、公历5月1日）。请补充月日，我再为你创建。"
+            }
+        }
+        // v1.9.0 fix: 规则提醒必须带全 频率/第几周/周几
+        if kind == "rule" {
+            guard let rp = rulePeriodRaw, let rw = ruleWeekRaw, let rwd = ruleWeekdayRaw else {
+                return "规则提醒需要指定频率（每月/每季度/每年）、第几周和星期几，例如：每季度第一周周四。请补充完整，我再为你创建。"
+            }
+            guard ["monthly", "quarterly", "yearly"].contains(rp),
+                  (1...5).contains(rw), (1...7).contains(rwd) else {
+                return "规则提醒参数不合法：频率应为每月/每季度/每年，第几周 1-5，星期几 1=周一...7=周日。"
             }
         }
 
@@ -426,7 +440,7 @@ struct AIChatView: View {
             holidayID = HolidayService.search(by: hn)?.id
         }
 
-        let reminderKind: ReminderKind = kind == "date" ? .date : .cycle
+        let reminderKind: ReminderKind = kind == "date" ? .date : (kind == "rule" ? .rule : .cycle)
         let cycleEnum: ReminderCycle = {
             switch cycle {
             case "once":      return .once
@@ -462,6 +476,16 @@ struct AIChatView: View {
             reminderHour: reminderHour,
             reminderMinute: reminderMinute,
             holidayID: holidayID,
+            // v1.9.0 fix: 规则提醒参数（AI 传英文，映射到中文 rawValue 枚举）
+            rulePeriod: rulePeriodRaw.map { rp -> RulePeriod in
+                switch rp {
+                case "monthly": return .monthly
+                case "yearly": return .yearly
+                default: return .quarterly
+                }
+            } ?? .quarterly,
+            ruleWeek: ruleWeekRaw.flatMap { RuleWeek(rawValue: $0) } ?? .w1,
+            ruleWeekday: ruleWeekdayRaw.flatMap { RuleWeekday(rawValue: $0) } ?? .mon,
             firstTriggerAt: anchor,
             nextTriggerAt: anchor
         )

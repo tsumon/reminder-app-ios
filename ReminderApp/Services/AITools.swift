@@ -16,9 +16,12 @@ struct AITools {
                     "properties": [
                         "title":         ["type": "string", "description": "提醒标题"],
                         "note":          ["type": "string", "description": "备注（可选）"],
-                        "kind":          ["type": "string", "enum": ["cycle", "date"], "description": "周期提醒还是日期提醒"],
+                        "kind":          ["type": "string", "enum": ["cycle", "date", "rule"], "description": "周期提醒 / 日期提醒 / 规则提醒(第N周周X)"],
                         "cycle":         ["type": "string", "enum": ["daily","weekly","biweekly","monthly","quarterly","yearly"], "description": "周期类型，kind=cycle时必须"],
                         "custom_days":   ["type": "integer", "description": "自定义天数，cycle=custom时使用"],
+                        "rule_period":   ["type": "string", "enum": ["monthly","quarterly","yearly"], "description": "规则频率，kind=rule时必须，如每季度/每年"],
+                        "rule_week":     ["type": "integer", "description": "第几周 1-5，kind=rule时必须"],
+                        "rule_weekday":  ["type": "integer", "description": "周几 1=周一...7=周日，kind=rule时必须"],
                         "date_type":     ["type": "string", "enum": ["solar_birthday","lunar_birthday","holiday"], "description": "日期提醒子类型，kind=date时必须"],
                         "target_month":  ["type": "integer", "description": "目标月份 1-12，日期类必须"],
                         "target_day":    ["type": "integer", "description": "目标日期 1-31，日期类必须"],
@@ -115,6 +118,14 @@ struct AITools {
     - 每月 → kind=cycle, cycle=monthly
     - 每年 → kind=cycle, cycle=yearly
     - 每 N 天 → kind=cycle, cycle=custom, custom_days=N
+
+    **规则提醒（第N周周X，重要）：**
+    - 每月/每季度/每年 第N周周X → kind=rule, rule_period=monthly/quarterly/yearly,
+      rule_week=N(1-5), rule_weekday=周几(1=周一...7=周日)
+    - 例「每季度第二周周二」→ kind=rule, rule_period=quarterly, rule_week=2, rule_weekday=2
+    - 例「每年1、4、7、10月第一周周四报税」→ 这是每季度(1/4/7/10月)第一周周四：
+      kind=rule, rule_period=quarterly, rule_week=1, rule_weekday=4
+    - 「每月最后一个周五」等 → 近似用 rule_week=5（该月无第5周时自动跳过）
 
     **提醒时间：** 用 reminder_hour / reminder_minute 指定时分（默认 9:00）。日期类提醒会自动按目标月日计算，无需传 trigger_date。
 
