@@ -119,6 +119,13 @@ struct ReminderListView: View {
                         } label: {
                             Label("检查更新", systemImage: "arrow.clockwise")
                         }
+                        Divider()
+                        // v1.9.2: 设置（版本/更新日志/AI/同步）
+                        NavigationLink {
+                            SettingsView()
+                        } label: {
+                            Label("设置", systemImage: "gearshape")
+                        }
                         Button {
                             showImportImporter = true
                         } label: {
