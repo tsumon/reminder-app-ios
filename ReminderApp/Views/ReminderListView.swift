@@ -41,6 +41,11 @@ struct ReminderListView: View {
     // v1.8.7 任务④: .ics 日历导出
     @State private var showIcsExporter = false
     @State private var icsDocument: ReminderBackupDocument?
+    // v1.8.7 在线升级
+    @State private var updateInfo: AppUpdateInfo?
+    @State private var downloading = false
+    @State private var downloadError: String?
+    @State private var downloadedIpaURL: URL?
 
     // 同步提示
     @State private var syncMessage: String?
@@ -156,6 +161,12 @@ struct ReminderListView: View {
                     }
                 }
             }
+            .task {
+                // v1.8.7 在线升级: 启动后台检查 GitHub 最新版本
+                if let info = await UpdateService.checkLatest(), info.isNewer {
+                    updateInfo = info
+                }
+            }
             .onChange(of: reminders) { _, newValue in
                 saveWidgetSnapshot(newValue)
             }
@@ -166,6 +177,47 @@ struct ReminderListView: View {
                 Button("好", role: .cancel) {}
             } message: {
                 Text(syncMessage ?? "")
+            }
+            // v1.8.7 在线升级(自签): 发现新版本 → 下载 ipa 到本地文件 App
+            .alert(
+                "发现新版本 v\(updateInfo?.latestVersion ?? "")",
+                isPresented: Binding(
+                    get: { updateInfo != nil && downloadedIpaURL == nil && downloadError == nil },
+                    set: { if !$0 { updateInfo = nil; downloading = false } }
+                )
+            ) {
+                if let info = updateInfo, let ipa = info.ipaURL {
+                    Button("下载到本地") {
+                        downloading = true
+                        Task {
+                            do {
+                                downloadedIpaURL = try await UpdateService.downloadIpa(from: ipa, version: info.latestVersion)
+                            } catch {
+                                downloadError = error.localizedDescription
+                            }
+                            downloading = false
+                        }
+                    }
+                    .disabled(downloading)
+                } else if let info = updateInfo {
+                    Button("查看发布页") {
+                        UIApplication.shared.open(info.releaseURL)
+                        updateInfo = nil
+                    }
+                }
+                Button("稍后再说", role: .cancel) { updateInfo = nil }
+            } message: {
+                Text(
+                    downloading ? "正在下载 .ipa…\n下载完成后请到「文件」App → 我的 iPhone → 循环提醒 → 用自签工具签名安装。"
+                    : "当前 v\(UpdateService.currentVersion)。本 App 通过 GitHub Releases 自签分发，请下载 .ipa 用 AltStore/爱思等工具签名安装。"
+                )
+            }
+            // 下载结果：提示文件 App 路径 + 分享按钮
+            .sheet(isPresented: Binding(
+                get: { downloadedIpaURL != nil || downloadError != nil },
+                set: { if !$0 { downloadedIpaURL = nil; downloadError = nil } }
+            )) {
+                downloadedResultSheet
             }
             .sheet(isPresented: $showDaySheet) {
                 if let day = selectedDay {
@@ -323,6 +375,72 @@ struct ReminderListView: View {
             }
         }
         .listStyle(.insetGrouped)
+    }
+
+    // MARK: - 下载结果 sheet
+
+    @ViewBuilder
+    private var downloadedResultSheet: some View {
+        NavigationStack {
+            VStack(spacing: 14) {
+                if let ipaURL = downloadedIpaURL {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 56))
+                        .foregroundStyle(.green)
+                    Text("下载完成")
+                        .font(.title2.weight(.bold))
+                    Text("已保存到「文件」App：\n我的 iPhone → 循环提醒 → \(ipaURL.lastPathComponent)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+
+                    VStack(spacing: 10) {
+                        Button {
+                            if let dir = try? UpdateService.downloadsDirectory() {
+                                UIApplication.shared.open(dir)
+                            }
+                        } label: {
+                            Label("在文件 App 中查看", systemImage: "folder")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+
+                        ShareLink(item: ipaURL) {
+                            Label("分享 ipa 给签名工具", systemImage: "square.and.arrow.up")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(ThemeTokens.brandPrimary)
+                    }
+                    .padding(.horizontal)
+                } else if let err = downloadError {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 56))
+                        .foregroundStyle(.orange)
+                    Text("下载失败")
+                        .font(.title2.weight(.bold))
+                    Text(err)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+                Spacer()
+            }
+            .padding(.top, 30)
+            .navigationTitle("在线升级")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("好") {
+                        downloadedIpaURL = nil
+                        downloadError = nil
+                    }
+                }
+            }
+        }
+        .presentationDetents([.height(380)])
     }
 
     // MARK: - 提醒列表
@@ -616,26 +734,46 @@ struct OverviewCard: View {
     let nextReminder: Reminder?
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("待处理 \(unhandledCount) 项")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
+        // v1.8.7 UI 优化: 品牌色渐变卡（滴答清单风格）
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: "bell.badge.fill")
+                        .font(.title3)
+                    Text("待处理 \(unhandledCount) 项")
+                        .font(.headline)
+                }
                 if let r = nextReminder {
                     Text("\(r.title) · \(r.nextTriggerAt.formatted(date: .numeric, time: .shortened))")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .opacity(0.9)
                 } else {
                     Text("暂无即将到来的提醒")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .opacity(0.9)
                 }
             }
             Spacer()
+            // 大数字装饰（滴答清单式数据强调）
+            Text("\(unhandledCount)")
+                .font(.system(size: 42, weight: .bold, design: .rounded))
+                .opacity(0.9)
         }
-        .padding(12)
+        .foregroundStyle(.white)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(
+                colors: [ThemeTokens.brandPrimary, ThemeTokens.brandPrimary.opacity(0.78)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: ThemeTokens.brandPrimary.opacity(0.28), radius: 10, y: 4)
+        .listRowInsets(EdgeInsets())
         .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 }

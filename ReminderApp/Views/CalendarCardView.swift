@@ -12,6 +12,8 @@ struct CalendarCardView: View {
     @State private var displayYear: Int
     @State private var displayMonth: Int // 1-12
     @State private var selectedDate: Date?
+    // v1.8.7 UI 优化: 月份选择器 / 是否显示「回到今天」
+    @State private var showMonthPicker = false
 
     init(reminders: [Reminder], onDateTap: @escaping (Date) -> Void = { _ in }) {
         self.reminders = reminders
@@ -71,40 +73,101 @@ struct CalendarCardView: View {
         }
         .padding(.vertical, 12)
         .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
+        .sheet(isPresented: $showMonthPicker) {
+            MonthYearPickerSheet(
+                year: displayYear,
+                month: displayMonth,
+                onSelect: { y, m in
+                    withAnimation { displayYear = y; displayMonth = m }
+                    showMonthPicker = false
+                },
+                onClose: { showMonthPicker = false }
+            )
+            .presentationDetents([.height(360)])
+        }
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 4) {
+            // 上一月（加大热区）
             Button {
-                withAnimation { changeMonth(by: -1) }
+                withAnimation(.easeInOut(duration: 0.2)) { changeMonth(by: -1) }
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.subheadline.weight(.semibold))
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             Spacer()
 
-            VStack(spacing: 3) {
-                Text("\(displayYear)年\(displayMonth)月")
-                    .font(.headline)
-                Text("农历\(todayLunarText) · \(todayWeekdayText)\(todayHolidaySuffix)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            // 月份标题：点击弹出月份选择器（v1.8.7 UI 优化）
+            Button {
+                showMonthPicker = true
+            } label: {
+                VStack(spacing: 3) {
+                    HStack(spacing: 4) {
+                        Text("\(displayYear)年\(displayMonth)月")
+                            .font(.headline)
+                        Image(systemName: "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("农历\(todayLunarText) · \(todayWeekdayText)\(todayHolidaySuffix)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
+            .buttonStyle(.plain)
 
             Spacer()
 
+            // 回到今天（非当月时显示）
+            if !isCurrentMonth {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        goToToday()
+                    }
+                } label: {
+                    Text("今天")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(ThemeTokens.brandPrimary.opacity(0.12))
+                        .foregroundStyle(ThemeTokens.brandPrimary)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+
+            // 下一月（加大热区）
             Button {
-                withAnimation { changeMonth(by: 1) }
+                withAnimation(.easeInOut(duration: 0.2)) { changeMonth(by: 1) }
             } label: {
                 Image(systemName: "chevron.right")
                     .font(.subheadline.weight(.semibold))
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 8)
+    }
+
+    /// 当前是否显示本月
+    private var isCurrentMonth: Bool {
+        let now = Date()
+        return displayYear == calendar.component(.year, from: now)
+            && displayMonth == calendar.component(.month, from: now)
+    }
+
+    private func goToToday() {
+        let now = Date()
+        displayYear = calendar.component(.year, from: now)
+        displayMonth = calendar.component(.month, from: now)
     }
 
     private var weekdayRow: some View {
@@ -137,6 +200,19 @@ struct CalendarCardView: View {
                 dayCell(day)
             }
         }
+        .contentShape(Rectangle())
+        .gesture(
+            // v1.8.7 UI 优化: 左右滑动快速切月（滴答清单式交互）
+            DragGesture(minimumDistance: 30)
+                .onEnded { value in
+                    let dx = value.translation.width
+                    if abs(dx) > 60 {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            changeMonth(by: dx > 0 ? -1 : 1)
+                        }
+                    }
+                }
+        )
         .padding(.horizontal, 6)
     }
 
@@ -258,4 +334,102 @@ struct CalendarCardView: View {
 #Preview {
     CalendarCardView(reminders: [])
         .padding()
+}
+
+// MARK: - 月份/年份选择器（v1.8.7 UI 优化）
+
+/// 快速跳转月份：年份滚轮 + 12 个月网格，解决「切换月份很难用」
+struct MonthYearPickerSheet: View {
+    @State private var year: Int
+    @State private var month: Int
+    let onSelect: (Int, Int) -> Void
+    let onClose: () -> Void
+
+    private let monthNames = ["一月", "二月", "三月", "四月", "五月", "六月",
+                              "七月", "八月", "九月", "十月", "十一月", "十二月"]
+
+    init(year: Int, month: Int, onSelect: @escaping (Int, Int) -> Void, onClose: @escaping () -> Void) {
+        _year = State(initialValue: year)
+        _month = State(initialValue: month)
+        self.onSelect = onSelect
+        self.onClose = onClose
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // 年份滚轮
+                HStack(spacing: 12) {
+                    Button {
+                        year -= 1
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.plain)
+
+                    Text("\(String(year)) 年")
+                        .font(.title3.weight(.bold))
+                        .frame(minWidth: 90)
+
+                    Button {
+                        year += 1
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.vertical, 14)
+
+                Divider()
+
+                // 月份网格
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
+                    ForEach(1...12, id: \.self) { m in
+                        let isSelected = m == month
+                        Button {
+                            month = m
+                        } label: {
+                            Text(monthNames[m - 1])
+                                .font(.subheadline.weight(isSelected ? .bold : .medium))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(isSelected ? ThemeTokens.brandPrimary : Color(.secondarySystemGroupedBackground))
+                                .foregroundStyle(isSelected ? .white : .primary)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(16)
+
+                Spacer()
+
+                // 确定 / 取消
+                HStack(spacing: 12) {
+                    Button("取消") { onClose() }
+                        .buttonStyle(.bordered)
+                    Button {
+                        onSelect(year, month)
+                    } label: {
+                        Text("跳到 \(String(year)) 年 \(monthNames[month - 1])")
+                            .fontWeight(.semibold)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(ThemeTokens.brandPrimary)
+                }
+                .padding(.bottom, 12)
+            }
+            .navigationTitle("选择月份")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { onSelect(year, month) }
+                }
+            }
+        }
+    }
 }

@@ -17,9 +17,12 @@ struct ReminderRowView: View {
             .accessibilityLabel("状态：\(reminder.status.rawValue)")
 
             VStack(alignment: .leading, spacing: 4) {
+                // 已完成：标题划线变灰（滴答清单风格）
                 Text(reminder.title)
                     .font(.body.weight(.medium))
                     .lineLimit(1)
+                    .strikethrough(isDone, color: .secondary)
+                    .foregroundStyle(isDone ? .secondary : .primary)
 
                 HStack(spacing: 6) {
                     // 类型标签
@@ -53,7 +56,7 @@ struct ReminderRowView: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(timeText)
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(isDone ? .tertiary : .secondary)
 
                 if reminder.retryStage > 0 {
                     Text("第\(reminder.retryStage)次重试")
@@ -65,6 +68,8 @@ struct ReminderRowView: View {
         .padding(.vertical, 4)
         .opacity(reminder.isEnabled ? 1 : 0.5)
     }
+
+    private var isDone: Bool { reminder.status == .confirmed }
 
     // MARK: - 类型标签
 
