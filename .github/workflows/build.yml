@@ -29,6 +29,22 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Run lunar calendar regression check
+        run: |
+          # macOS 命令行工具：无需 iOS 模拟器（runner 无预建设备且部分 runtime 不兼容），
+          # 直接编译产品代码 LunarCalendar.swift 跑权威农历事实断言
+          xcodebuild build \
+            -project ReminderApp.xcodeproj \
+            -scheme LunarCalendarCheck \
+            -destination 'platform=macOS' \
+            -derivedDataPath ./DerivedDataTests \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO
+          BIN=$(find ./DerivedDataTests/Build/Products -name 'LunarCalendarCheck' -type f | head -1)
+          echo "Running: $BIN"
+          "$BIN"
+
       - name: Build (no signing)
         run: |
           xcodebuild build \

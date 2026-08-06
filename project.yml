@@ -36,6 +36,22 @@ targets:
             swiftlint
           fi
         basedOnDependencyAnalysis: false
+    scheme:
+      testTargets:
+        - LunarCalendarCheck
+
+  # 历法回归检查：macOS 命令行工具（无需 iOS 模拟器/host app），
+  # 直接编译产品代码 LunarCalendar.swift 并断言权威农历事实，CI 里 build + run。
+  LunarCalendarCheck:
+    type: tool
+    platform: macOS
+    sources:
+      - path: ReminderApp/Services/LunarCalendar.swift
+      - path: ReminderAppTests/LunarCalendarCheckMain.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.reminder.lunarchk
+        GENERATE_INFOPLIST_FILE: "YES"
 
   ReminderWidget:
     type: app-extension
@@ -63,7 +79,7 @@ targets:
       path: ReminderWidget/Info.plist
       properties:
         CFBundleDisplayName: 循环提醒小组件
-        CFBundleShortVersionString: "1.8.5"
-        CFBundleVersion: "12"
+        CFBundleShortVersionString: "1.8.6"
+        CFBundleVersion: "13"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
