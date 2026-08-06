@@ -35,6 +35,14 @@ struct CalendarCardView: View {
         return names[calendar.component(.weekday, from: today) - 1]
     }
 
+    /// 今天的节假日状态后缀，如「· 元旦(休)」「· 调休上班」；无数据显示空
+    private var todayHolidaySuffix: String {
+        let comps = calendar.dateComponents([.year, .month, .day], from: today)
+        guard let y = comps.year, let m = comps.month, let d = comps.day,
+              let st = HolidayRemoteService.status(year: y, month: m, day: d) else { return "" }
+        return st.isHoliday ? " · \(st.name)休" : " · 调休上班"
+    }
+
     // MARK: - 任务日期映射
 
     @MainActor private var taskDates: [String: Int] {
@@ -81,7 +89,7 @@ struct CalendarCardView: View {
             VStack(spacing: 3) {
                 Text("\(displayYear)年\(displayMonth)月")
                     .font(.headline)
-                Text("农历\(todayLunarText) · \(todayWeekdayText)")
+                Text("农历\(todayLunarText) · \(todayWeekdayText)\(todayHolidaySuffix)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -123,7 +131,7 @@ struct CalendarCardView: View {
             spacing: 4
         ) {
             ForEach(0..<leadingBlanks, id: \.self) { _ in
-                Color.clear.frame(height: 46)
+                Color.clear.frame(height: 50)
             }
             ForEach(1...daysInMonth, id: \.self) { day in
                 dayCell(day)
@@ -142,8 +150,10 @@ struct CalendarCardView: View {
         let key = String(format: "%04d-%02d-%02d", displayYear, displayMonth, day)
         let taskCount = taskDates[key] ?? 0
         let isSelected = selectedDate.map { calendar.isDate($0, inSameDayAs: dateFor(day) ?? Date()) } ?? false
+        // v1.8.7 任务②：联网节假日的「休/班」状态（无数据返回 nil）
+        let holidayStatus = HolidayRemoteService.status(year: displayYear, month: displayMonth, day: day)
 
-        return VStack(spacing: 2) {
+        return VStack(spacing: 1) {
             Text("\(day)")
                 .font(.subheadline)
                 .fontWeight(isToday || isSelected ? .bold : .regular)
@@ -152,13 +162,20 @@ struct CalendarCardView: View {
                         ? AnyShapeStyle(.tint)
                         : (isToday ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
                 )
-                .frame(width: 28, height: 28)
+                .frame(width: 26, height: 26)
                 .background(
                     isToday
                         ? AnyShapeStyle(.tint)
                         : (isSelected ? AnyShapeStyle(.tint.opacity(0.15)) : AnyShapeStyle(Color.clear))
                 )
                 .clipShape(Circle())
+                .overlay(alignment: .topTrailing) {
+                    // 任务角标：右上小圆点
+                    Circle()
+                        .fill(taskCount > 0 ? Color.accentColor : Color.clear)
+                        .frame(width: 5, height: 5)
+                        .padding(2)
+                }
                 .overlay(
                     isSelected && !isToday
                         ? Circle().stroke(.tint, lineWidth: 1.5)
@@ -170,11 +187,13 @@ struct CalendarCardView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
 
-            Circle()
-                .fill(taskCount > 0 ? Color.accentColor : Color.clear)
-                .frame(width: 4, height: 4)
+            // 休/班角标：放假红「休」、调休上班橙「班」；普通日占位保持对齐
+            Text(holidayStatus.map { $0.isHoliday ? "休" : "班" } ?? "")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(holidayStatus?.isHoliday == true ? ThemeTokens.holidayRest : ThemeTokens.holidayWork)
+                .lineLimit(1)
         }
-        .frame(height: 46)
+        .frame(height: 50)
         .frame(maxWidth: .infinity)
         .onTapGesture {
             let d = dateFor(day) ?? Date()

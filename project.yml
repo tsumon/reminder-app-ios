@@ -64,6 +64,8 @@ targets:
         excludes:
           - "Info.plist"
       - path: ReminderApp/Services/WidgetSnapshot.swift
+      # v1.8.7: 小组件显示今天农历 → 引入农历转换器（自包含，仅依赖 Foundation）
+      - path: ReminderApp/Services/LunarCalendar.swift
     entitlements:
       path: ReminderWidget/ReminderWidget.entitlements
     settings:

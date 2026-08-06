@@ -23,6 +23,8 @@ struct ReminderApp: App {
             ReminderListView()
                 .onAppear {
                     reminderEngine.configure(with: sharedModelContainer.mainContext)
+                    // v1.8.7 任务⑥: 崩溃监控 + 埋点（启动最先安装）
+                    TelemetryService.install()
                 }
                 .task {
                     _ = await notificationManager.requestAuthorization()
@@ -31,8 +33,35 @@ struct ReminderApp: App {
                     if let reminders = try? sharedModelContainer.mainContext.fetch(descriptor) {
                         await reminderEngine.checkMissedReminders(reminders: reminders)
                     }
+                    // v1.8.7: 同步小组件「完成」标记 → confirm + 重排通知 → 清空
+                    await syncWidgetCompletedReminders()
+                    // v1.8.7 任务②: 后台刷新联网节假日数据（当年 + 下一年，跨年预取）
+                    let year = Calendar.current.component(.year, from: Date())
+                    async let r1 = HolidayRemoteService.refresh(year: year)
+                    async let r2 = HolidayRemoteService.refresh(year: year + 1)
+                    _ = await (r1, r2)
                 }
         }
         .modelContainer(sharedModelContainer)
+    }
+
+    /// 把用户在小组件上点「完成」的提醒同步到数据库
+    /// （AppIntent 只写 App Group 标记，这里做真正的 confirm + 通知重排）
+    private func syncWidgetCompletedReminders() async {
+        let ids = WidgetSnapshot.completedReminderIDs()
+        guard !ids.isEmpty else { return }
+
+        let context = sharedModelContainer.mainContext
+        for id in ids {
+            guard let uuid = UUID(uuidString: id) else { continue }
+            let descriptor = FetchDescriptor<Reminder>(predicate: #Predicate { $0.id == uuid })
+            guard let reminder = try? context.fetch(descriptor).first else { continue }
+            // .task 继承 MainActor 上下文，confirmReminder（@MainActor）可直接调用
+            reminderEngine.confirmReminder(reminder)
+            print("[WidgetSync] 小组件完成已落库: \(reminder.title)")
+        }
+
+        // 全部处理完再清空标记，避免 App 启动后遗留脏数据
+        WidgetSnapshot.clearCompletedReminderIDs(ids)
     }
 }

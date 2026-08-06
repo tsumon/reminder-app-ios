@@ -314,6 +314,9 @@ final class ReminderEngine: ObservableObject {
         let record = ReminderRecord(type: "confirm", note: "手动确认")
         reminder.records.append(record)
 
+        // v1.8.7 任务⑥: 埋点
+        TelemetryService.logEvent("confirm", params: ["kind": reminder.kind.rawValue, "cycle": reminder.cycle.rawValue])
+
         // 一次性提醒：确认后直接归档为「已完成」，不再前进周期
         if reminder.kind == .cycle && reminder.cycle == .once {
             reminder.status = .confirmed

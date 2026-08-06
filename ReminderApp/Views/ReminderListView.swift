@@ -38,6 +38,9 @@ struct ReminderListView: View {
     @State private var showExportExporter = false
     @State private var exportDocument: ReminderBackupDocument?
     @State private var showImportImporter = false
+    // v1.8.7 任务④: .ics 日历导出
+    @State private var showIcsExporter = false
+    @State private var icsDocument: ReminderBackupDocument?
 
     // 同步提示
     @State private var syncMessage: String?
@@ -63,7 +66,7 @@ struct ReminderListView: View {
                     } label: {
                         Image(systemName: "sparkles")
                             .font(.title3.weight(.semibold))
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(ThemeTokens.brandPrimary)
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -72,6 +75,13 @@ struct ReminderListView: View {
                             showCreateSheet = true
                         } label: {
                             Label("新建提醒", systemImage: "plus.circle")
+                        }
+                        Divider()
+                        // v1.8.7 任务③: 统计洞察
+                        NavigationLink {
+                            StatsView()
+                        } label: {
+                            Label("统计洞察", systemImage: "chart.bar.fill")
                         }
                         Divider()
                         Button {
@@ -89,6 +99,12 @@ struct ReminderListView: View {
                             exportBackup()
                         } label: {
                             Label("导出提醒", systemImage: "square.and.arrow.up")
+                        }
+                        // v1.8.7 任务④: 导出 .ics 日历（可导入系统日历/Google 日历）
+                        Button {
+                            exportICS()
+                        } label: {
+                            Label("导出日历(.ics)", systemImage: "calendar.badge.plus")
                         }
                         Button {
                             showImportImporter = true
@@ -112,6 +128,16 @@ struct ReminderListView: View {
             ) { result in
                 if case .failure(let error) = result {
                     print("[导出] 失败: \(error)")
+                }
+            }
+            .fileExporter(
+                isPresented: $showIcsExporter,
+                document: icsDocument,
+                contentType: .plainText,
+                defaultFilename: "reminders"
+            ) { result in
+                if case .failure(let error) = result {
+                    print("[.ics 导出] 失败: \(error)")
                 }
             }
             .fileImporter(
@@ -165,7 +191,9 @@ struct ReminderListView: View {
             unhandledCount: unhandled.count,
             nextTitle: next?.title ?? "暂无提醒",
             nextTime: next?.nextTriggerAt,
-            updatedAt: now
+            updatedAt: now,
+            // v1.8.7: 供小组件「完成」按钮定位提醒
+            nextReminderID: next?.id.uuidString
         ))
 
         // 主动刷新已添加的小组件
@@ -178,6 +206,13 @@ struct ReminderListView: View {
         let json = BackupHelper.exportJSON(reminders)
         exportDocument = ReminderBackupDocument(text: json)
         showExportExporter = true
+    }
+
+    /// v1.8.7 任务④: 生成 .ics 并弹出系统分享
+    private func exportICS() {
+        let ics = IcsExporter.generateICS(reminders: reminders)
+        icsDocument = ReminderBackupDocument(text: ics)
+        showIcsExporter = true
     }
 
     // MARK: - 同步
