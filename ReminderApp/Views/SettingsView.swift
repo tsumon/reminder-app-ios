@@ -74,8 +74,8 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("设置")
-            .navigationBarTitleDisplayMode(.large)
-            .glassPageBackground()
+            // v1.9.8.1: iPad 大屏下大标题+玻璃背景形成大块空白，去背景（inline 标题原本就是）
+            .navigationBarTitleDisplayMode(.inline)
             .glassNavigationBar()
             .scrollContentBackground(.hidden)
             .alert(

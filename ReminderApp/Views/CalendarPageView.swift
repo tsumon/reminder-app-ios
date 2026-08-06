@@ -19,8 +19,8 @@ struct CalendarPageView: View {
             .padding(16)
         }
         .navigationTitle("日历")
-        .navigationBarTitleDisplayMode(.large)
-        .glassPageBackground()
+        // v1.9.8.1: iPad 大屏下大标题+玻璃背景形成大块空白，改 inline 更紧凑
+        .navigationBarTitleDisplayMode(.inline)
         .glassNavigationBar()
     }
 

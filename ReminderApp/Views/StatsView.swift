@@ -27,8 +27,8 @@ struct StatsView: View {
             .padding(16)
         }
         .navigationTitle("统计洞察")
-        .navigationBarTitleDisplayMode(.large)
-        .glassPageBackground()
+        // v1.9.8.1: iPad 大屏下大标题+玻璃背景形成大块空白，改 inline 更紧凑
+        .navigationBarTitleDisplayMode(.inline)
         .glassNavigationBar()
     }
 
