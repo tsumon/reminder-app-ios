@@ -107,6 +107,8 @@ enum WebDavSync {
                     return "认证失败（HTTP 401）：请确认用户名；密码必须是坚果云「应用密码」——在坚果云网页端「账户信息 → 安全选项 → 添加应用密码」生成，不能用登录密码。"
                 case 403:
                     return "无权限（HTTP 403）：请检查该 WebDAV 路径是否可写（如 dav.jianguoyun.com/dav/ 根目录）。"
+                case 404:
+                    return "目录不存在（HTTP 404）：请确认 WebDAV 地址指向已存在的目录，坚果云请填 https://dav.jianguoyun.com/dav/（根目录），不要带不存在的子路径。"
                 case 405:
                     return "服务器不支持该操作（HTTP 405）：请确认填的是 WebDAV 地址（如 …/dav/），不是网盘网页地址。"
                 case 409:
@@ -199,9 +201,29 @@ enum WebDavSync {
 
         let (_, response) = try await URLSession.shared.data(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if code == 404 {
+            // 坚果云等服务器要求目录已存在：先 MKCOL 创建父目录再重试一次
+            try? await mkcolIfNeeded()
+            let (_, retryResp) = try await URLSession.shared.data(for: request)
+            let retryCode = (retryResp as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200...299).contains(retryCode) else {
+                throw SyncError.http(retryCode)
+            }
+            return
+        }
         guard (200...299).contains(code) else {
             throw SyncError.http(code)
         }
+    }
+
+    /// 确保 WebDAV 目录存在（MKCOL；已存在时服务器返回 405/301 属正常，忽略）
+    private static func mkcolIfNeeded() async throws {
+        guard let url = URL(string: SyncStore.url.trimmingCharacters(in: .whitespaces)) else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "MKCOL"
+        request.timeoutInterval = 15
+        request.setValue(authHeader(), forHTTPHeaderField: "Authorization")
+        _ = try? await URLSession.shared.data(for: request)
     }
 
     private enum SyncError: LocalizedError {
