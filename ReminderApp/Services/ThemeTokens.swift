@@ -15,9 +15,13 @@ enum ThemeTokens {
 
     /// 品牌深色主色（渐变末端，与 Android BrandPrimaryDark 一致）
     static let brandPrimaryDark = Color(red: 0x4F / 255.0, green: 0x3B / 255.0, blue: 0x7A / 255.0)
+    /// v1.9.8: 品牌渐变起点（头像/AI 气泡渐变，与 Android 0xFF7C66C2 一致）
+    static let brandGradientStart = Color(red: 0x7C / 255.0, green: 0x66 / 255.0, blue: 0xC2 / 255.0)
     static let statusReminding = Color(red: 0xE7 / 255.0, green: 0x4C / 255.0, blue: 0x3C / 255.0)
     static let statusWaiting = Color(red: 0x34 / 255.0, green: 0x98 / 255.0, blue: 0xDB / 255.0)
     static let statusCompleted = Color(red: 0x27 / 255.0, green: 0xAE / 255.0, blue: 0x60 / 255.0)
+    /// v1.9.8: 逾期（递增重试到上限，比提醒中更深一档的红色，与 Android StatusOverdue 一致）
+    static let statusOverdue = Color(red: 0xC0 / 255.0, green: 0x39 / 255.0, blue: 0x2B / 255.0)
 
     // MARK: 节假日「休/班」
 

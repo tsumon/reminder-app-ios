@@ -58,9 +58,8 @@ struct ReminderListView: View {
     @State private var showDaySheet = false
 
     var body: some View {
-        NavigationStack {
-            mainContent
-        }
+        // v1.9.8: NavigationStack 由 MainTabView 的 Tab 提供，避免嵌套双层导航栏
+        mainContent
     }
 
     private var mainContent: some View {
@@ -72,6 +71,7 @@ struct ReminderListView: View {
                 }
             }
             .navigationTitle("提醒事项")
+            .navigationBarTitleDisplayMode(.large)
             .glassPageBackground()
             .glassNavigationBar()
             .searchable(text: $searchText, prompt: "搜索标题或备注")
@@ -553,13 +553,7 @@ struct ReminderListView: View {
                     .listRowSeparator(.hidden)
             }
 
-            // 日历卡片
-            Section {
-                CalendarCardView(reminders: reminders, onDateTap: { selectedDay = $0; showDaySheet = true })
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-            }
+            // v1.9.8: 日历卡片移到「日历」Tab（CalendarPageView），首页只保留列表
 
             // 应用智能清单筛选后的全集（叠加搜索）
             let query = searchText.trimmingCharacters(in: .whitespaces)
@@ -575,7 +569,7 @@ struct ReminderListView: View {
                 $0.status == .active || $0.status == .snoozed || $0.status == .overdue
             }
             if !activeReminders.isEmpty {
-                Section("🔔 提醒中") {
+                Section {
                     ForEach(activeReminders) { reminder in
                         NavigationLink {
                             ReminderDetailView(reminder: reminder)
@@ -592,13 +586,15 @@ struct ReminderListView: View {
                             deleteSwipe(for: reminder)
                         }
                     }
+                } header: {
+                    sectionHeader(title: "提醒中", color: ThemeTokens.statusReminding, count: activeReminders.count)
                 }
             }
 
             // 等待中
             let pendingReminders = filtered.filter { $0.status == .pending }
             if !pendingReminders.isEmpty {
-                Section("⏳ 等待中") {
+                Section {
                     ForEach(pendingReminders) { reminder in
                         NavigationLink {
                             ReminderDetailView(reminder: reminder)
@@ -615,13 +611,15 @@ struct ReminderListView: View {
                             deleteSwipe(for: reminder)
                         }
                     }
+                } header: {
+                    sectionHeader(title: "等待中", color: ThemeTokens.statusWaiting, count: pendingReminders.count)
                 }
             }
 
             // 已完成
             let confirmedReminders = filtered.filter { $0.status == .confirmed }
             if !confirmedReminders.isEmpty {
-                Section("✅ 已完成") {
+                Section {
                     ForEach(confirmedReminders) { reminder in
                         NavigationLink {
                             ReminderDetailView(reminder: reminder)
@@ -638,6 +636,8 @@ struct ReminderListView: View {
                             deleteSwipe(for: reminder)
                         }
                     }
+                } header: {
+                    sectionHeader(title: "已完成", color: ThemeTokens.statusCompleted, count: confirmedReminders.count)
                 }
             }
         }
@@ -671,6 +671,25 @@ struct ReminderListView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 4)
         }
+    }
+
+    // MARK: - 分组标题（设计图风格：小色条 + 标题 + 数量）
+
+    @ViewBuilder
+    private func sectionHeader(title: String, color: Color, count: Int) -> some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(color)
+                .frame(width: 4, height: 14)
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(.primary)
+            Text("· \(count)")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(color)
+            Spacer()
+        }
+        .padding(.horizontal, 4)
     }
 
     // MARK: - 滑动操作

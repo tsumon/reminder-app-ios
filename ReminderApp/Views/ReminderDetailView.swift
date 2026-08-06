@@ -57,24 +57,52 @@ struct ReminderDetailView: View {
 
     // MARK: - 状态卡片
 
+    /// v1.9.8 设计图风格：状态色渐变大卡 + 玻璃图标容器 + 阴影
     private var statusCard: some View {
-        VStack(spacing: 12) {
-            Image(systemName: statusIconName)
-                .font(.system(size: 48))
-                .foregroundStyle(statusColor)
+        HStack(spacing: 16) {
+            // 玻璃大图标容器
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(.white.opacity(0.22))
+                    .frame(width: 58, height: 58)
+                Image(systemName: statusIconName)
+                    .font(.system(size: 27))
+                    .foregroundStyle(.white)
+            }
 
-            Text(reminder.status.rawValue)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(statusColor)
-
-            Text(nextTriggerText)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("当前状态")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.85))
+                Text(statusTitle)
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.white)
+                Text("下次：\(nextTriggerText)")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            Spacer()
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 28)
-        .background(statusColor.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(
+                colors: [statusColor, statusColor.opacity(0.72)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: statusColor.opacity(0.35), radius: 14, y: 6)
+    }
+
+    /// 状态卡标题：状态 + 重试阶段（对齐设计图）
+    private var statusTitle: String {
+        var t = reminder.status.rawValue
+        if reminder.retryStage > 0 {
+            t += " · 第\(reminder.retryStage)次重试"
+        }
+        return t
     }
 
     // MARK: - 操作按钮
@@ -234,11 +262,11 @@ struct ReminderDetailView: View {
 
     private var statusColor: Color {
         switch reminder.status {
-        case .pending:   return .blue
-        case .active:    return .red
+        case .pending:   return ThemeTokens.statusWaiting
+        case .active:    return ThemeTokens.statusReminding
         case .snoozed:   return .orange
-        case .confirmed: return .green
-        case .overdue:   return .red
+        case .confirmed: return ThemeTokens.statusCompleted
+        case .overdue:   return ThemeTokens.statusOverdue
         }
     }
 

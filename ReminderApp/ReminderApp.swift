@@ -21,7 +21,8 @@ struct ReminderApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ReminderListView()                .onAppear {
+            // v1.9.8: 底部导航 Tab（首页/日历/统计/设置），对齐 README 设计图
+            MainTabView()                .onAppear {
                     reminderEngine.configure(with: sharedModelContainer.mainContext)
                     // v1.8.7 任务⑥: 崩溃监控 + 埋点（启动最先安装）
                     TelemetryService.install()
@@ -51,6 +52,10 @@ struct ReminderApp: App {
                     async let r1 = HolidayRemoteService.refresh(year: year)
                     async let r2 = HolidayRemoteService.refresh(year: year + 1)
                     _ = await (r1, r2)
+                    #if DEBUG
+                    // v1.9.8: 模拟器截图验证用演示数据（仅 Debug 构建）
+                    seedDemoDataIfNeeded()
+                    #endif
                 }
         }
         .modelContainer(sharedModelContainer)
@@ -58,8 +63,7 @@ struct ReminderApp: App {
 
     /// 把用户在小组件上点「完成」的提醒同步到数据库
     /// （AppIntent 只写 App Group 标记，这里做真正的 confirm + 通知重排）
-    private func syncWidgetCompletedReminders() async {
-        let ids = WidgetSnapshot.completedReminderIDs()
+    private func syncWidgetCompletedReminders() async {        let ids = WidgetSnapshot.completedReminderIDs()
         guard !ids.isEmpty else { return }
 
         let context = sharedModelContainer.mainContext
@@ -75,4 +79,32 @@ struct ReminderApp: App {
         // 全部处理完再清空标记，避免 App 启动后遗留脏数据
         WidgetSnapshot.clearCompletedReminderIDs(ids)
     }
+
+#if DEBUG
+    /// v1.9.8: 模拟器截图验证用演示数据（仅 Debug 构建，首次启动插入，模拟 README 设计图示例）
+    private func seedDemoDataIfNeeded() {
+        let context = sharedModelContainer.mainContext
+        let count = (try? context.fetchCount(FetchDescriptor<Reminder>())) ?? 0
+        guard count == 0 else { return }
+        let now = Date()
+        let h = 3600.0
+        let demos: [Reminder] = [
+            Reminder(title: "吃降压药", note: "每天早饭后", kind: .cycle, cycle: .daily,
+                     firstTriggerAt: now, nextTriggerAt: now.addingTimeInterval(h), status: .active, retryStage: 2),
+            Reminder(title: "提交季度报表", note: "每季度一次", kind: .cycle, cycle: .quarterly,
+                     firstTriggerAt: now, nextTriggerAt: now.addingTimeInterval(-h), status: .overdue),
+            Reminder(title: "遛狗", note: "晚饭后", kind: .cycle, cycle: .daily,
+                     firstTriggerAt: now, nextTriggerAt: now.addingTimeInterval(h * 20), status: .pending),
+            Reminder(title: "交房租", kind: .cycle, cycle: .monthly,
+                     firstTriggerAt: now, nextTriggerAt: now.addingTimeInterval(h * 24 * 25), status: .pending),
+            Reminder(title: "妈妈的生日", kind: .date, dateType: .lunarBirthday, targetMonth: 8, targetDay: 15, advanceDays: 3,
+                     firstTriggerAt: now, nextTriggerAt: now.addingTimeInterval(h * 24 * 21), status: .pending),
+            Reminder(title: "体检预约", note: "提前一周提醒", kind: .date, dateType: .solarBirthday, targetMonth: 8, targetDay: 27, advanceDays: 7,
+                     firstTriggerAt: now, nextTriggerAt: now.addingTimeInterval(h * 24 * 21), status: .pending),
+        ]
+        demos.forEach { context.insert($0) }
+        try? context.save()
+        print("[Debug] 已插入 \(demos.count) 条演示提醒")
+    }
+#endif
 }

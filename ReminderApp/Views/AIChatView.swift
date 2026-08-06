@@ -504,16 +504,36 @@ struct ChatBubble: View {
     var body: some View {
         HStack(alignment: .top) {
             if message.role == .assistant || message.role == .system {
-                avatar(systemName: "sparkles", color: .purple)
+                avatar(systemName: "sparkles", color: ThemeTokens.brandPrimary)
                 bubbleContent
-                    .background(Color(.systemGray5))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    // v1.9.8 设计图风格：AI 白底 + 左上尖角 + 轻阴影
+                    .background(Color.white)
+                    .clipShape(
+                        UnevenRoundedRectangle(
+                            cornerRadii: .init(topLeading: 6, bottomLeading: 18, bottomTrailing: 18, topTrailing: 18),
+                            style: .continuous
+                        )
+                    )
+                    .shadow(color: .black.opacity(0.06), radius: 6, y: 3)
                 Spacer(minLength: 60)
             } else {
                 Spacer(minLength: 60)
                 bubbleContent
-                    .background(Color.purple.opacity(0.9))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    // v1.9.8 设计图风格：用户紫渐变 + 右上尖角
+                    .background(
+                        LinearGradient(
+                            colors: [ThemeTokens.brandGradientStart, ThemeTokens.brandPrimary],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .clipShape(
+                        UnevenRoundedRectangle(
+                            cornerRadii: .init(topLeading: 18, bottomLeading: 18, bottomTrailing: 18, topTrailing: 6),
+                            style: .continuous
+                        )
+                    )
+                    .shadow(color: ThemeTokens.brandPrimary.opacity(0.25), radius: 6, y: 3)
                 avatar(systemName: "person.circle.fill", color: .blue)
             }
         }

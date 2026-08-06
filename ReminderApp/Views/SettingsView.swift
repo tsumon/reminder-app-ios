@@ -18,8 +18,8 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
+        // v1.9.8: NavigationStack 由 MainTabView 的 Tab 提供
+        Form {
                 // MARK: 同步
                 Section("同步") {
                     NavigationLink {
@@ -74,7 +74,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("设置")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.large)
             .glassPageBackground()
             .glassNavigationBar()
             .scrollContentBackground(.hidden)
@@ -99,7 +99,6 @@ struct SettingsView: View {
             } message: {
                 Text(resultMsg ?? "")
             }
-        }
     }
 
     private func checkForUpdates() {

@@ -5,14 +5,14 @@ struct ReminderRowView: View {
     let reminder: Reminder
 
     var body: some View {
-        HStack(spacing: 14) {
-            // 状态图标（带状态色底盘）
+        HStack(spacing: 13) {
+            // v1.9.8 设计图风格：彩色圆角方块图标容器（44pt / 圆角 14）
             ZStack {
-                Circle()
-                    .fill(statusColor.opacity(0.14))
-                    .frame(width: 38, height: 38)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(kindBadgeColor.opacity(0.15))
+                    .frame(width: 44, height: 44)
                 statusIcon
-                    .font(.title3)
+                    .font(.system(size: 20))
             }
             .accessibilityLabel("状态：\(reminder.status.rawValue)")
 
@@ -35,14 +35,26 @@ struct ReminderRowView: View {
                         .padding(.vertical, 2)
                         .background(kindBadgeColor.opacity(0.12))
                         .clipShape(Capsule())
-
-                    // 状态文字
-                    Text(reminder.status.rawValue)
-                        .font(.caption)
-                        .foregroundStyle(statusColor)
                 }
 
-                if reminder.note.isNotEmpty {
+                // v1.9.8 状态胶囊（设计图独立 chip）
+                HStack(spacing: 6) {
+                    Text(reminder.status.rawValue)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(statusColor)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(statusColor.opacity(0.12))
+                        .clipShape(Capsule())
+
+                    if reminder.retryStage > 0 && !isDone {
+                        Text("第\(reminder.retryStage)次重试")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
+                }
+
+                if reminder.note.isNotEmpty && reminder.retryStage == 0 {
                     Text(reminder.note)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
@@ -52,18 +64,11 @@ struct ReminderRowView: View {
 
             Spacer()
 
-            // 下次触发时间
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(timeText)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(isDone ? .tertiary : .secondary)
-
-                if reminder.retryStage > 0 {
-                    Text("第\(reminder.retryStage)次重试")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                }
-            }
+            // 下次触发时间：状态色（设计图）
+            Text(timeText)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isDone ? Color(.tertiaryLabel) : statusColor)
+                .multilineTextAlignment(.trailing)
         }
         // 液态玻璃行：ultraThinMaterial + 高光描边 + 柔和阴影
         .padding(12)
@@ -127,11 +132,11 @@ struct ReminderRowView: View {
 
     private var statusColor: Color {
         switch reminder.status {
-        case .pending:   return .blue
-        case .active:    return .red
+        case .pending:   return ThemeTokens.statusWaiting
+        case .active:    return ThemeTokens.statusReminding
         case .snoozed:   return .orange
-        case .confirmed: return .green
-        case .overdue:   return .red
+        case .confirmed: return ThemeTokens.statusCompleted
+        case .overdue:   return ThemeTokens.statusOverdue
         }
     }
 

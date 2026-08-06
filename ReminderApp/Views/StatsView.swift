@@ -12,24 +12,52 @@ struct StatsView: View {
         let records = reminders.flatMap { $0.records }
         let summary = StatsService.summarize(records: records)
 
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    completionCard(summary)
-                    HStack(spacing: 12) {
-                        streakCard(title: "当前连续", value: summary.currentStreak, icon: "flame.fill", color: .orange)
-                        streakCard(title: "最长连续", value: summary.longestStreak, icon: "trophy.fill", color: .purple)
-                    }
-                    forgetHoursCard(summary)
-                    heatmapCard(summary)
+        // v1.9.8: NavigationStack 由 MainTabView 的 Tab 提供
+        ScrollView {
+            VStack(spacing: 14) {
+                overviewCards(summary)
+                completionCard(summary)
+                HStack(spacing: 12) {
+                    streakCard(title: "当前连续", value: summary.currentStreak, icon: "flame.fill", color: .orange)
+                    streakCard(title: "最长连续", value: summary.longestStreak, icon: "trophy.fill", color: .purple)
                 }
-                .padding(16)
+                forgetHoursCard(summary)
+                heatmapCard(summary)
             }
-            .navigationTitle("统计洞察")
-            .navigationBarTitleDisplayMode(.inline)
-            .glassPageBackground()
-            .glassNavigationBar()
+            .padding(16)
         }
+        .navigationTitle("统计洞察")
+        .navigationBarTitleDisplayMode(.large)
+        .glassPageBackground()
+        .glassNavigationBar()
+    }
+
+    // MARK: - v1.9.8 设计图风格：顶部 3 数字概览卡
+
+    private func overviewCards(_ s: StatsSummary) -> some View {
+        HStack(spacing: 10) {
+            overviewCard(title: "本月完成", value: "\(s.confirmCount)", color: ThemeTokens.statusCompleted)
+            overviewCard(title: "连续天数", value: "\(s.currentStreak)", color: .orange)
+            overviewCard(
+                title: "完成率",
+                value: s.completionRate.map { "\(Int($0 * 100))%" } ?? "—",
+                color: ThemeTokens.brandPrimary
+            )
+        }
+    }
+
+    private func overviewCard(title: String, value: String, color: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(color)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(cardBackground)
     }
 
     // MARK: - 完成率
