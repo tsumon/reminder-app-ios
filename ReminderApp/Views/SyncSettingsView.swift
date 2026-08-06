@@ -12,6 +12,7 @@ struct SyncSettingsView: View {
     @State private var password = SyncStore.password
     @State private var autoSync = SyncStore.autoSync
     @State private var syncing = false
+    @State private var testing = false
     @State private var resultMsg: String?
     @State private var isError = false
 
@@ -43,6 +44,23 @@ struct SyncSettingsView: View {
             }
 
             Section {
+                // v1.9.1: 测试连接（先验证账号/路径，再同步）
+                Button {
+                    testConnection()
+                } label: {
+                    if testing {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
+                        }
+                    } else {
+                        Text("测试连接")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .disabled(testing || url.trimmingCharacters(in: .whitespaces).isEmpty || username.isEmpty || password.isEmpty)
+
                 Button {
                     saveAndSync()
                 } label: {
@@ -53,11 +71,11 @@ struct SyncSettingsView: View {
                             Spacer()
                         }
                     } else {
-                        Text("立即同步")
+                        Text("保存并立即同步")
                             .frame(maxWidth: .infinity)
                     }
                 }
-                .disabled(syncing || url.trimmingCharacters(in: .whitespaces).isEmpty || username.isEmpty)
+                .disabled(syncing || url.trimmingCharacters(in: .whitespaces).isEmpty || username.isEmpty || password.isEmpty)
             }
 
             if let resultMsg {
@@ -69,6 +87,26 @@ struct SyncSettingsView: View {
         }
         .navigationTitle("同步设置")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// 测试连接：保存当前输入后 PROPFIND 验证（不触发同步）
+    private func testConnection() {
+        SyncStore.save(url: url, username: username, password: password, autoSync: autoSync)
+        testing = true
+        resultMsg = nil
+
+        Task {
+            let result = await WebDavSync.testConnection()
+            testing = false
+            switch result {
+            case .success:
+                isError = false
+                resultMsg = "连接成功 ✓ 账号与路径可用，可以开始同步。"
+            case .failure(let msg):
+                isError = true
+                resultMsg = msg
+            }
+        }
     }
 
     private func saveAndSync() {

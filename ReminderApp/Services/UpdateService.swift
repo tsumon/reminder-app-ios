@@ -28,7 +28,15 @@ enum UpdateService {
     static func checkLatest() async -> AppUpdateInfo? {
         var request = URLRequest(url: releaseAPI)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 8
+        request.timeoutInterval = 15
+        // 国内访问 api.github.com 不稳定：失败重试一次
+        for attempt in 0...1 {
+            if let info = try await fetchOnce(request: request) { return info }
+        }
+        return nil
+    }
+
+    private static func fetchOnce(request: URLRequest) async -> AppUpdateInfo? {
         do {
             let (data, _) = try await URLSession.shared.data(for: request)
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

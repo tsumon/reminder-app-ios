@@ -63,8 +63,73 @@ enum WebDavSync {
                 return .success // 无变更
             }
         } catch {
-            return .failure(error.localizedDescription)
+            return .failure(friendlyMessage(error))
         }
+    }
+
+    // MARK: - 测试连接（添加 WebDAV 时验证账号/路径，坚果云友好提示）
+
+    /// PROPFIND 验证连通性与认证；成功返回 .success
+    static func testConnection() async -> SyncResult {
+        guard SyncStore.isConfigured else {
+            return .failure("请先填写 WebDAV 地址、用户名和应用密码")
+        }
+        do {
+            let url = SyncStore.url.trimmingCharacters(in: .whitespaces)
+            guard let u = URL(string: url) else { throw SyncError.invalidURL }
+            var request = URLRequest(url: u)
+            request.httpMethod = "PROPFIND"
+            request.timeoutInterval = 15
+            request.setValue(authHeader(), forHTTPHeaderField: "Authorization")
+            request.setValue("0", forHTTPHeaderField: "Depth")
+
+            let (_, response) = try await URLSession.shared.data(for: request)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            // 207 Multi-Status 是 PROPFIND 的正常成功响应
+            guard (200...299).contains(code) || code == 207 else {
+                throw SyncError.http(code)
+            }
+            return .success
+        } catch {
+            return .failure(friendlyMessage(error))
+        }
+    }
+
+    /// 把错误转成可操作的中文提示（尤其坚果云 401 应用密码）
+    static func friendlyMessage(_ error: Error) -> String {
+        if let se = error as? SyncError {
+            switch se {
+            case .invalidURL:
+                return "WebDAV 地址无效。示例：https://dav.jianguoyun.com/dav/（坚果云必须以 /dav/ 结尾）"
+            case .http(let code):
+                switch code {
+                case 401:
+                    return "认证失败（HTTP 401）：请确认用户名；密码必须是坚果云「应用密码」——在坚果云网页端「账户信息 → 安全选项 → 添加应用密码」生成，不能用登录密码。"
+                case 403:
+                    return "无权限（HTTP 403）：请检查该 WebDAV 路径是否可写（如 dav.jianguoyun.com/dav/ 根目录）。"
+                case 405:
+                    return "服务器不支持该操作（HTTP 405）：请确认填的是 WebDAV 地址（如 …/dav/），不是网盘网页地址。"
+                case 409:
+                    return "资源冲突（HTTP 409）。"
+                case 423:
+                    return "资源被锁定（HTTP 423）。"
+                case 507:
+                    return "存储空间不足（HTTP 507）。"
+                default:
+                    return "HTTP \(code)：请检查服务器地址/账号，或稍后重试。"
+                }
+            }
+        }
+        if let ue = error as? URLError {
+            switch ue.code {
+            case .timedOut: return "连接超时：请检查网络或服务器地址。"
+            case .cannotConnectToHost, .networkConnectionLost, .notConnectedToInternet:
+                return "无法连接服务器：请检查网络和地址。"
+            case .userAuthenticationRequired: return "认证失败：请检查用户名和应用密码。"
+            default: break
+            }
+        }
+        return error.localizedDescription
     }
 
     // MARK: - 覆盖本地
