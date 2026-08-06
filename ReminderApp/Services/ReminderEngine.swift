@@ -66,6 +66,7 @@ final class ReminderEngine: ObservableObject {
         guard diff >= 0 else { return false }
 
         switch r.cycle {
+        case .once:      return diff == 0
         case .daily:     return true
         case .weekly:    return tWeekday == aWeekday
         case .biweekly:  return tWeekday == aWeekday && diff % 14 == 0
@@ -206,10 +207,20 @@ final class ReminderEngine: ObservableObject {
         let days = reminder.effectiveDays
         guard days > 0 else { return anchor }
 
-        let elapsedDays = Calendar.current.dateComponents([.day], from: anchor, to: confirmedDate).day ?? 0
-        let cyclesPassed = (elapsedDays / days) + 1
-
-        return Calendar.current.date(byAdding: .day, value: cyclesPassed * days, to: anchor) ?? confirmedDate
+        switch reminder.cycle {
+        case .monthly, .quarterly, .yearly:
+            // 按日历月累加，避免固定 30/90/365 天在大小月、闰年下漂移
+            let amount = reminder.cycle == .monthly ? 1 : (reminder.cycle == .quarterly ? 3 : 12)
+            var cursor = anchor
+            while cursor <= confirmedDate {
+                cursor = Calendar.current.date(byAdding: .month, value: amount, to: cursor) ?? confirmedDate
+            }
+            return cursor
+        default:
+            let elapsedDays = Calendar.current.dateComponents([.day], from: anchor, to: confirmedDate).day ?? 0
+            let cyclesPassed = (elapsedDays / days) + 1
+            return Calendar.current.date(byAdding: .day, value: cyclesPassed * days, to: anchor) ?? confirmedDate
+        }
     }
 
     // MARK: 日期类：下一次目标日期
@@ -286,6 +297,19 @@ final class ReminderEngine: ObservableObject {
         let record = ReminderRecord(type: "confirm", note: "手动确认")
         reminder.records.append(record)
 
+        // 一次性提醒：确认后直接归档为「已完成」，不再前进周期
+        if reminder.kind == .cycle && reminder.cycle == .once {
+            reminder.status = .confirmed
+            reminder.retryStage = 0
+            reminder.lastRetryAt = nil
+            reminder.updatedAt = now
+            try? context.save()
+            SyncStore.touchLocalChange()
+            Task { await NotificationManager.shared.removePendingNotification(for: reminder.id) }
+            print("[ReminderEngine] 一次性提醒已完成: \(reminder.title)")
+            return
+        }
+
         // 计算下一次触发
         reminder.nextTriggerAt = calculateNextTrigger(after: now, reminder: reminder)
 
@@ -304,6 +328,31 @@ final class ReminderEngine: ObservableObject {
         }
 
         print("[ReminderEngine] 已确认: \(reminder.title), 下次: \(reminder.nextTriggerAt)")
+    }
+
+    // MARK: - 重新打开（已完成 → 等待中）
+
+    /// 把已完成的提醒重新打开：若它的下次触发时间已过期，则重新计算下一次触发
+    func reopenReminder(_ reminder: Reminder) {
+        guard let context = modelContext else { return }
+
+        let now = Date()
+        if reminder.nextTriggerAt <= now {
+            reminder.nextTriggerAt = calculateNextTrigger(after: now, reminder: reminder)
+        }
+        reminder.status = .pending
+        reminder.retryStage = 0
+        reminder.lastRetryAt = nil
+        reminder.updatedAt = now
+
+        try? context.save()
+        SyncStore.touchLocalChange()
+
+        Task {
+            await scheduleAllNotifications(for: reminder)
+        }
+
+        print("[ReminderEngine] 重新打开: \(reminder.title), 下次: \(reminder.nextTriggerAt)")
     }
 
     // MARK: - 稍后提醒
@@ -325,7 +374,7 @@ final class ReminderEngine: ObservableObject {
         SyncStore.touchLocalChange()
 
         Task {
-            await NotificationManager.shared.scheduleNotification(for: reminder)
+            await NotificationManager.shared.scheduleNotification(for: reminder, badgeCount: self.unconfirmedCount())
         }
 
         print("[ReminderEngine] 已推迟: \(reminder.title)")
@@ -366,13 +415,20 @@ final class ReminderEngine: ObservableObject {
         SyncStore.touchLocalChange()
 
         Task {
-            await NotificationManager.shared.scheduleNotification(for: reminder)
+            await NotificationManager.shared.scheduleNotification(for: reminder, badgeCount: self.unconfirmedCount())
         }
 
         print("[ReminderEngine] 递增重试: \(reminder.title) 阶段 \(reminder.retryStage)")
     }
 
     // MARK: - 安排全部通知（日期类：提前预告 + D-day）
+
+    /// 当前未确认（待处理）提醒数量，用于设置角标
+    func unconfirmedCount() -> Int {
+        guard let context = modelContext else { return 0 }
+        let all = (try? context.fetch(FetchDescriptor<Reminder>())) ?? []
+        return all.filter { $0.status != .confirmed }.count
+    }
 
     func scheduleAllNotifications(for reminder: Reminder) async {
         // 先清除旧通知
@@ -385,8 +441,9 @@ final class ReminderEngine: ObservableObject {
             await scheduleAdvanceNotifications(reminder: reminder)
         }
 
-        // D-day 通知（带确认/稍后按钮）
-        await NotificationManager.shared.scheduleNotification(for: reminder)
+        // D-day 通知（带确认/稍后按钮）；角标用真实未确认数量
+        let count = unconfirmedCount()
+        try? await NotificationManager.shared.addDdayNotification(for: reminder, badgeCount: count)
     }
 
     /// 日期类的提前预告通知
@@ -429,16 +486,23 @@ final class ReminderEngine: ObservableObject {
         let now = Date()
         for reminder in reminders {
             guard reminder.isEnabled else { continue }
-            guard reminder.status == .pending || reminder.status == .active || reminder.status == .snoozed else { continue }
+            guard reminder.status != .confirmed else { continue }
+            guard reminder.nextTriggerAt <= now else { continue }
 
-            if reminder.nextTriggerAt <= now {
-                reminder.status = .active
-                reminder.updatedAt = now
-                try? modelContext?.save()
+            // 过期未触发：自动推进到下一次触发时间并重新调度。
+            // 这样周期提醒即使用户未点「确认完成」也会继续滚动，
+            // 不会再每次打开 App 都对旧日期误响。
+            reminder.nextTriggerAt = calculateNextTrigger(after: now, reminder: reminder)
+            reminder.status = .pending
+            reminder.retryStage = 0
+            reminder.lastRetryAt = nil
+            reminder.updatedAt = now
 
-                await scheduleAllNotifications(for: reminder)
-                print("[ReminderEngine] 发现遗漏提醒: \(reminder.title)")
-            }
+            try? modelContext?.save()
+            SyncStore.touchLocalChange()
+
+            await scheduleAllNotifications(for: reminder)
+            print("[ReminderEngine] 过期提醒已自动推进: \(reminder.title)")
         }
     }
 }

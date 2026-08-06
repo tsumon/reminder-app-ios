@@ -46,6 +46,12 @@ struct CreateReminderView: View {
     @State private var triggerDate = Date()
     @State private var triggerTime = Date()
 
+    // MARK: - 自然语言快速创建
+
+    @State private var nlText = ""
+    @State private var nlHint: String?
+    @State private var nlError = false
+
     let months = Array(1...12)
     let days = Array(1...31)
     let hours = Array(0...23)
@@ -54,6 +60,9 @@ struct CreateReminderView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // MARK: 自然语言快速创建
+                naturalLanguageSection
+
                 // MARK: 基本信息
                 Section("提醒内容") {
                     TextField("提醒标题", text: $title)
@@ -113,6 +122,84 @@ struct CreateReminderView: View {
                 }
             }
         }
+    }
+
+    // MARK: - 自然语言 Section
+
+    private var naturalLanguageSection: some View {
+        Section {
+            TextField("明天下午3点开会 / 每周一9点晨会 / 农历8月15 中秋", text: $nlText, axis: .vertical)
+                .lineLimit(1...2)
+
+            Button {
+                applyNaturalLanguage()
+            } label: {
+                Label("智能识别", systemImage: "sparkles")
+            }
+            .disabled(nlText.trimmingCharacters(in: .whitespaces).isEmpty)
+
+            if let hint = nlHint {
+                Text(hint)
+                    .font(.footnote)
+                    .foregroundStyle(nlError ? Color.red : Color.secondary)
+            }
+        } header: {
+            Text("✨ 一句话创建")
+        } footer: {
+            Text("识别后会自动填好下面的表单，可再手动微调")
+        }
+    }
+
+    private func applyNaturalLanguage() {
+        guard let p = NaturalDateParser.parse(nlText) else {
+            nlError = true
+            nlHint = "没听懂，换个说法试试～"
+            return
+        }
+        nlError = false
+
+        // 标题
+        if title.trimmingCharacters(in: .whitespaces).isEmpty {
+            title = p.title
+        }
+
+        let cal = Calendar.current
+        triggerDate = p.nextTriggerAt
+        triggerTime = p.nextTriggerAt
+        reminderHour = cal.component(.hour, from: p.nextTriggerAt)
+        reminderMinute = cal.component(.minute, from: p.nextTriggerAt)
+
+        var cycleText = "仅一次"
+        switch p.repeatMode {
+        case "lunar":
+            kind = .date
+            dateType = .lunarBirthday
+            if let m = p.targetMonth { targetMonth = m }
+            if let d = p.targetDay { targetDay = d }
+            cycleText = "农历每年"
+        case "yearly":
+            if p.dateType == .solarBirthday {
+                kind = .date
+                dateType = .solarBirthday
+                if let m = p.targetMonth { targetMonth = m }
+                if let d = p.targetDay { targetDay = d }
+            } else {
+                kind = .cycle
+                cycle = .yearly
+            }
+            cycleText = "每年"
+        case "daily":
+            kind = .cycle; cycle = .daily; cycleText = "每天"
+        case "weekly":
+            kind = .cycle; cycle = .weekly; cycleText = "每周"
+        case "monthly":
+            kind = .cycle; cycle = .monthly; cycleText = "每月"
+        default:
+            kind = .cycle; cycle = .once; cycleText = "仅一次"
+        }
+        showCustomDaysField = (cycle == .custom)
+
+        nlHint = "「\(p.title)」· \(cycleText) · \(p.label)"
     }
 
     // MARK: - 周期 Section

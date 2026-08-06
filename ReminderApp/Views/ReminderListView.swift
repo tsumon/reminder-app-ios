@@ -28,6 +28,9 @@ struct ReminderListView: View {
     @Query(sort: \Reminder.nextTriggerAt) private var reminders: [Reminder]
     @State private var showCreateSheet = false
 
+    // 智能清单筛选
+    @State private var smartList: SmartList = .all
+
     // 导入/导出
     @State private var showExportExporter = false
     @State private var exportDocument: ReminderBackupDocument?
@@ -37,6 +40,7 @@ struct ReminderListView: View {
     @State private var syncMessage: String?
     // 点击日历某天 → 查看当日任务
     @State private var selectedDay: Date?
+    @State private var showDaySheet = false
 
     var body: some View {
         NavigationStack {
@@ -133,8 +137,10 @@ struct ReminderListView: View {
             } message: {
                 Text(syncMessage ?? "")
             }
-            .sheet(item: $selectedDay) { day in
-                DayTasksSheet(day: day, reminders: reminders)
+            .sheet(isPresented: $showDaySheet) {
+                if let day = selectedDay {
+                    DayTasksSheet(day: day, reminders: reminders)
+                }
             }
         }
     }
@@ -221,7 +227,7 @@ struct ReminderListView: View {
         List {
             // 日历
             Section {
-                CalendarCardView(reminders: reminders, onDateTap: { selectedDay = $0 })
+                CalendarCardView(reminders: reminders, onDateTap: { selectedDay = $0; showDaySheet = true })
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
@@ -263,6 +269,14 @@ struct ReminderListView: View {
 
     private var listView: some View {
         List {
+            // 智能清单筛选条
+            Section {
+                smartListBar
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+
             // 概览（参考滴答清单：待处理数 + 最近提醒）
             let unhandled = reminders.filter { $0.isEnabled && $0.status != .confirmed }.count
             let next = reminders.filter { $0.isEnabled && $0.nextTriggerAt > Date() }.min { $0.nextTriggerAt < $1.nextTriggerAt }
@@ -272,14 +286,17 @@ struct ReminderListView: View {
 
             // 日历卡片
             Section {
-                CalendarCardView(reminders: reminders, onDateTap: { selectedDay = $0 })
+                CalendarCardView(reminders: reminders, onDateTap: { selectedDay = $0; showDaySheet = true })
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
 
+            // 应用智能清单筛选后的全集
+            let filtered = reminders.filter { matchSmartList($0) }
+
             // 正在提醒中（active / snoozed / overdue）
-            let activeReminders = reminders.filter {
+            let activeReminders = filtered.filter {
                 $0.status == .active || $0.status == .snoozed || $0.status == .overdue
             }
             if !activeReminders.isEmpty {
@@ -290,15 +307,18 @@ struct ReminderListView: View {
                         } label: {
                             ReminderRowView(reminder: reminder)
                         }
-                    }
-                    .onDelete { offsets in
-                        deleteReminders(offsets, from: activeReminders)
+                        .swipeActions(edge: .leading) {
+                            completeSwipe(for: reminder)
+                        }
+                        .swipeActions(edge: .trailing) {
+                            deleteSwipe(for: reminder)
+                        }
                     }
                 }
             }
 
             // 等待中
-            let pendingReminders = reminders.filter { $0.status == .pending }
+            let pendingReminders = filtered.filter { $0.status == .pending }
             if !pendingReminders.isEmpty {
                 Section("⏳ 等待中") {
                     ForEach(pendingReminders) { reminder in
@@ -307,15 +327,18 @@ struct ReminderListView: View {
                         } label: {
                             ReminderRowView(reminder: reminder)
                         }
-                    }
-                    .onDelete { offsets in
-                        deleteReminders(offsets, from: pendingReminders)
+                        .swipeActions(edge: .leading) {
+                            completeSwipe(for: reminder)
+                        }
+                        .swipeActions(edge: .trailing) {
+                            deleteSwipe(for: reminder)
+                        }
                     }
                 }
             }
 
             // 已完成
-            let confirmedReminders = reminders.filter { $0.status == .confirmed }
+            let confirmedReminders = filtered.filter { $0.status == .confirmed }
             if !confirmedReminders.isEmpty {
                 Section("✅ 已完成") {
                     ForEach(confirmedReminders) { reminder in
@@ -324,9 +347,12 @@ struct ReminderListView: View {
                         } label: {
                             ReminderRowView(reminder: reminder)
                         }
-                    }
-                    .onDelete { offsets in
-                        deleteReminders(offsets, from: confirmedReminders)
+                        .swipeActions(edge: .leading) {
+                            reopenSwipe(for: reminder)
+                        }
+                        .swipeActions(edge: .trailing) {
+                            deleteSwipe(for: reminder)
+                        }
                     }
                 }
             }
@@ -335,6 +361,101 @@ struct ReminderListView: View {
         .refreshable {
             await ReminderEngine.shared.checkMissedReminders(reminders: reminders)
         }
+    }
+
+    // MARK: - 智能清单筛选条
+
+    private var smartListBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(SmartList.allCases, id: \.self) { list in
+                    Button {
+                        smartList = list
+                    } label: {
+                        Text(list.label)
+                            .font(.subheadline.weight(.medium))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(smartList == list ? Color.accentColor : Color.gray.opacity(0.18))
+                            .foregroundStyle(smartList == list ? .white : .primary)
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 4)
+        }
+    }
+
+    // MARK: - 滑动操作
+
+    /// 右滑 → 完成
+    @ViewBuilder
+    private func completeSwipe(for reminder: Reminder) -> some View {
+        Button {
+            ReminderEngine.shared.confirmReminder(reminder)
+        } label: {
+            Label("完成", systemImage: "checkmark")
+        }
+        .tint(.green)
+    }
+
+    /// 右滑（已完成行）→ 重新打开
+    @ViewBuilder
+    private func reopenSwipe(for reminder: Reminder) -> some View {
+        Button {
+            ReminderEngine.shared.reopenReminder(reminder)
+        } label: {
+            Label("重开", systemImage: "arrow.uturn.backward")
+        }
+        .tint(.orange)
+    }
+
+    /// 左滑 → 删除
+    @ViewBuilder
+    private func deleteSwipe(for reminder: Reminder) -> some View {
+        Button(role: .destructive) {
+            deleteReminder(reminder)
+        } label: {
+            Label("删除", systemImage: "trash")
+        }
+    }
+
+    // MARK: - 智能清单匹配
+
+    private func matchSmartList(_ reminder: Reminder) -> Bool {
+        switch smartList {
+        case .all:      return true
+        case .done:     return reminder.status == .confirmed
+        case .high:     return reminder.priority == .high
+        case .today:    return occursWithin(reminder: reminder, days: 0...0)
+        case .tomorrow: return occursWithin(reminder: reminder, days: 1...1)
+        case .week:     return occursWithin(reminder: reminder, days: 0...7)
+        case .month:    return occursWithin(reminder: reminder, days: 0...daysLeftInMonth())
+        }
+    }
+
+    private func occursWithin(reminder: Reminder, days: ClosedRange<Int>) -> Bool {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        for d in days.lowerBound...days.upperBound {
+            guard let date = cal.date(byAdding: .day, value: d, to: today) else { continue }
+            let y = cal.component(.year, from: date)
+            let m = cal.component(.month, from: date)
+            let day = cal.component(.day, from: date)
+            if ReminderEngine.shared.occursOn(reminder: reminder, year: y, month: m, day: day) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func daysLeftInMonth() -> Int {
+        let cal = Calendar.current
+        let now = Date()
+        guard let range = cal.range(of: .day, in: .month, for: now),
+              let lastDay = cal.date(bySetting: .day, value: range.count, of: now) else { return 30 }
+        return cal.dateComponents([.day], from: cal.startOfDay(for: now), to: cal.startOfDay(for: lastDay)).day ?? 30
     }
 
     private func deleteReminders(_ offsets: IndexSet, from items: [Reminder]) {
@@ -349,6 +470,29 @@ struct ReminderListView: View {
         try? modelContext.save()
         SyncStore.touchLocalChange()
     }
+
+    private func deleteReminder(_ reminder: Reminder) {
+        Task {
+            await NotificationManager.shared.removePendingNotification(for: reminder.id)
+        }
+        modelContext.delete(reminder)
+        try? modelContext.save()
+        SyncStore.touchLocalChange()
+    }
+}
+
+// MARK: - 智能清单类型
+
+enum SmartList: String, CaseIterable, Hashable {
+    case all      = "全部"
+    case today    = "今天"
+    case tomorrow = "明天"
+    case week     = "本周"
+    case month    = "本月"
+    case high     = "高优先级"
+    case done     = "已完成"
+
+    var label: String { rawValue }
 }
 
 // MARK: - 点击日历某天 → 当日任务弹窗

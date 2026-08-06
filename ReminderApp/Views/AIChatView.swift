@@ -29,6 +29,7 @@ struct AIChatView: View {
     @State private var scrollToID: UUID?
     @State private var showNoAPISheet = false
     @State private var webURL: URL?
+    @State private var showWebView = false
 
     @Query(sort: \Reminder.title) private var reminders: [Reminder]
 
@@ -107,8 +108,10 @@ struct AIChatView: View {
         } message: {
             Text("文字已复制到剪贴板，选择服务后将在网页中粘贴发送。")
         }
-        .sheet(item: $webURL) { url in
-            WebViewSheet(url: url)
+        .sheet(isPresented: $showWebView) {
+            if let url = webURL {
+                WebViewSheet(url: url)
+            }
         }
         .onAppear {
             if !settings.isConfigured {
@@ -274,6 +277,7 @@ struct AIChatView: View {
 
             // 应用内打开网页（修复「免 API 模式切换到网页对话无法返回」）
             webURL = provider.webURL
+            showWebView = true
             return
         }
 
@@ -405,6 +409,7 @@ struct AIChatView: View {
         let reminderKind: ReminderKind = kind == "date" ? .date : .cycle
         let cycleEnum: ReminderCycle = {
             switch cycle {
+            case "once":      return .once
             case "daily":     return .daily
             case "weekly":    return .weekly
             case "biweekly":  return .biweekly

@@ -154,7 +154,7 @@ struct ReminderDetailView: View {
 
                     if newValue {
                         Task {
-                            await NotificationManager.shared.scheduleNotification(for: reminder)
+                            await NotificationManager.shared.scheduleNotification(for: reminder, badgeCount: ReminderEngine.shared.unconfirmedCount())
                         }
                     } else {
                         Task {

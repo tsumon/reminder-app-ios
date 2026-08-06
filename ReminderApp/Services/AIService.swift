@@ -138,7 +138,22 @@ actor AIService {
 struct AnyCodable: Codable {
     let value: Any
 
-    init(_ value: Any) { self.value = value }
+    /// 递归包裹：把 [String: Any] / [Any] 也转换成可编码结构，
+    /// 否则外层 AnyCodable 在 encode 时无法识别嵌套字典/数组，会落到 encodeNil()，
+    /// 导致 AI 工具的 parameters 被序列化为 null。
+    init(_ value: Any) {
+        if let dict = value as? [String: Any] {
+            var converted: [String: AnyCodable] = [:]
+            for (k, v) in dict { converted[k] = AnyCodable(v) }
+            self.value = converted
+        } else if let array = value as? [Any] {
+            self.value = array.map { AnyCodable($0) }
+        } else if let anyCodable = value as? AnyCodable {
+            self.value = anyCodable.value
+        } else {
+            self.value = value
+        }
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()

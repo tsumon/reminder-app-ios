@@ -91,6 +91,7 @@ enum BackupHelper {
 
     private static func cycleCode(_ c: ReminderCycle) -> String {
         switch c {
+        case .once: return "once"
         case .daily: return "daily"
         case .weekly: return "weekly"
         case .biweekly: return "biweekly"
@@ -123,6 +124,7 @@ enum BackupHelper {
         let kind: ReminderKind = item.kind == "date" ? .date : (item.kind == "rule" ? .rule : .cycle)
         let cycle: ReminderCycle = {
             switch item.cycle {
+            case "once": return .once
             case "daily": return .daily
             case "biweekly": return .biweekly
             case "monthly": return .monthly

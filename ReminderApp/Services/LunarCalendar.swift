@@ -65,22 +65,20 @@ struct LunarCalendar {
     /// 获取农历年的天数
     private static func lunarYearDays(_ year: Int) -> Int {
         let info = lunarInfo[year - 1900]
-        var sum = 0
-        for i in (0..<12).reversed() {
-            sum += ((info >> i) & 1) == 1 ? 30 : 29
+        var sum = 348 // 12 个月 × 29 天
+        for m in 1...12 {
+            if ((info >> (16 - m)) & 1) == 1 { sum += 1 }
         }
-        // 加上闰月天数
-        let leapMonth = Int(info >> 12) & 0xF
-        if leapMonth > 0 {
-            let leapDays = ((info >> (12 - leapMonth)) & 1) == 1 ? 30 : 29
-            sum += leapDays
+        let leap = Int(info & 0xF)
+        if leap > 0 {
+            sum += ((info >> 16) & 1) == 1 ? 30 : 29
         }
         return sum
     }
 
-    /// 获取农历年闰月（0=无闰月）
+    /// 获取农历年闰月（0=无闰月）：数据表低 4 位
     static func leapMonth(of year: Int) -> Int {
-        Int(lunarInfo[year - 1900] >> 12) & 0xF
+        Int(lunarInfo[year - 1900] & 0xF)
     }
 
     // MARK: - 公历 → 农历
@@ -116,23 +114,23 @@ struct LunarCalendar {
         var isLeap = false
 
         for m in 1...12 {
-            let isLeapMonth = (leap > 0 && m == leap + 1 && !isLeap)
             let monthDays = ((info >> (16 - m)) & 1) == 1 ? 30 : 29
 
             if daysRemaining < monthDays {
+                lunarMonth = m
                 break
             }
             daysRemaining -= monthDays
 
-            if isLeapMonth {
-                let leapDays = ((info >> (16 - leap)) & 1) == 1 ? 30 : 29
+            // 普通月 m 之后紧跟闰 m
+            if leap > 0 && m == leap {
+                let leapDays = ((info >> 16) & 1) == 1 ? 30 : 29
                 if daysRemaining < leapDays {
                     isLeap = true
                     lunarMonth = leap
                     break
                 }
                 daysRemaining -= leapDays
-                isLeap = false
             }
             lunarMonth = m
         }

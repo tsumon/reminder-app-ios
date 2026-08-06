@@ -56,6 +56,7 @@ enum DateReminderType: String, Codable, CaseIterable {
 
 /// 提醒周期类型（仅 cycle 类使用）
 enum ReminderCycle: String, Codable, CaseIterable {
+    case once = "仅一次"
     case daily = "每天"
     case weekly = "每周"
     case biweekly = "每两周"
@@ -66,6 +67,7 @@ enum ReminderCycle: String, Codable, CaseIterable {
 
     var days: Int {
         switch self {
+        case .once:     return 0
         case .daily:    return 1
         case .weekly:   return 7
         case .biweekly: return 14

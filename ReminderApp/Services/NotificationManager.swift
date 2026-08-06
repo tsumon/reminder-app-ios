@@ -87,18 +87,22 @@ final class NotificationManager: NSObject, ObservableObject {
 
     // MARK: - 发送本地通知
 
-    /// 为指定提醒安排本地通知
-    func scheduleNotification(for reminder: Reminder) async {
-        // 先移除该提醒的旧通知
-        removePendingNotification(for: reminder.id)
+    /// 为指定提醒安排本地通知（会先移除旧通知，避免竞态把刚加的也删掉）
+    func scheduleNotification(for reminder: Reminder, badgeCount: Int = 1) async {
+        // 等待旧通知移除完成后再添加，避免「异步删除晚于添加」把新通知也删掉
+        await removePendingNotification(for: reminder.id)
+        try? await addDdayNotification(for: reminder, badgeCount: badgeCount)
+    }
 
+    /// 真正添加 D-day 通知（不含移除逻辑，供 scheduleAllNotifications 在统一移除后调用）
+    func addDdayNotification(for reminder: Reminder, badgeCount: Int = 1) async throws {
         let content = UNMutableNotificationContent()
         content.title = "⏰ \(reminder.title)"
         content.body = reminder.note.isEmpty
             ? "该完成了，点击确认或稍后提醒"
             : reminder.note
         content.sound = .default
-        content.badge = 1
+        content.badge = NSNumber(value: badgeCount)
         content.categoryIdentifier = Self.categoryIdentifier
         content.userInfo = [
             "reminderID": reminder.id.uuidString,
@@ -163,20 +167,19 @@ final class NotificationManager: NSObject, ObservableObject {
         }
     }
 
-    /// 取消该提醒的所有待发送通知
-    func removePendingNotification(for reminderID: UUID) {
-        UNUserNotificationCenter.current()
-            .getPendingNotificationRequests { requests in
-                let toRemove = requests
-                    .filter { $0.content.userInfo["reminderID"] as? String == reminderID.uuidString }
-                    .map { $0.identifier }
+    /// 取消该提醒的所有待发送通知（异步：先等查询返回，再移除，保证调用方 await 后已生效）
+    func removePendingNotification(for reminderID: UUID) async {
+        let requests = await withCheckedContinuation { (cont: CheckedContinuation<[UNNotificationRequest], Never>) in
+            UNUserNotificationCenter.current().getPendingNotificationRequests { cont.resume(returning: $0) }
+        }
+        let toRemove = requests
+            .filter { $0.content.userInfo["reminderID"] as? String == reminderID.uuidString }
+            .map { $0.identifier }
 
-                if !toRemove.isEmpty {
-                    UNUserNotificationCenter.current()
-                        .removePendingNotificationRequests(withIdentifiers: toRemove)
-                    print("[NotificationManager] 移除 \(toRemove.count) 条旧通知")
-                }
-            }
+        if !toRemove.isEmpty {
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: toRemove)
+            print("[NotificationManager] 移除 \(toRemove.count) 条旧通知")
+        }
     }
 
     /// 移除所有待发送通知

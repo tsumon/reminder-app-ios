@@ -13,8 +13,9 @@ struct CalendarCardView: View {
     @State private var displayMonth: Int // 1-12
     @State private var selectedDate: Date?
 
-    init(reminders: [Reminder]) {
+    init(reminders: [Reminder], onDateTap: @escaping (Date) -> Void = { _ in }) {
         self.reminders = reminders
+        self.onDateTap = onDateTap
         let now = Date()
         _displayYear = State(initialValue: Calendar.current.component(.year, from: now))
         _displayMonth = State(initialValue: Calendar.current.component(.month, from: now))
