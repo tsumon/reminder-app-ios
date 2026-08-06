@@ -18,25 +18,54 @@ enum UpdateService {
 
     static let repoName = "tsumon/reminder-app-ios"
     static let repoURL = URL(string: "https://github.com/\(repoName)")!
+    /// 检查源：releases.atom（HTML 域名走 CDN，无匿名 API 限流；api.github.com 常被限流 403）
+    static let atomURL = URL(string: "https://github.com/\(repoName)/releases.atom")!
+    /// 下载路径：latest/download 固定名（无需版本号/API，永远指向最新 Release 的该资产）
+    static let ipaAssetURL = URL(string: "https://github.com/\(repoName)/releases/latest/download/ReminderApp.ipa")!
+    /// 兜底：api.github.com（可能限流，仅当 atom 不可用时尝试）
     static let releaseAPI = URL(string: "https://api.github.com/repos/\(repoName)/releases/latest")!
 
     static var currentVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
     }
 
-    /// 检查 GitHub 最新 release；失败返回 nil（离线/限流静默降级）
+    /// 检查 GitHub 最新 release；失败返回 nil（离线/网络异常静默降级）
+    /// 优先 releases.atom（不限流），重试 1 次；仍失败再兜底 api.github.com
     static func checkLatest() async -> AppUpdateInfo? {
+        for _ in 0...1 {
+            if let info = await fetchFromAtom() { return info }
+        }
+        return await fetchFromAPI()
+    }
+
+    /// releases.atom：解析第一个 <entry> 的 title(=tag) 与 link(=release 页)
+    private static func fetchFromAtom() async -> AppUpdateInfo? {
+        var request = URLRequest(url: atomURL)
+        request.timeoutInterval = 15
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            guard let xml = String(data: data, encoding: .utf8),
+                  let first = regexFirst("<entry>(.*?)</entry>", in: xml),
+                  let tag = regexFirst("<title[^>]*>(.*?)</title>", in: first)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  let link = regexFirst("href=\"([^\"]*releases/tag/[^\"]*)\"", in: first),
+                  let url = URL(string: link) else { return nil }
+            let latest = tag.replacingOccurrences(of: "v", with: "")
+            return AppUpdateInfo(
+                latestVersion: latest,
+                releaseURL: url,
+                ipaURL: ipaAssetURL,
+                isNewer: isNewerVersion(latest, than: currentVersion)
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    /// 兜底：api.github.com 解析（可能被限流 403）
+    private static func fetchFromAPI() async -> AppUpdateInfo? {
         var request = URLRequest(url: releaseAPI)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15
-        // 国内访问 api.github.com 不稳定：失败重试一次
-        for attempt in 0...1 {
-            if let info = try await fetchOnce(request: request) { return info }
-        }
-        return nil
-    }
-
-    private static func fetchOnce(request: URLRequest) async -> AppUpdateInfo? {
         do {
             let (data, _) = try await URLSession.shared.data(for: request)
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -44,30 +73,25 @@ enum UpdateService {
                   let html = json["html_url"] as? String,
                   let url = URL(string: html) else { return nil }
             let latest = tag.replacingOccurrences(of: "v", with: "")
-
-            // 找第一个 .ipa 资产（iOS 自签场景）
-            var ipaURL: URL? = nil
-            if let assets = json["assets"] as? [[String: Any]] {
-                for asset in assets {
-                    if let name = asset["name"] as? String,
-                       let browser = asset["browser_download_url"] as? String,
-                       name.hasSuffix(".ipa"),
-                       let u = URL(string: browser) {
-                        ipaURL = u
-                        break
-                    }
-                }
-            }
-
             return AppUpdateInfo(
                 latestVersion: latest,
                 releaseURL: url,
-                ipaURL: ipaURL,
+                ipaURL: ipaAssetURL,
                 isNewer: isNewerVersion(latest, than: currentVersion)
             )
         } catch {
             return nil
         }
+    }
+
+    /// 正则辅助：返回第一个捕获组（无匹配返回 nil）
+    private static func regexFirst(_ pattern: String, in text: String) -> String? {
+        guard let re = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else { return nil }
+        let range = NSRange(text.startIndex..., in: text)
+        guard let match = re.firstMatch(in: text, range: range),
+              match.numberOfRanges > 1,
+              let r = Range(match.range(at: 1), in: text) else { return nil }
+        return String(text[r])
     }
 
     /// 语义化版本比较：a > b ?

@@ -106,7 +106,7 @@ struct SettingsView: View {
             guard let info = await UpdateService.checkLatest() else {
                 checking = false
                 isError = true
-                resultMsg = "检查更新失败（网络或限流），请稍后再试"
+                resultMsg = "检查更新失败，请检查网络后重试"
                 return
             }
             checking = false

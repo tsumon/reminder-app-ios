@@ -283,7 +283,7 @@ struct ReminderListView: View {
     private func checkForUpdates() {
         Task {
             guard let info = await UpdateService.checkLatest() else {
-                updateResultMessage = "检查更新失败（网络或限流），请稍后再试"
+                updateResultMessage = "检查更新失败，请检查网络后重试"
                 return
             }
             if info.isNewer {
