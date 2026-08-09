@@ -18,7 +18,7 @@ struct CalendarPageView: View {
             }
             .padding(16)
         }
-        .navigationTitle("日历")
+        .navigationTitle("日历".localized)
         // v1.9.8.1: iPad 大屏下大标题+玻璃背景形成大块空白，改 inline 更紧凑
         .navigationBarTitleDisplayMode(.inline)
         .glassNavigationBar()
@@ -47,7 +47,7 @@ struct CalendarPageView: View {
         .padding(.top, 4)
 
         if tasks.isEmpty {
-            Text("这一天没有提醒")
+            Text("这一天没有提醒".localized)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)

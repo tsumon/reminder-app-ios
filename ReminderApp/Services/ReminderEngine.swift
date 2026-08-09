@@ -480,7 +480,7 @@ final class ReminderEngine: ObservableObject {
 
         reminder.updatedAt = now
 
-        let record = ReminderRecord(type: "trigger", note: "重试阶段 \(reminder.retryStage)")
+        let record = ReminderRecord(type: "trigger", note: Localized("重试阶段 %d", reminder.retryStage))
         reminder.records.append(record)
 
         try? context.save()
@@ -539,9 +539,9 @@ final class ReminderEngine: ObservableObject {
 
             let content: String
             if daysBefore == 1 {
-                content = "提醒：明天就是「\(reminder.title)」了，别忘了提前准备哦！"
+                content = Localized("提醒：明天就是「%@」了，别忘了提前准备哦！", reminder.title)
             } else {
-                content = "提醒：还有 \(daysBefore) 天就是「\(reminder.title)」了"
+                content = Localized("提醒：还有 %d 天就是「%@」了", daysBefore, reminder.title)
             }
 
             await NotificationManager.shared.scheduleAdvanceNotification(

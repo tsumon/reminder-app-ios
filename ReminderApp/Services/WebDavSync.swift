@@ -175,7 +175,7 @@ enum WebDavSync {
         case 405:
             return "服务器不允许写入（HTTP 405）：地址可能不是 WebDAV 路径，请确认填 https://dav.jianguoyun.com/dav/（坚果云以 /dav/ 结尾）。"
         default:
-            return "可读但不可写（HTTP \(code)）：账号可能被禁用 WebDAV，或地址权限不足，请联系服务器管理员。"
+            return Localized("可读但不可写（HTTP %d）：账号可能被禁用 WebDAV，或地址权限不足，请联系服务器管理员。", code)
         }
     }
 

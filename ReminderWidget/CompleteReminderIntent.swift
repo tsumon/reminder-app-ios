@@ -8,7 +8,7 @@ import WidgetKit
 /// （confirm + 重排通知），见 ReminderApp.swift。
 struct CompleteReminderIntent: AppIntent {
     static var title: LocalizedStringResource = "完成提醒"
-    static var description = IntentDescription("将该提醒标记为已完成并安排下一次")
+    static var description = IntentDescription(LocalizedStringResource("将该提醒标记为已完成并安排下一次"))
 
     @Parameter(title: "提醒 ID")
     var reminderID: String

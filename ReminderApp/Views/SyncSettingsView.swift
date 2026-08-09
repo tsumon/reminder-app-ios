@@ -19,27 +19,27 @@ struct SyncSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Text("通过 WebDAV 同步提醒数据（支持甲骨文 VPS 自建、坚果云等）。同步以最后修改时间为准，较新的覆盖较旧的。")
+                Text("通过 WebDAV 同步提醒数据（支持甲骨文 VPS 自建、坚果云等）。同步以最后修改时间为准，较新的覆盖较旧的。".localized)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
 
-            Section("服务器") {
-                TextField("WebDAV 地址", text: $url)
+            Section("服务器".localized) {
+                TextField("WebDAV 地址".localized, text: $url)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
-                TextField("用户名", text: $username)
+                TextField("用户名".localized, text: $username)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                 SecureField("密码", text: $password)
             }
 
             Section {
-                Toggle("启动时自动同步", isOn: $autoSync)
+                Toggle("启动时自动同步".localized, isOn: $autoSync)
             } footer: {
                 if SyncStore.lastSyncAt > 0 {
-                    Text("上次同步：\(formatted(SyncStore.lastSyncAt))")
+                    Text(Localized("上次同步：%@", formatted(SyncStore.lastSyncAt)))
                 }
             }
 
@@ -55,7 +55,7 @@ struct SyncSettingsView: View {
                             Spacer()
                         }
                     } else {
-                        Text("测试连接")
+                        Text("测试连接".localized)
                             .frame(maxWidth: .infinity)
                     }
                 }
@@ -71,7 +71,7 @@ struct SyncSettingsView: View {
                             Spacer()
                         }
                     } else {
-                        Text("保存并立即同步")
+                        Text("保存并立即同步".localized)
                             .frame(maxWidth: .infinity)
                     }
                 }
@@ -80,12 +80,12 @@ struct SyncSettingsView: View {
 
             if let resultMsg {
                 Section {
-                    Text(resultMsg)
+                    Text(resultMsg.localized)
                         .foregroundStyle(isError ? Color.red : Color.green)
                 }
             }
         }
-        .navigationTitle("同步设置")
+        .navigationTitle("同步设置".localized)
         .navigationBarTitleDisplayMode(.inline)
     }
 

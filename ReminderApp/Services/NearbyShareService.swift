@@ -44,7 +44,7 @@ enum NearbyShareService {
                 connection.send(content: Data((header + body).utf8), completion: .contentProcessed { _ in
                     connection.cancel()
                 })
-                onEvent("已发送给一台设备（\(body.utf8.count) 字节）", false)
+                onEvent(Localized("已发送给一台设备（%d 字节）", body.utf8.count), false)
             }
         }
 
@@ -55,7 +55,7 @@ enum NearbyShareService {
             case .failed(let error):
                 // 端口占用等异步失败：cancel 释放监听，回传错误事件
                 listener.cancel()
-                onEvent("服务启动失败：\(error.localizedDescription)", true)
+                onEvent(Localized("服务启动失败：%@", error.localizedDescription), true)
             default:
                 break
             }

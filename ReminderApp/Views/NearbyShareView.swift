@@ -32,8 +32,8 @@ struct NearbyShareView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("模式", selection: $mode) {
-                    ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+                Picker("模式".localized, selection: $mode) {
+                    ForEach(Mode.allCases) { Text($0.rawValue.localized).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
@@ -45,13 +45,13 @@ struct NearbyShareView: View {
                     receiveView
                 }
             }
-            .navigationTitle("附近传输")
+            .navigationTitle("附近传输".localized)
             .navigationBarTitleDisplayMode(.inline)
             .glassPageBackground()
             .glassNavigationBar()
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("完成") { dismiss() }
+                    Button("完成".localized) { dismiss() }
                 }
             }
             .onDisappear { stopServer() }
@@ -67,12 +67,12 @@ struct NearbyShareView: View {
                 .foregroundStyle(.purple)
                 .padding(.top, 24)
 
-            Text("两台设备连接同一 Wi-Fi 后即可互传")
+            Text("两台设备连接同一 Wi-Fi 后即可互传".localized)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
             if let ip = NearbyShareService.localIPAddress() {
-                Text("本机地址")
+                Text("本机地址".localized)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("http://\(ip):\(NearbyShareService.port)")
@@ -96,12 +96,12 @@ struct NearbyShareView: View {
                             )
                             .shadow(color: .black.opacity(0.15), radius: 10, y: 4)
                     }
-                    Text("对方用「扫码」扫这里，自动开始接收")
+                    Text("对方用「扫码」扫这里，自动开始接收".localized)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             } else {
-                Text("无法获取局域网 IP\n请确认已连接 Wi-Fi")
+                Text("无法获取局域网 IP\n请确认已连接 Wi-Fi".localized)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.red)
             }
@@ -113,7 +113,7 @@ struct NearbyShareView: View {
                             .font(.caption)
                             .foregroundStyle(serverLogIsError ? .red : .green)
                     }
-                    Button("停止共享", role: .destructive) {
+                    Button("停止共享".localized, role: .destructive) {
                         stopServer()
                     }
                     .buttonStyle(.borderedProminent)
@@ -129,12 +129,12 @@ struct NearbyShareView: View {
                 Button {
                     startServer()
                 } label: {
-                    Label("开始共享当前提醒（\(reminders.count) 条）", systemImage: "paperplane.fill")
+                    Label(Localized("开始共享当前提醒（%d 条）", reminders.count), systemImage: "paperplane.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.purple)
 
-                Text("对方在「接收」页输入上方地址即可收到全部提醒")
+                Text("对方在「接收」页输入上方地址即可收到全部提醒".localized)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -167,7 +167,7 @@ struct NearbyShareView: View {
                 }
             )
         } catch {
-            serverLog = "启动失败：\(error.localizedDescription)"
+            serverLog = Localized("启动失败：%@", error.localizedDescription)
             serverLogIsError = true
         }
     }
@@ -186,7 +186,7 @@ struct NearbyShareView: View {
                 .foregroundStyle(.purple)
                 .padding(.top, 24)
 
-            Text("扫发送方二维码，或手动输入地址\n（支持 192.168.1.100 或完整 http://192.168.1.100:47823）")
+            Text("扫发送方二维码，或手动输入地址\n（支持 192.168.1.100 或完整 http://192.168.1.100:47823）".localized)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -195,7 +195,7 @@ struct NearbyShareView: View {
             Button {
                 showScanner = true
             } label: {
-                Label("扫码接收（扫对方二维码）", systemImage: "qrcode.viewfinder")
+                Label("扫码接收（扫对方二维码）".localized, systemImage: "qrcode.viewfinder")
                     .font(.headline)
                     .frame(maxWidth: .infinity)
             }
@@ -205,7 +205,7 @@ struct NearbyShareView: View {
 
             HStack(spacing: 8) {
                 Rectangle().fill(.secondary.opacity(0.3)).frame(height: 1)
-                Text("或手动输入").font(.caption2).foregroundStyle(.secondary)
+                Text("或手动输入".localized).font(.caption2).foregroundStyle(.secondary)
                 Rectangle().fill(.secondary.opacity(0.3)).frame(height: 1)
             }
             .padding(.horizontal)
@@ -223,7 +223,7 @@ struct NearbyShareView: View {
                 Button {
                     receive(from: receiveIP)
                 } label: {
-                    Label("下载并导入", systemImage: "arrow.down.circle")
+                    Label("下载并导入".localized, systemImage: "arrow.down.circle")
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.purple)
@@ -267,18 +267,18 @@ struct NearbyShareView: View {
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .strokeBorder(.white.opacity(0.8), lineWidth: 3)
                             .frame(width: 240, height: 240)
-                        Text("对准对方的二维码")
+                        Text("对准对方的二维码".localized)
                             .font(.caption)
                             .foregroundStyle(.white)
                             .padding(.top, 12)
                         Spacer().frame(height: 80)
                     }
                 }
-                .navigationTitle("扫码接收")
+                .navigationTitle("扫码接收".localized)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("取消") { showScanner = false }
+                        Button("取消".localized) { showScanner = false }
                     }
                 }
             }
@@ -305,7 +305,7 @@ struct NearbyShareView: View {
             let result = BackupHelper.importItems(items, existing: reminders, into: modelContext)
             isReceiving = false
             isError = false
-            resultMsg = "导入完成：新增 \(result.imported) 条，跳过重复 \(result.skipped) 条"
+            resultMsg = Localized("导入完成：新增 %d 条，跳过重复 %d 条", result.imported, result.skipped)
 
             // 重新调度本次导入的提醒通知
             Task {

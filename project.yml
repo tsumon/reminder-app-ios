@@ -3,7 +3,14 @@ options:
   bundleIdPrefix: com.reminder
   deploymentTarget:
     iOS: "17.0"
-  xcodeVersion: "15.0"
+  xcodeVersion: "16.0"
+  developmentRegion: zh-Hans
+  knownRegions:
+    - zh-Hans
+    - en
+    - zh-Hant
+    - ja
+    - ko
 
 settings:
   base:
@@ -17,6 +24,8 @@ targets:
     platform: iOS
     sources:
       - path: ReminderApp
+      - path: ReminderApp/Services/Localization.swift
+      - path: ReminderApp/Resources/Localizable.xcstrings
     entitlements:
       path: ReminderApp/ReminderApp.entitlements
     dependencies:
@@ -66,6 +75,9 @@ targets:
       - path: ReminderApp/Services/WidgetSnapshot.swift
       # v1.8.7: 小组件显示今天农历 → 引入农历转换器（自包含，仅依赖 Foundation）
       - path: ReminderApp/Services/LunarCalendar.swift
+      # 多语言：小组件内文案同样需要本地化（扩展用自己的 main bundle）
+      - path: ReminderApp/Services/Localization.swift
+      - path: ReminderApp/Resources/Localizable.xcstrings
     entitlements:
       path: ReminderWidget/ReminderWidget.entitlements
     settings:
@@ -81,7 +93,7 @@ targets:
       path: ReminderWidget/Info.plist
       properties:
         CFBundleDisplayName: 循环提醒小组件
-        CFBundleShortVersionString: "1.9.8.1"
-        CFBundleVersion: "24"
+        CFBundleShortVersionString: "2.0.0"
+        CFBundleVersion: "25"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension

@@ -52,7 +52,7 @@ struct ReminderWidgetEntryView: View {
                 Image(systemName: "bell.badge.fill")
                     .font(.subheadline)
                     .foregroundStyle(.red)
-                Text("未处理提醒")
+                Text("未处理提醒".localized)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -84,7 +84,7 @@ struct ReminderWidgetEntryView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             } else {
-                Text("暂无安排")
+                Text("暂无安排".localized)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -102,7 +102,7 @@ struct ReminderWidgetEntryView: View {
             // 头部：未处理数 + 农历日期格
             HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("未处理提醒")
+                    Text("未处理提醒".localized)
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.secondary)
                     HStack(spacing: 8) {
@@ -132,7 +132,7 @@ struct ReminderWidgetEntryView: View {
             Divider()
 
             // 最近提醒
-            Text("最近提醒")
+            Text("最近提醒".localized)
                 .font(.caption)
                 .foregroundStyle(.tertiary)
 
@@ -150,7 +150,7 @@ struct ReminderWidgetEntryView: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                Text("暂无安排")
+                Text("暂无安排".localized)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -171,12 +171,12 @@ struct ReminderWidgetEntryView: View {
         if let id = entry.data.nextReminderID, !id.isEmpty {
             if WidgetSnapshot.completedReminderIDs().contains(id) {
                 // 已在小组件上标记完成，等 App 启动同步落库
-                Label("已标记完成，打开 App 生效", systemImage: "checkmark.circle.fill")
+                Label("已标记完成，打开 App 生效".localized, systemImage: "checkmark.circle.fill")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.green)
             } else {
                 Button(intent: CompleteReminderIntent(reminderID: id)) {
-                    Label("完成", systemImage: "checkmark.circle")
+                    Label("完成".localized, systemImage: "checkmark.circle")
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
@@ -209,18 +209,18 @@ struct ReminderWidgetEntryView: View {
 
 private func countdownText(from now: Date, to target: Date) -> String {
     let seconds = Int(target.timeIntervalSince(now))
-    guard seconds > 0 else { return "已到时间" }
+    guard seconds > 0 else { return "已到时间".localized }
     let days = seconds / 86400
     let hours = (seconds % 86400) / 3600
     let minutes = (seconds % 3600) / 60
     if days > 0 {
-        return "\(days) 天后"
+        return Localized("%d 天后", days)
     } else if hours > 0 {
-        return minutes > 0 ? "\(hours) 小时 \(minutes) 分后" : "\(hours) 小时后"
+        return minutes > 0 ? Localized("%d 小时 %d 分后", hours, minutes) : Localized("%d 小时后", hours)
     } else if minutes > 0 {
-        return "\(minutes) 分钟后"
+        return Localized("%d 分钟后", minutes)
     } else {
-        return "\(seconds) 秒后"
+        return Localized("%d 秒后", seconds)
     }
 }
 
@@ -233,8 +233,8 @@ struct ReminderWidget: Widget {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
             ReminderWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("循环提醒")
-        .description("显示未处理提醒数、今天农历和最近的提醒，支持一键完成")
+        .configurationDisplayName("循环提醒".localized)
+        .description("显示未处理提醒数、今天农历和最近的提醒，支持一键完成".localized)
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

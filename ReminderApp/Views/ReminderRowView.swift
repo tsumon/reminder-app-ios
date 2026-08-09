@@ -14,7 +14,7 @@ struct ReminderRowView: View {
                 statusIcon
                     .font(.system(size: 20))
             }
-            .accessibilityLabel("状态：\(reminder.status.rawValue)")
+            .accessibilityLabel(Localized("状态：%@", reminder.status.rawValue))
 
             VStack(alignment: .leading, spacing: 4) {
                 // 已完成：标题划线变灰（滴答清单风格）
@@ -39,7 +39,7 @@ struct ReminderRowView: View {
 
                 // v1.9.8 状态胶囊（设计图独立 chip）
                 HStack(spacing: 6) {
-                    Text(reminder.status.rawValue)
+                    Text(reminder.status.rawValue.localized)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(statusColor)
                         .padding(.horizontal, 10)
@@ -48,7 +48,7 @@ struct ReminderRowView: View {
                         .clipShape(Capsule())
 
                     if reminder.retryStage > 0 && !isDone {
-                        Text("第\(reminder.retryStage)次重试")
+                        Text(Localized("第%d次重试", reminder.retryStage))
                             .font(.caption2)
                             .foregroundStyle(.orange)
                     }

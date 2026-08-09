@@ -25,25 +25,25 @@ struct MainTabView: View {
             NavigationStack {
                 ReminderListView()
             }
-            .tabItem { Label("首页", systemImage: "house.fill") }
+            .tabItem { Label("首页".localized, systemImage: "house.fill") }
             .tag(0)
 
             NavigationStack {
                 CalendarPageView()
             }
-            .tabItem { Label("日历", systemImage: "calendar") }
+            .tabItem { Label("日历".localized, systemImage: "calendar") }
             .tag(1)
 
             NavigationStack {
                 StatsView()
             }
-            .tabItem { Label("统计", systemImage: "chart.bar.fill") }
+            .tabItem { Label("统计".localized, systemImage: "chart.bar.fill") }
             .tag(2)
 
             NavigationStack {
                 SettingsView()
             }
-            .tabItem { Label("设置", systemImage: "gearshape.fill") }
+            .tabItem { Label("设置".localized, systemImage: "gearshape.fill") }
             .tag(3)
         }
         .tint(ThemeTokens.brandPrimary)

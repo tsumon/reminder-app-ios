@@ -57,7 +57,10 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             PROVISIONING_PROFILE_SPECIFIER="" \
-            DEVELOPMENT_TEAM=""
+            DEVELOPMENT_TEAM="" \
+            2>&1 | tee build.log
+          echo "=== BUILD LOG (last 100 lines) ==="
+          tail -100 build.log
 
       - name: Locate .app
         run: find ./DerivedData -name '*.app' -type d

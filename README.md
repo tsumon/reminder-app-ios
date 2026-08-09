@@ -2,6 +2,25 @@
 
 ![App UI](docs/screenshots/ios.png)
 
+## 🌐 多语言支持 / Multi-language Support
+
+本应用（iOS 与 Android 双端）内置多语言支持，跟随系统语言自动切换。
+
+**Supported languages:**
+- 🇨🇳 简体中文（zh-Hans）— 默认语言 / 回退语言 (default & fallback)
+- 🇺🇸 English (en)
+- 🇹🇼 繁體中文 (zh-Hant)
+- 🇯🇵 日本語 (ja)
+- 🇰🇷 한국어 (ko)
+
+**实现方式 / Implementation:**
+- **iOS**：`Localizable.xcstrings` 多语言目录，SwiftUI 通过 `String(localized:)` 取多语言文案。
+- **Android**：`res/values/strings.xml`（简体中文基准）+ `values-en` / `values-zh-rTW` / `values-ja` / `values-ko` 资源限定符，运行时代码统一通过 `zh()` / `zhf()` 查表。
+- 两端共用「中文原串即 key」方案，新增 / 修改文案只需维护中文源串与译文表，降低重复命名成本。
+
+> 多语言文案已覆盖全部用户可见界面（约 330 条），翻译缺失时自动回退为简体中文原串。
+> All user-visible strings (~330) are localized; missing translations gracefully fall back to Simplified Chinese.
+
 ## 功能概述
 
 一个纯原生 SwiftUI iOS 提醒应用，支持：

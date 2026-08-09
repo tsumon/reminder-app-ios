@@ -43,11 +43,11 @@ struct ReminderDetailView: View {
         }
         .navigationTitle(reminder.title)
         .navigationBarTitleDisplayMode(.large)
-        .alert("确认删除", isPresented: $showDeleteAlert) {
-            Button("取消", role: .cancel) {}
-            Button("删除", role: .destructive) { deleteReminder() }
+        .alert("确认删除".localized, isPresented: $showDeleteAlert) {
+            Button("取消".localized, role: .cancel) {}
+            Button("删除".localized, role: .destructive) { deleteReminder() }
         } message: {
-            Text("将永久删除「\(reminder.title)」提醒，此操作不可撤销。")
+            Text(Localized("将永久删除「%@」提醒，此操作不可撤销。", reminder.title))
         }
         .onAppear {
             ReminderEngine.shared.configure(with: modelContext)
@@ -71,13 +71,13 @@ struct ReminderDetailView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("当前状态")
+                Text("当前状态".localized)
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.85))
                 Text(statusTitle)
                     .font(.title2.weight(.bold))
                     .foregroundStyle(.white)
-                Text("下次：\(nextTriggerText)")
+                Text(Localized("下次：%@", nextTriggerText))
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.85))
             }
@@ -98,9 +98,9 @@ struct ReminderDetailView: View {
 
     /// 状态卡标题：状态 + 重试阶段（对齐设计图）
     private var statusTitle: String {
-        var t = reminder.status.rawValue
+        var t = reminder.status.rawValue.localized
         if reminder.retryStage > 0 {
-            t += " · 第\(reminder.retryStage)次重试"
+            t += " · " + Localized("第%d次重试", reminder.retryStage)
         }
         return t
     }
@@ -114,7 +114,7 @@ struct ReminderDetailView: View {
                 Button {
                     ReminderEngine.shared.confirmReminder(reminder)
                 } label: {
-                    Label("确认完成", systemImage: "checkmark.circle.fill")
+                    Label("确认完成".localized, systemImage: "checkmark.circle.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -123,7 +123,7 @@ struct ReminderDetailView: View {
                 Button {
                     ReminderEngine.shared.snoozeReminder(reminder)
                 } label: {
-                    Label("稍后提醒", systemImage: "clock.arrow.circlepath")
+                    Label("稍后提醒".localized, systemImage: "clock.arrow.circlepath")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -137,34 +137,34 @@ struct ReminderDetailView: View {
 
     private var infoCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("信息", systemImage: "info.circle")
+            Label("信息".localized, systemImage: "info.circle")
                 .font(.headline)
 
             Divider()
 
-            infoRow(label: "周期", value: reminder.dateDisplayText)
+            infoRow(label: "周期".localized, value: reminder.dateDisplayText)
             if reminder.kind == .cycle && reminder.cycle == .custom && reminder.customDays > 0 {
-                infoRow(label: "自定义天数", value: "\(reminder.customDays) 天")
+                infoRow(label: "自定义天数".localized, value: Localized("%d 天", reminder.customDays))
             }
             if reminder.kind == .rule {
-                infoRow(label: "频率", value: reminder.rulePeriod.rawValue)
-                infoRow(label: "周次", value: reminder.ruleWeek.label)
-                infoRow(label: "星期", value: reminder.ruleWeekday.label)
-                infoRow(label: "提醒时间", value: String(format: "%02d:%02d", reminder.reminderHour, reminder.reminderMinute))
+                infoRow(label: "频率".localized, value: reminder.rulePeriod.rawValue.localized)
+                infoRow(label: "周次".localized, value: reminder.ruleWeek.label.localized)
+                infoRow(label: "星期".localized, value: reminder.ruleWeekday.label.localized)
+                infoRow(label: "提醒时间".localized, value: String(format: "%02d:%02d", reminder.reminderHour, reminder.reminderMinute))
             }
             if reminder.kind == .date {
-                infoRow(label: "提醒类型", value: reminder.dateType?.rawValue ?? "")
-                infoRow(label: "提前提醒", value: "\(reminder.advanceDays) 天")
-                infoRow(label: "提醒时间", value: String(format: "%02d:%02d", reminder.reminderHour, reminder.reminderMinute))
+                infoRow(label: "提醒类型".localized, value: reminder.dateType?.rawValue.localized ?? "")
+                infoRow(label: "提前提醒".localized, value: Localized("%d 天", reminder.advanceDays))
+                infoRow(label: "提醒时间".localized, value: String(format: "%02d:%02d", reminder.reminderHour, reminder.reminderMinute))
             }
-            infoRow(label: "首次提醒", value: formattedDate(reminder.firstTriggerAt))
-            infoRow(label: "下次提醒", value: formattedDate(reminder.nextTriggerAt))
+            infoRow(label: "首次提醒".localized, value: formattedDate(reminder.firstTriggerAt))
+            infoRow(label: "下次提醒".localized, value: formattedDate(reminder.nextTriggerAt))
 
             if reminder.retryStage > 0 {
-                infoRow(label: "重试阶段", value: "第 \(reminder.retryStage) 次")
+                infoRow(label: "重试阶段".localized, value: Localized("第 %d 次", reminder.retryStage))
             }
 
-            infoRow(label: "创建时间", value: formattedDate(reminder.createdAt))
+            infoRow(label: "创建时间".localized, value: formattedDate(reminder.createdAt))
 
             Toggle(isOn: Binding(
                 get: { reminder.isEnabled },
@@ -194,7 +194,7 @@ struct ReminderDetailView: View {
                     }
                 }
             )) {
-                Text("启用提醒")
+                Text("启用提醒".localized)
                     .font(.subheadline)
             }
         }
@@ -207,7 +207,7 @@ struct ReminderDetailView: View {
 
     private var recordsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("操作记录", systemImage: "list.bullet.rectangle")
+            Label("操作记录".localized, systemImage: "list.bullet.rectangle")
                 .font(.headline)
 
             Divider()
@@ -241,7 +241,7 @@ struct ReminderDetailView: View {
         Button(role: .destructive) {
             showDeleteAlert = true
         } label: {
-            Label("删除此提醒", systemImage: "trash")
+            Label("删除此提醒".localized, systemImage: "trash")
         }
         .buttonStyle(.borderedProminent)
         .tint(.red)
@@ -275,11 +275,11 @@ struct ReminderDetailView: View {
         case .pending:
             let formatter = RelativeDateTimeFormatter()
             formatter.locale = Locale(identifier: "zh_CN")
-            return "将在 \(formatter.localizedString(for: reminder.nextTriggerAt, relativeTo: Date())) 提醒"
+            return Localized("将在 %@ 提醒", formatter.localizedString(for: reminder.nextTriggerAt, relativeTo: Date()))
         case .confirmed:
             let formatter = RelativeDateTimeFormatter()
             formatter.locale = Locale(identifier: "zh_CN")
-            return "下次提醒 \(formatter.localizedString(for: reminder.nextTriggerAt, relativeTo: Date()))"
+            return Localized("下次提醒 %@", formatter.localizedString(for: reminder.nextTriggerAt, relativeTo: Date()))
         case .active, .snoozed, .overdue:
             return "等待确认操作"
         }

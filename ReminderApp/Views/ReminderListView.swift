@@ -70,7 +70,7 @@ struct ReminderListView: View {
                     listView
                 }
             }
-            .navigationTitle("提醒事项")
+            .navigationTitle("提醒事项".localized)
             // v1.9.8.1: iPad 大屏下大标题区+玻璃背景形成大块空白，改 inline 更紧凑
             .navigationBarTitleDisplayMode(.inline)
             .glassNavigationBar()
@@ -90,61 +90,61 @@ struct ReminderListView: View {
                         Button {
                             menuAction { showCreateSheet = true }
                         } label: {
-                            Label("新建提醒", systemImage: "plus.circle")
+                            Label("新建提醒".localized, systemImage: "plus.circle")
                         }
                         Divider()
                         // v1.8.7 任务③: 统计洞察
                         NavigationLink {
                             StatsView()
                         } label: {
-                            Label("统计洞察", systemImage: "chart.bar.fill")
+                            Label("统计洞察".localized, systemImage: "chart.bar.fill")
                         }
                         Divider()
                         Button {
                             syncNow()
                         } label: {
-                            Label("立即同步", systemImage: "arrow.triangle.2.circlepath")
+                            Label("立即同步".localized, systemImage: "arrow.triangle.2.circlepath")
                         }
                         NavigationLink {
                             SyncSettingsView()
                         } label: {
-                            Label("同步设置", systemImage: "gearshape")
+                            Label("同步设置".localized, systemImage: "gearshape")
                         }
                         Divider()
                         Button {
                             menuAction { exportBackup() }
                         } label: {
-                            Label("导出提醒", systemImage: "square.and.arrow.up")
+                            Label("导出提醒".localized, systemImage: "square.and.arrow.up")
                         }
                         // v1.8.7 任务④: 导出 .ics 日历（可导入系统日历/Google 日历）
                         Button {
                             menuAction { exportICS() }
                         } label: {
-                            Label("导出日历(.ics)", systemImage: "calendar.badge.plus")
+                            Label("导出日历(.ics)".localized, systemImage: "calendar.badge.plus")
                         }
                         // 近场传输: 同一局域网互传提醒
                         Button {
                             menuAction { showNearbyShare = true }
                         } label: {
-                            Label("附近传输", systemImage: "wifi")
+                            Label("附近传输".localized, systemImage: "wifi")
                         }
                         // v1.9.0: 主动检查更新
                         Button {
                             menuAction { checkForUpdates() }
                         } label: {
-                            Label("检查更新", systemImage: "arrow.clockwise")
+                            Label("检查更新".localized, systemImage: "arrow.clockwise")
                         }
                         Divider()
                         // v1.9.2: 设置（版本/更新日志/AI/同步）
                         NavigationLink {
                             SettingsView()
                         } label: {
-                            Label("设置", systemImage: "gearshape")
+                            Label("设置".localized, systemImage: "gearshape")
                         }
                         Button {
                             menuAction { showImportImporter = true }
                         } label: {
-                            Label("导入提醒", systemImage: "square.and.arrow.down")
+                            Label("导入提醒".localized, systemImage: "square.and.arrow.down")
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
@@ -210,24 +210,24 @@ struct ReminderListView: View {
             .onReceive(notificationActionPublisher) { notification in
                 handleNotificationAction(notification.name, notification)
             }
-            .alert("同步", isPresented: Binding(
+            .alert("同步".localized, isPresented: Binding(
                 get: { syncMessage != nil },
                 set: { if !$0 { syncMessage = nil } }
             )) {
-                Button("好", role: .cancel) {}
+                Button("好".localized, role: .cancel) {}
             } message: {
-                Text(syncMessage ?? "")
+                Text((syncMessage ?? "").localized)
             }
             // v1.8.7 在线升级(自签): 发现新版本 → 下载 ipa 到本地文件 App
             .alert(
-                "发现新版本 v\(updateInfo?.latestVersion ?? "")",
+                Localized("发现新版本 v%@", updateInfo?.latestVersion ?? ""),
                 isPresented: Binding(
                     get: { updateInfo != nil && downloadedIpaURL == nil && downloadError == nil },
                     set: { if !$0 { updateInfo = nil; downloading = false } }
                 )
             ) {
                 if let info = updateInfo, let ipa = info.ipaURL {
-                    Button("下载到本地") {
+                    Button("下载到本地".localized) {
                         downloading = true
                         Task {
                             do {
@@ -240,16 +240,16 @@ struct ReminderListView: View {
                     }
                     .disabled(downloading)
                 } else if let info = updateInfo {
-                    Button("查看发布页") {
+                    Button("查看发布页".localized) {
                         UIApplication.shared.open(info.releaseURL)
                         updateInfo = nil
                     }
                 }
-                Button("稍后再说", role: .cancel) { updateInfo = nil }
+                Button("稍后再说".localized, role: .cancel) { updateInfo = nil }
             } message: {
                 Text(
-                    downloading ? "正在下载 .ipa…\n下载完成后请到「文件」App → 我的 iPhone → 循环提醒 → 用自签工具签名安装。"
-                    : "当前 v\(UpdateService.currentVersion)。本 App 通过 GitHub Releases 自签分发，请下载 .ipa 用 AltStore/爱思等工具签名安装。"
+                    downloading ? "正在下载 .ipa…\n下载完成后请到「文件」App → 我的 iPhone → 循环提醒 → 用自签工具签名安装。".localized
+                    : Localized("当前 v%@。本 App 通过 GitHub Releases 自签分发，请下载 .ipa 用 AltStore/爱思等工具签名安装。", UpdateService.currentVersion)
                 )
             }
             // 下载结果：提示文件 App 路径 + 分享按钮
@@ -267,9 +267,9 @@ struct ReminderListView: View {
                     set: { if !$0 { updateResultMessage = nil } }
                 )
             ) {
-                Button("好", role: .cancel) { updateResultMessage = nil }
+                Button("好".localized, role: .cancel) { updateResultMessage = nil }
             } message: {
-                Text(updateResultMessage ?? "")
+                Text((updateResultMessage ?? "").localized)
             }
             .sheet(isPresented: $showDaySheet) {
                 if let day = selectedDay {
@@ -313,7 +313,7 @@ struct ReminderListView: View {
             if info.isNewer {
                 updateInfo = info
             } else {
-                updateResultMessage = "当前已是最新版本 v\(UpdateService.currentVersion)"
+                updateResultMessage = Localized("当前已是最新版本 v%@", UpdateService.currentVersion)
             }
         }
     }
@@ -429,11 +429,11 @@ struct ReminderListView: View {
                         .font(.system(size: 64))
                         .foregroundStyle(.secondary)
 
-                    Text("暂无提醒")
+                    Text("暂无提醒".localized)
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(.secondary)
 
-                    Text("点击右上角 + 创建你的第一个循环提醒")
+                    Text("点击右上角 + 创建你的第一个循环提醒".localized)
                         .font(.subheadline)
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
@@ -441,7 +441,7 @@ struct ReminderListView: View {
                     Button {
                         showCreateSheet = true
                     } label: {
-                        Label("创建提醒", systemImage: "plus.circle.fill")
+                        Label("创建提醒".localized, systemImage: "plus.circle.fill")
                             .font(.headline)
                     }
                     .buttonStyle(.borderedProminent)
@@ -465,9 +465,9 @@ struct ReminderListView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 56))
                         .foregroundStyle(.green)
-                    Text("下载完成")
+                    Text("下载完成".localized)
                         .font(.title2.weight(.bold))
-                    Text("已保存到「文件」App：\n我的 iPhone → 循环提醒 → \(ipaURL.lastPathComponent)")
+                    Text(Localized("已保存到「文件」App：\n我的 iPhone → 循环提醒 → %@", ipaURL.lastPathComponent))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -475,7 +475,7 @@ struct ReminderListView: View {
 
                     // 主操作：分享给签名工具（AirDrop 到电脑等）
                     ShareLink(item: ipaURL) {
-                        Label("分享 ipa 给签名工具", systemImage: "square.and.arrow.up")
+                        Label("分享 ipa 给签名工具".localized, systemImage: "square.and.arrow.up")
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                     }
@@ -484,7 +484,7 @@ struct ReminderListView: View {
                     .padding(.horizontal)
 
                     // 引导说明
-                    Text("⚠️ 在「文件」App 里直接点击 .ipa 没反应是正常的——\niOS 不提供 .ipa 安装器，需要先签名。\n\n推荐流程：\n① 点上方「分享 ipa」→ AirDrop 到电脑\n② 用 AltStore / 爱思助手 / Sideloadly 签名安装\n③ 或先点「在文件 App 中查看」确认文件已下载")
+                    Text("⚠️ 在「文件」App 里直接点击 .ipa 没反应是正常的——\niOS 不提供 .ipa 安装器，需要先签名。\n\n推荐流程：\n① 点上方「分享 ipa」→ AirDrop 到电脑\n② 用 AltStore / 爱思助手 / Sideloadly 签名安装\n③ 或先点「在文件 App 中查看」确认文件已下载".localized)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)
@@ -496,7 +496,7 @@ struct ReminderListView: View {
                                 UIApplication.shared.open(dir)
                             }
                         } label: {
-                            Label("在文件 App 中查看", systemImage: "folder")
+                            Label("在文件 App 中查看".localized, systemImage: "folder")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
@@ -506,7 +506,7 @@ struct ReminderListView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 56))
                         .foregroundStyle(.orange)
-                    Text("下载失败")
+                    Text("下载失败".localized)
                         .font(.title2.weight(.bold))
                     Text(err)
                         .font(.subheadline)
@@ -517,11 +517,11 @@ struct ReminderListView: View {
                 Spacer()
             }
             .padding(.top, 30)
-            .navigationTitle("在线升级")
+            .navigationTitle("在线升级".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("好") {
+                    Button("好".localized) {
                         downloadedIpaURL = nil
                         downloadError = nil
                     }
@@ -700,7 +700,7 @@ struct ReminderListView: View {
         Button {
             ReminderEngine.shared.confirmReminder(reminder)
         } label: {
-            Label("完成", systemImage: "checkmark")
+            Label("完成".localized, systemImage: "checkmark")
         }
         .tint(.green)
     }
@@ -711,7 +711,7 @@ struct ReminderListView: View {
         Button {
             ReminderEngine.shared.reopenReminder(reminder)
         } label: {
-            Label("重开", systemImage: "arrow.uturn.backward")
+            Label("重开".localized, systemImage: "arrow.uturn.backward")
         }
         .tint(.orange)
     }
@@ -722,7 +722,7 @@ struct ReminderListView: View {
         Button(role: .destructive) {
             deleteReminder(reminder)
         } label: {
-            Label("删除", systemImage: "trash")
+            Label("删除".localized, systemImage: "trash")
         }
     }
 
@@ -821,7 +821,7 @@ struct DayTasksSheet: View {
             VStack(spacing: 0) {
                 if dateReminders.isEmpty {
                     Spacer()
-                    Text("这一天没有提醒")
+                    Text("这一天没有提醒".localized)
                         .font(.headline)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -861,7 +861,7 @@ struct OverviewCard: View {
                     Image(systemName: "bell.badge.fill")
                         .font(.title3)
                         .symbolEffect(.bounce, value: unhandledCount)
-                    Text("待处理 \(unhandledCount) 项")
+                    Text(Localized("待处理 %d 项", unhandledCount))
                         .font(.headline)
                 }
                 if let r = nextReminder {
@@ -870,7 +870,7 @@ struct OverviewCard: View {
                         .lineLimit(1)
                         .opacity(0.9)
                 } else {
-                    Text("暂无即将到来的提醒")
+                    Text("暂无即将到来的提醒".localized)
                         .font(.subheadline)
                         .opacity(0.9)
                 }

@@ -22,7 +22,7 @@ enum RuleWeek: Int, Codable, CaseIterable {
     case w3 = 3
     case w4 = 4
     case w5 = 5
-    var label: String { "第\(rawValue)周" }
+    var label: String { Localized("第%d周", rawValue) }
 }
 
 /// 规则提醒：星期几（1=周一 ... 7=周日）
@@ -212,14 +212,14 @@ final class Reminder {
         let df = DateFormatter(); df.locale = Locale(identifier: "zh_CN")
         switch kind {
         case .cycle:
-            if cycle == .custom { return "每 \(customDays) 天" }
-            return cycle.rawValue
+            if cycle == .custom { return Localized("每 %d 天", customDays) }
+            return cycle.rawValue.localized
         case .rule:
-            return "\(rulePeriod.rawValue)\(ruleWeek.label)\(ruleWeekday.label)"
+            return rulePeriod.rawValue.localized + ruleWeek.label.localized + ruleWeekday.label.localized
         case .date:
             switch dateType {
             case .solarBirthday:
-                return "\(targetMonth)月\(targetDay)日"
+                return Localized("%d月%d日", targetMonth, targetDay)
             case .lunarBirthday:
                 let monthNames = ["", "正月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "冬月", "腊月"]
                 let dayNames = ["", "初一", "初二", "初三", "初四", "初五", "初六", "初七", "初八", "初九", "初十",

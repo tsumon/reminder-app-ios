@@ -16,7 +16,7 @@ struct AISettingsView: View {
                 // ── API 配置 ──
                 Section {
                     HStack {
-                        Text("接口地址")
+                        Text("接口地址".localized)
                             .frame(width: 80, alignment: .leading)
                         TextField("https://api.openai.com/v1", text: $endpoint)
                             .keyboardType(.URL)
@@ -46,20 +46,20 @@ struct AISettingsView: View {
                     }
 
                     HStack {
-                        Text("模型")
+                        Text("模型".localized)
                             .frame(width: 80, alignment: .leading)
                         TextField("gpt-4o-mini", text: $model)
                             .autocapitalization(.none)
                             .disableAutocorrection(true)
                     }
                 } header: {
-                    Text("API 配置")
+                    Text("API 配置".localized)
                 } footer: {
-                    Text("支持任意兼容 OpenAI 格式的 API。填写 /v1 结尾的 base URL。")
+                    Text("支持任意兼容 OpenAI 格式的 API。填写 /v1 结尾的 base URL。".localized)
                 }
 
                 // ── 快速模板 ──
-                Section("快速模板") {
+                Section("快速模板".localized) {
                     ForEach(providerTemplates, id: \.name) { tpl in
                         Button {
                             endpoint = tpl.endpoint
@@ -85,7 +85,7 @@ struct AISettingsView: View {
                                 Text(p.name)
                                     .font(.subheadline.weight(.semibold))
                                 Spacer()
-                                Text("免费额度")
+                                Text("免费额度".localized)
                                     .font(.caption2)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
@@ -96,7 +96,7 @@ struct AISettingsView: View {
                             Text(p.freeTierInfo)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Button("获取 API Key →") {
+                            Button("获取 API Key →".localized) {
                                 UIApplication.shared.open(p.apiKeyURL)
                             }
                             .font(.caption.weight(.medium))
@@ -104,27 +104,27 @@ struct AISettingsView: View {
                         .padding(.vertical, 4)
                     }
                 } header: {
-                    Text("💰 免费获取 API Key")
+                    Text("💰 免费获取 API Key".localized)
                 } footer: {
-                    Text("以上服务均提供免费额度，注册后即可获取 API Key。获取后粘贴到上方配置即可使用。")
+                    Text("以上服务均提供免费额度，注册后即可获取 API Key。获取后粘贴到上方配置即可使用。".localized)
                 }
 
                 // ── 说明 ──
-                Section("说明") {
+                Section("说明".localized) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Label("语音或文字输入即可管理提醒", systemImage: "mic.fill")
-                        Label("说「每天提醒我喝水」自动创建", systemImage: "wand.and.stars")
-                        Label("说「确认喝水提醒」即可标记完成", systemImage: "checkmark.circle")
+                        Label("语音或文字输入即可管理提醒".localized, systemImage: "mic.fill")
+                        Label("说「每天提醒我喝水」自动创建".localized, systemImage: "wand.and.stars")
+                        Label("说「确认喝水提醒」即可标记完成".localized, systemImage: "checkmark.circle")
                     }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("AI 设置")
+            .navigationTitle("AI 设置".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("保存") {
+                    Button("保存".localized) {
                         settings.apiEndpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             ? "https://api.openai.com/v1" : endpoint
                         settings.apiKey = apiKey

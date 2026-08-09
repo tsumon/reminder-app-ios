@@ -80,7 +80,7 @@ struct AIChatView: View {
             // 底部输入栏
             inputBar
         }
-        .navigationTitle("AI 助手")
+        .navigationTitle("AI 助手".localized)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -111,9 +111,9 @@ struct AIChatView: View {
                 .font(.system(size: 48))
                 .foregroundStyle(.purple)
                 .padding(.top, 40)
-            Text("跟我说你想提醒什么")
+            Text("跟我说你想提醒什么".localized)
                 .font(.title3.weight(.semibold))
-            Text("\"每天8点提醒我吃药\"\n\"每年提醒我妈生日\"\n\"每周一早上开会\"")
+            Text("\"每天8点提醒我吃药\"\n\"每年提醒我妈生日\"\n\"每周一早上开会\"".localized)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -145,7 +145,7 @@ struct AIChatView: View {
                 .animation(.easeInOut, value: voice.isRecording)
 
                 // 文本输入
-                TextField("输入或点击麦克风说话...", text: $inputText, axis: .vertical)
+                TextField("输入或点击麦克风说话...".localized, text: $inputText, axis: .vertical)
                     .lineLimit(1...4)
                     .padding(10)
                     .background(Color(.systemGray6))
@@ -311,7 +311,7 @@ struct AIChatView: View {
         case "delete_reminder":
             return await handleDelete(args: args)
         default:
-            return "未知工具: \(name)"
+            return Localized("未知工具: %@", name)
         }
     }
 
@@ -441,7 +441,7 @@ struct AIChatView: View {
 
         await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
 
-        return "已创建提醒：「\(title)」"
+        return Localized("已创建提醒：「%@」", title)
     }
 
     private func handleList() async -> String {
@@ -449,7 +449,7 @@ struct AIChatView: View {
             reminders.map { " · \($0.title) [\($0.dateDisplayText)] — \($0.status.rawValue)" }
         }
         if list.isEmpty { return "当前没有提醒。" }
-        return "当前共有 \(list.count) 个提醒：\n\(list.joined(separator: "\n"))"
+        return Localized("当前共有 %d 个提醒：\n%@", list.count, list.joined(separator: "\n"))
     }
 
     private func handleConfirm(args: [String: Any]) async -> String {
@@ -457,27 +457,27 @@ struct AIChatView: View {
         // 空关键词 contains("") 恒 true 会命中第一条无关提醒 → 必须守卫
         guard !keyword.isEmpty else { return "请指定要确认的提醒标题（如：确认「交房租」）。" }
         guard let match = await MainActor.run(body: { reminders.first(where: { $0.title.lowercased().contains(keyword) }) })
-        else { return "未找到包含「\(keyword)」的提醒" }
+        else { return Localized("未找到包含「%@」的提醒", keyword) }
 
         await MainActor.run { ReminderEngine.shared.confirmReminder(match) }
-        return "已确认「\(match.title)」，下次提醒时间已更新。"
+        return Localized("已确认「%@」，下次提醒时间已更新。", match.title)
     }
 
     private func handleSnooze(args: [String: Any]) async -> String {
         let keyword = (args["title_keyword"] as? String ?? "").lowercased()
         guard !keyword.isEmpty else { return "请指定要推迟的提醒标题（如：推迟「交房租」）。" }
         guard let match = await MainActor.run(body: { reminders.first(where: { $0.title.lowercased().contains(keyword) }) })
-        else { return "未找到包含「\(keyword)」的提醒" }
+        else { return Localized("未找到包含「%@」的提醒", keyword) }
 
         await MainActor.run { ReminderEngine.shared.snoozeReminder(match) }
-        return "已推迟「\(match.title)」，15 分钟后再次提醒。"
+        return Localized("已推迟「%@」，15 分钟后再次提醒。", match.title)
     }
 
     private func handleDelete(args: [String: Any]) async -> String {
         let keyword = (args["title_keyword"] as? String ?? "").lowercased()
         guard !keyword.isEmpty else { return "请指定要删除的提醒标题（如：删除「交房租」）。" }
         guard let match = await MainActor.run(body: { reminders.first(where: { $0.title.lowercased().contains(keyword) }) })
-        else { return "未找到包含「\(keyword)」的提醒" }
+        else { return Localized("未找到包含「%@」的提醒", keyword) }
 
         let title = match.title
         await MainActor.run {
@@ -488,7 +488,7 @@ struct AIChatView: View {
         }
         // 删除前必须取消已排期的本地通知，否则到点仍会弹出（幽灵通知）
         await NotificationManager.shared.removePendingNotification(for: match.id)
-        return "已删除「\(title)」"
+        return Localized("已删除「%@」", title)
     }
 
     private func nearestFuture() -> Date {

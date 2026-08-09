@@ -125,13 +125,13 @@ struct CalendarCardView: View {
             } label: {
                 VStack(spacing: 3) {
                     HStack(spacing: 4) {
-                        Text("\(displayYear)年\(displayMonth)月")
+                        Text(Localized("%d年%d月", displayYear, displayMonth))
                             .font(.headline)
                         Image(systemName: "chevron.down")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
-                    Text("农历\(todayLunarText) · \(todayWeekdayText)\(todayHolidaySuffix)")
+                    Text(Localized("农历%@ · %@%@", todayLunarText, todayWeekdayText, todayHolidaySuffix))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -147,7 +147,7 @@ struct CalendarCardView: View {
                         goToToday()
                     }
                 } label: {
-                    Text("今天")
+                    Text("今天".localized)
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
@@ -389,7 +389,7 @@ struct MonthYearPickerSheet: View {
                     }
                     .buttonStyle(.plain)
 
-                    Text("\(String(year)) 年")
+                    Text(Localized("%@ 年", String(year)))
                         .font(.title3.weight(.bold))
                         .frame(minWidth: 90)
 
@@ -430,12 +430,12 @@ struct MonthYearPickerSheet: View {
 
                 // 确定 / 取消
                 HStack(spacing: 12) {
-                    Button("取消") { onClose() }
+                    Button("取消".localized) { onClose() }
                         .buttonStyle(.bordered)
                     Button {
                         onSelect(year, month)
                     } label: {
-                        Text("跳到 \(String(year)) 年 \(monthNames[month - 1])")
+                        Text(Localized("跳到 %@ 年 %@", String(year), monthNames[month - 1]))
                             .fontWeight(.semibold)
                     }
                     .buttonStyle(.borderedProminent)
@@ -443,11 +443,11 @@ struct MonthYearPickerSheet: View {
                 }
                 .padding(.bottom, 12)
             }
-            .navigationTitle("选择月份")
+            .navigationTitle("选择月份".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") { onSelect(year, month) }
+                    Button("完成".localized) { onSelect(year, month) }
                 }
             }
         }

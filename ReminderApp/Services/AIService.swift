@@ -193,7 +193,7 @@ enum AIError: LocalizedError {
         switch self {
         case .unauthorized: return "API Key 无效，请检查设置"
         case .httpError(let code, let body):
-            return "API 错误 \(code): \(body.prefix(200))"
+            return Localized("API 错误 %d: %@", code, String(body.prefix(200)))
         case .emptyResponse: return "AI 返回为空"
         case .invalidResponse: return "响应格式错误"
         }

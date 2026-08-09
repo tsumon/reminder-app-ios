@@ -26,7 +26,7 @@ struct StatsView: View {
             }
             .padding(16)
         }
-        .navigationTitle("统计洞察")
+        .navigationTitle("统计洞察".localized)
         // v1.9.8.1: iPad 大屏下大标题+玻璃背景形成大块空白，改 inline 更紧凑
         .navigationBarTitleDisplayMode(.inline)
         .glassNavigationBar()
@@ -83,7 +83,7 @@ struct StatsView: View {
                             .font(.system(size: 34, weight: .bold, design: .rounded))
                             .foregroundStyle(.secondary)
                     }
-                    Text("完成率")
+                    Text("完成率".localized)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -92,9 +92,9 @@ struct StatsView: View {
             .padding(.top, 8)
 
             HStack(spacing: 24) {
-                Label("确认 \(s.confirmCount)", systemImage: "checkmark.circle.fill")
+                Label(Localized("确认 %d", s.confirmCount), systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
-                Label("漏掉 \(s.missedCount)", systemImage: "bell.slash.fill")
+                Label(Localized("漏掉 %d", s.missedCount), systemImage: "bell.slash.fill")
                     .foregroundStyle(.red)
             }
             .font(.subheadline.weight(.medium))
@@ -112,7 +112,7 @@ struct StatsView: View {
             Image(systemName: icon)
                 .font(.title3)
                 .foregroundStyle(color)
-            Text("\(value) 天")
+            Text(Localized("%d 天", value))
                 .font(.title2.weight(.bold))
             Text(title)
                 .font(.caption)
@@ -128,11 +128,11 @@ struct StatsView: View {
     private func forgetHoursCard(_ s: StatsSummary) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("最常忘记时段", systemImage: "clock.badge.exclamationmark")
+                Label("最常忘记时段".localized, systemImage: "clock.badge.exclamationmark")
                     .font(.headline)
                 Spacer()
                 if s.forgetHours.isEmpty {
-                    Text("暂无数据")
+                    Text("暂无数据".localized)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -142,17 +142,17 @@ struct StatsView: View {
                 ForEach(Array(s.forgetHours.enumerated()), id: \.offset) { idx, item in
                     HStack(spacing: 10) {
                         Text(["🥇", "🥈", "🥉"][idx])
-                        Text("\(item.hour):00 前后")
+                        Text(Localized("%d:00 前后", item.hour))
                             .font(.subheadline.weight(.medium))
                         Spacer()
-                        Text("漏 \(item.count) 次")
+                        Text(Localized("漏 %d 次", item.count))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
                 }
             } else {
-                Text("坚持得很好，没有漏掉过提醒 🎉")
+                Text("坚持得很好，没有漏掉过提醒 🎉".localized)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 8)
@@ -167,7 +167,7 @@ struct StatsView: View {
     private func heatmapCard(_ s: StatsSummary) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("月历热力图", systemImage: "calendar")
+                Label("月历热力图".localized, systemImage: "calendar")
                     .font(.headline)
                 Spacer()
                 Button {
@@ -198,7 +198,7 @@ struct StatsView: View {
 
             // 图例
             HStack(spacing: 6) {
-                Text("少")
+                Text("少".localized)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 ForEach(0..<4, id: \.self) { lv in
@@ -206,7 +206,7 @@ struct StatsView: View {
                         .fill(heatColor(lv))
                         .frame(width: 14, height: 14)
                 }
-                Text("多")
+                Text("多".localized)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer()

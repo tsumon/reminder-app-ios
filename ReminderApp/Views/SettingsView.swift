@@ -21,11 +21,11 @@ struct SettingsView: View {
         // v1.9.8: NavigationStack 由 MainTabView 的 Tab 提供
         Form {
                 // MARK: 同步
-                Section("同步") {
+                Section("同步".localized) {
                     NavigationLink {
                         SyncSettingsView()
                     } label: {
-                        Label("WebDAV 同步", systemImage: "arrow.triangle.2.circlepath")
+                        Label("WebDAV 同步".localized, systemImage: "arrow.triangle.2.circlepath")
                     }
                 }
                 // MARK: AI
@@ -33,7 +33,7 @@ struct SettingsView: View {
                     NavigationLink {
                         AISettingsView()
                     } label: {
-                        Label("AI 助手设置", systemImage: "sparkles")
+                        Label("AI 助手设置".localized, systemImage: "sparkles")
                     }
                 }
 
@@ -41,7 +41,7 @@ struct SettingsView: View {
                 Section {
                     // 版本号
                     HStack {
-                        Label("版本", systemImage: "app.badge")
+                        Label("版本".localized, systemImage: "app.badge")
                         Spacer()
                         Text(appVersion)
                             .foregroundStyle(.secondary)
@@ -52,7 +52,7 @@ struct SettingsView: View {
                         checkForUpdates()
                     } label: {
                         HStack {
-                            Label("检查更新", systemImage: "arrow.clockwise")
+                            Label("检查更新".localized, systemImage: "arrow.clockwise")
                             Spacer()
                             if checking {
                                 ProgressView()
@@ -65,15 +65,15 @@ struct SettingsView: View {
                     NavigationLink {
                         ChangelogView()
                     } label: {
-                        Label("更新日志", systemImage: "doc.text")
+                        Label("更新日志".localized, systemImage: "doc.text")
                     }
                 } header: {
-                    Text("关于")
+                    Text("关于".localized)
                 } footer: {
-                    Text("支持循环提醒 · 同步 · 在线升级")
+                    Text("支持循环提醒 · 同步 · 在线升级".localized)
                 }
             }
-            .navigationTitle("设置")
+            .navigationTitle("设置".localized)
             // v1.9.8.1: iPad 大屏下大标题+玻璃背景形成大块空白，去背景（inline 标题原本就是）
             .navigationBarTitleDisplayMode(.inline)
             .glassNavigationBar()
@@ -86,7 +86,7 @@ struct SettingsView: View {
                 )
             ) {
                 if let info = updateInfo {
-                    Button("前往下载") {
+                    Button("前往下载".localized) {
                         if let ipa = info.ipaURL {
                             // 自签：下载到本地文件 App
                             downloading(to: info)
@@ -95,9 +95,9 @@ struct SettingsView: View {
                         }
                     }
                 }
-                Button("好", role: .cancel) { resultMsg = nil }
+                Button("好".localized, role: .cancel) { resultMsg = nil }
             } message: {
-                Text(resultMsg ?? "")
+                Text((resultMsg ?? "").localized)
             }
     }
 
@@ -113,11 +113,11 @@ struct SettingsView: View {
             checking = false
             if info.isNewer {
                 updateInfo = info
-                resultMsg = "发现新版本 v\(info.latestVersion)，当前 v\(UpdateService.currentVersion)。"
+                resultMsg = Localized("发现新版本 v%@，当前 v%@。", info.latestVersion, UpdateService.currentVersion)
             } else {
                 isError = false
                 updateInfo = nil
-                resultMsg = "当前已是最新版本 v\(UpdateService.currentVersion)"
+                resultMsg = Localized("当前已是最新版本 v%@", UpdateService.currentVersion)
             }
         }
     }
@@ -128,10 +128,10 @@ struct SettingsView: View {
             guard let ipa = info.ipaURL else { return }
             do {
                 let url = try await UpdateService.downloadIpa(from: ipa, version: info.latestVersion)
-                resultMsg = "已下载：\(url.lastPathComponent)。打开「文件」App → 我的 iPhone → 循环提醒 → 用 AltStore/爱思等自签工具安装。"
+                resultMsg = Localized("已下载：%@。打开「文件」App → 我的 iPhone → 循环提醒 → 用 AltStore/爱思等自签工具安装。", url.lastPathComponent)
             } catch {
                 isError = true
-                resultMsg = "下载失败：\(error.localizedDescription)"
+                resultMsg = Localized("下载失败：%@", error.localizedDescription)
             }
         }
     }
@@ -151,7 +151,7 @@ struct ChangelogView: View {
                 }
             }
         }
-        .navigationTitle("更新日志")
+        .navigationTitle("更新日志".localized)
         .navigationBarTitleDisplayMode(.inline)
     }
 

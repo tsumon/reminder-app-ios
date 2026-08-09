@@ -64,23 +64,23 @@ struct CreateReminderView: View {
                 naturalLanguageSection
 
                 // MARK: 基本信息
-                Section("提醒内容") {
-                    TextField("提醒标题", text: $title)
-                    TextField("备注（可选）", text: $note)
+                Section("提醒内容".localized) {
+                    TextField("提醒标题".localized, text: $title)
+                    TextField("备注（可选）".localized, text: $note)
                 }
 
                 // MARK: 提醒类型切换
                 Section {
-                    Picker("类型", selection: $kind) {
+                    Picker("类型".localized, selection: $kind) {
                         ForEach(ReminderKind.allCases, id: \.self) { k in
-                            Text(k.rawValue).tag(k)
+                            Text(k.rawValue.localized).tag(k)
                         }
                     }
                     .pickerStyle(.segmented)
 
-                    Picker("优先级", selection: $priority) {
+                    Picker("优先级".localized, selection: $priority) {
                         ForEach(ReminderPriority.allCases, id: \.self) { p in
-                            Text("\(p.emoji) \(p.rawValue)").tag(p)
+                            Text("\(p.emoji) \(p.rawValue.localized)").tag(p)
                         }
                     }
                     .pickerStyle(.menu)
@@ -103,20 +103,20 @@ struct CreateReminderView: View {
 
                 // MARK: 首次触发时间（周期类 + 规则类）
                 if kind == .cycle || kind == .rule {
-                    Section("首次提醒时间") {
-                        DatePicker("日期", selection: $triggerDate, displayedComponents: .date)
-                        DatePicker("时间", selection: $triggerTime, displayedComponents: .hourAndMinute)
+                    Section("首次提醒时间".localized) {
+                        DatePicker("日期".localized, selection: $triggerDate, displayedComponents: .date)
+                        DatePicker("时间".localized, selection: $triggerTime, displayedComponents: .hourAndMinute)
                     }
                 }
             }
-            .navigationTitle("新建提醒")
+            .navigationTitle("新建提醒".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button("取消".localized) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { saveReminder() }
+                    Button("保存".localized) { saveReminder() }
                         .fontWeight(.semibold)
                         .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
@@ -128,13 +128,13 @@ struct CreateReminderView: View {
 
     private var naturalLanguageSection: some View {
         Section {
-            TextField("明天下午3点开会 / 每周一9点晨会 / 农历8月15 中秋", text: $nlText, axis: .vertical)
+            TextField("明天下午3点开会 / 每周一9点晨会 / 农历8月15 中秋".localized, text: $nlText, axis: .vertical)
                 .lineLimit(1...2)
 
             Button {
                 applyNaturalLanguage()
             } label: {
-                Label("智能识别", systemImage: "sparkles")
+                Label("智能识别".localized, systemImage: "sparkles")
             }
             .disabled(nlText.trimmingCharacters(in: .whitespaces).isEmpty)
 
@@ -144,9 +144,9 @@ struct CreateReminderView: View {
                     .foregroundStyle(nlError ? Color.red : Color.secondary)
             }
         } header: {
-            Text("✨ 一句话创建")
+            Text("✨ 一句话创建".localized)
         } footer: {
-            Text("识别后会自动填好下面的表单，可再手动微调")
+            Text("识别后会自动填好下面的表单，可再手动微调".localized)
         }
     }
 
@@ -205,10 +205,10 @@ struct CreateReminderView: View {
     // MARK: - 周期 Section
 
     private var cycleSection: some View {
-        Section("提醒周期") {
-            Picker("周期", selection: $cycle) {
+        Section("提醒周期".localized) {
+            Picker("周期".localized, selection: $cycle) {
                 ForEach(ReminderCycle.allCases, id: \.self) { c in
-                    Text(c.rawValue).tag(c)
+                    Text(c.rawValue.localized).tag(c)
                 }
             }
             .pickerStyle(.menu)
@@ -218,8 +218,8 @@ struct CreateReminderView: View {
 
             if showCustomDaysField {
                 HStack {
-                    Text("自定义天数")
-                    TextField("例如 10", text: $customDays)
+                    Text("自定义天数".localized)
+                    TextField("例如 10".localized, text: $customDays)
                         .keyboardType(.numberPad)
                         .multilineTextAlignment(.trailing)
                 }
@@ -231,38 +231,38 @@ struct CreateReminderView: View {
 
     private var ruleSection: some View {
         Section {
-            Picker("频率", selection: $rulePeriod) {
+            Picker("频率".localized, selection: $rulePeriod) {
                 ForEach(RulePeriod.allCases, id: \.self) { p in
-                    Text(p.rawValue).tag(p)
+                    Text(p.rawValue.localized).tag(p)
                 }
             }
             .pickerStyle(.menu)
 
-            Picker("第几周", selection: $ruleWeek) {
+            Picker("第几周".localized, selection: $ruleWeek) {
                 ForEach(RuleWeek.allCases, id: \.self) { w in
-                    Text(w.label).tag(w)
+                    Text(w.label.localized).tag(w)
                 }
             }
             .pickerStyle(.menu)
 
-            Picker("星期几", selection: $ruleWeekday) {
+            Picker("星期几".localized, selection: $ruleWeekday) {
                 ForEach(RuleWeekday.allCases, id: \.self) { w in
-                    Text(w.label).tag(w)
+                    Text(w.label.localized).tag(w)
                 }
             }
             .pickerStyle(.menu)
 
             // 示例预览
             HStack {
-                Text("下次触发")
+                Text("下次触发".localized)
                 Spacer()
                 Text(rulePreview)
                     .foregroundStyle(.secondary)
             }
         } header: {
-            Text("规则设置（例如：每季度第2周周二）")
+            Text("规则设置（例如：每季度第2周周二）".localized)
         } footer: {
-            Text("按所选频率的第 N 周星期 X 触发提醒")
+            Text("按所选频率的第 N 周星期 X 触发提醒".localized)
         }
     }
 
@@ -287,10 +287,10 @@ struct CreateReminderView: View {
     private var dateSection: some View {
         Group {
             // 日期子类型
-            Section("日期类型") {
-                Picker("类型", selection: $dateType) {
+            Section("日期类型".localized) {
+                Picker("类型".localized, selection: $dateType) {
                     ForEach(DateReminderType.allCases, id: \.self) { t in
-                        Text(t.rawValue).tag(t)
+                        Text(t.rawValue.localized).tag(t)
                     }
                 }
                 .pickerStyle(.menu)
@@ -298,23 +298,23 @@ struct CreateReminderView: View {
 
             // 日期选择（新历生日 / 农历生日）
             if dateType != .holiday {
-                Section("日期") {
+                Section("日期".localized) {
                     HStack {
-                        Text("月份")
+                        Text("月份".localized)
                         Spacer()
                         Picker("", selection: $targetMonth) {
                             ForEach(months, id: \.self) { m in
-                                Text("\(m)月").tag(m)
+                                Text(Localized("%d月", m)).tag(m)
                             }
                         }
                         .pickerStyle(.menu)
                     }
                     HStack {
-                        Text("日期")
+                        Text("日期".localized)
                         Spacer()
                         Picker("", selection: $targetDay) {
                             ForEach(days, id: \.self) { d in
-                                Text("\(d)日").tag(d)
+                                Text(Localized("%d日", d)).tag(d)
                             }
                         }
                         .pickerStyle(.menu)
@@ -323,7 +323,7 @@ struct CreateReminderView: View {
                     // 农历日期预览
                     if dateType == .lunarBirthday {
                         HStack {
-                            Text("农历")
+                            Text("农历".localized)
                             Spacer()
                             Text(lunarPreview)
                                 .foregroundStyle(.secondary)
@@ -334,8 +334,8 @@ struct CreateReminderView: View {
 
             // 节假日选择
             if dateType == .holiday {
-                Section("选择节日") {
-                    Picker("节日", selection: $selectedHolidayID) {
+                Section("选择节日".localized) {
+                    Picker("节日".localized, selection: $selectedHolidayID) {
                         ForEach(HolidayService.allHolidays) { holiday in
                             Text("\(holiday.emoji) \(holiday.name)").tag(holiday.id)
                         }
@@ -344,9 +344,9 @@ struct CreateReminderView: View {
 
                     if let holiday = HolidayService.find(by: selectedHolidayID) {
                         HStack {
-                            Text("日期类型")
+                            Text("日期类型".localized)
                             Spacer()
-                            Text(holiday.isLunar ? "农历" : "公历")
+                            Text(holiday.isLunar ? "农历".localized : "公历".localized)
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -356,19 +356,19 @@ struct CreateReminderView: View {
             // 提前提醒天数
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("提前 \(Int(advanceDays)) 天开始提醒")
+                    Text(Localized("提前 %d 天开始提醒", Int(advanceDays)))
                         .font(.subheadline)
                     Slider(value: $advanceDays, in: 0...14, step: 1)
-                    Text("到期前每天上午发送预告通知，到期当天转为正式提醒")
+                    Text("到期前每天上午发送预告通知，到期当天转为正式提醒".localized)
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
             }
 
             // 提醒时间
-            Section("提醒时间") {
+            Section("提醒时间".localized) {
                 HStack {
-                    Text("小时")
+                    Text("小时".localized)
                     Spacer()
                     Picker("", selection: $reminderHour) {
                         ForEach(hours, id: \.self) { h in
@@ -378,7 +378,7 @@ struct CreateReminderView: View {
                     .pickerStyle(.menu)
                 }
                 HStack {
-                    Text("分钟")
+                    Text("分钟".localized)
                     Spacer()
                     Picker("", selection: $reminderMinute) {
                         ForEach(minutes, id: \.self) { m in
