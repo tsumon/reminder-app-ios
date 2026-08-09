@@ -1,3 +1,7 @@
+[🇨🇳 简体中文](README.md) · [🇺🇸 English](README.en.md) · [🇹🇼 繁體中文](README.zh-TW.md) · [🇯🇵 日本語](README.ja.md) · [🇰🇷 한국어](README.ko.md)
+
+---
+
 # 循环提醒器 - iOS 原生 App
 
 ![App UI](docs/screenshots/ios.png)
