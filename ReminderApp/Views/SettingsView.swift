@@ -10,6 +10,8 @@ struct SettingsView: View {
     @State private var checking = false
     @State private var resultMsg: String?
     @State private var isError = false
+    // v2.0.4: 手动语言切换（与 App 根视图共享同一 UserDefaults key，切换即全局重建）
+    @AppStorage(AppLanguageManager.key) private var appLanguage = AppLanguage.system.rawValue
 
     private var appVersion: String {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -20,6 +22,14 @@ struct SettingsView: View {
     var body: some View {
         // v1.9.8: NavigationStack 由 MainTabView 的 Tab 提供
         Form {
+                // MARK: 语言（v2.0.4：手动切换，跟随系统为默认）
+                Section("语言".localized) {
+                    Picker("语言".localized, selection: $appLanguage) {
+                        ForEach(AppLanguage.allCases) { lang in
+                            Text(lang.displayName).tag(lang.rawValue)
+                        }
+                    }
+                }
                 // MARK: 同步
                 Section("同步".localized) {
                     NavigationLink {

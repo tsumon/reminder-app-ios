@@ -6,6 +6,8 @@ struct ReminderApp: App {
     @StateObject private var notificationManager = NotificationManager.shared
     @StateObject private var reminderEngine = ReminderEngine.shared
     @Environment(\.scenePhase) private var scenePhase
+    // v2.0.4: 手动语言切换 —— 变化时通过 .id() 强制整棵视图树重建，新语言生效
+    @AppStorage(AppLanguageManager.key) private var appLanguage = AppLanguage.system.rawValue
 
     /// SwiftData 容器
     var sharedModelContainer: ModelContainer = {
@@ -22,7 +24,10 @@ struct ReminderApp: App {
     var body: some Scene {
         WindowGroup {
             // v1.9.8: 底部导航 Tab（首页/日历/统计/设置），对齐 README 设计图
-            MainTabView()                .onAppear {
+            // v2.0.4: .id(appLanguage) —— 语言切换后整树重建刷新文案
+            MainTabView()
+                .id(appLanguage)
+                .onAppear {
                     reminderEngine.configure(with: sharedModelContainer.mainContext)
                     // v1.8.7 任务⑥: 崩溃监控 + 埋点（启动最先安装）
                     TelemetryService.install()
