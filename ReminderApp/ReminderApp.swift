@@ -1,6 +1,24 @@
 import SwiftUI
 import SwiftData
 
+// MARK: - SwiftData 迁移（v2.0.15: 显式声明 schema v1 + 空迁移计划）
+// 之前容器用裸 `Schema([Reminder.self, ReminderRecord.self])`，无 VersionedSchema/MigrationPlan：
+// 一旦未来模型改非可选字段/加关系，老用户升级时容器创建失败直接 fatalError（启动即崩）。
+// 现在显式声明 v1 为唯一 schema、stages 为空 = 不触发任何迁移（同一 schema，老数据原样打开），
+// 为未来的 v2 迁移铺路，是最便宜的保险。
+
+/// Schema v1：当前模型（Reminder + ReminderRecord），字段与既有持久化数据完全一致
+enum ReminderSchemaV1: VersionedSchema {
+    static var versionIdentifier: Schema.Version { .init(1, 0, 0) }
+    static var models: [any PersistentModel.Type] { [Reminder.self, ReminderRecord.self] }
+}
+
+/// 迁移计划：v1 为唯一 schema，无迁移阶段
+enum ReminderMigrationPlan: SchemaMigrationPlan {
+    static var schemas: [any VersionedSchema.Type] { [ReminderSchemaV1.self] }
+    static var stages: [MigrationStage] { [] }
+}
+
 @main
 struct ReminderApp: App {
     @StateObject private var notificationManager = NotificationManager.shared
@@ -11,13 +29,18 @@ struct ReminderApp: App {
 
     /// SwiftData 容器
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([Reminder.self, ReminderRecord.self])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        // Schema(versionedSchema:) 显式走 v1 版本化 schema（ReminderSchemaV1.schema 属性不存在，
+        // 必须经 Schema 构造器；ModelConfiguration(for:) 亦可，此处用最显式写法）
+        let config = ModelConfiguration(schema: Schema(versionedSchema: ReminderSchemaV1.self), isStoredInMemoryOnly: false)
 
         do {
-            return try ModelContainer(for: schema, configurations: [config])
+            return try ModelContainer(
+                for: ReminderSchemaV1.self,
+                migrationPlan: ReminderMigrationPlan.self,
+                configurations: [config]
+            )
         } catch {
-            fatalError("SwiftData 初始化失败: \(error.localizedDescription)")
+            fatalError("SwiftData 初始化失败: \(error.localizedDescription)。若为升级后首次打开导致，请备份数据后重装 App。")
         }
     }()
 
@@ -38,6 +61,8 @@ struct ReminderApp: App {
                     if phase == .active {
                         Task {
                             await syncWidgetCompletedReminders()
+                            // v2.0.16: 小组件「稍后」标记同步（snooze + 重排）
+                            await syncWidgetSnoozedReminders()
                             // 冷启动后经通知按钮拉起：排空入队的通知动作（确认/稍后/消除）
                             reminderEngine.drainPendingNotificationActions()
                             // P1-2: 后台期间系统按预排时间发过的重试通知，回前台补齐库内阶段
@@ -58,10 +83,12 @@ struct ReminderApp: App {
                     if let reminders = try? sharedModelContainer.mainContext.fetch(descriptor) {
                         await reminderEngine.checkMissedReminders(reminders: reminders)
                     }
-                    // P1-2: 为进入 7 天窗口的提醒补排递增重试链（固定标识符，重复调用只覆盖）
+                    // P1-2: 为进入 31 天窗口（及季/年周期）的提醒补排递增重试链（固定标识符，重复调用只覆盖）
                     await reminderEngine.ensureRetryChains()
                     // v1.8.7: 同步小组件「完成」标记 → confirm + 重排通知 → 清空
                     await syncWidgetCompletedReminders()
+                    // v2.0.16: 同步小组件「稍后」标记 → snooze + 重排通知 → 清空
+                    await syncWidgetSnoozedReminders()
                     // v1.8.7 任务②: 后台刷新联网节假日数据（当年 + 下一年，跨年预取）
                     let year = Calendar.current.component(.year, from: Date())
                     async let r1 = HolidayRemoteService.refresh(year: year)
@@ -97,6 +124,26 @@ struct ReminderApp: App {
 
         // 全部处理完再清空标记，避免 App 启动后遗留脏数据
         WidgetSnapshot.clearCompletedReminderIDs(ids)
+    }
+
+    /// 把用户在小组件上点「稍后」的提醒同步到数据库
+    /// （v2.0.16：AppIntent 只写 App Group 标记，这里做真正的 snooze + 通知重排）
+    private func syncWidgetSnoozedReminders() async {
+        let ids = WidgetSnapshot.snoozedReminderIDs()
+        guard !ids.isEmpty else { return }
+
+        let context = sharedModelContainer.mainContext
+        for id in ids {
+            guard let uuid = UUID(uuidString: id) else { continue }
+            let descriptor = FetchDescriptor<Reminder>(predicate: #Predicate { $0.id == uuid })
+            guard let reminder = try? context.fetch(descriptor).first else { continue }
+            // .task 继承 MainActor 上下文，snoozeReminder（引擎方法）可直接调用
+            reminderEngine.snoozeReminder(reminder)
+            print("[WidgetSync] 小组件稍后已落库: \(reminder.title)")
+        }
+
+        // 全部处理完再清空标记，避免 App 启动后遗留脏数据
+        WidgetSnapshot.clearSnoozedReminderIDs(ids)
     }
 
 #if DEBUG

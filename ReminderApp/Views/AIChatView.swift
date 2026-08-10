@@ -325,6 +325,10 @@ struct AIChatView: View {
         let note = args["note"] as? String ?? ""
         let cycle = args["cycle"] as? String ?? "weekly"
         let customDays = args["custom_days"] as? Int ?? 0
+        // C2: AI 创建 custom 周期必须 customDays>=1（对齐 Android handleCreate 守卫），否则 interval=0 → 确认后死循环
+        if cycle == "custom", customDays < 1 {
+            return "自定义周期需要指定间隔天数（如：每3天），custom_days 至少为 1。"
+        }
         let dateType = args["date_type"] as? String
         // 不能给月/日一个「看起来合法」的缺省值（如 1），
         // 否则模型漏传参数时会被静默当成 1月1日，绕过下面的合法性守卫。
@@ -391,7 +395,8 @@ struct AIChatView: View {
             case "monthly":   return .monthly
             case "quarterly": return .quarterly
             case "yearly":    return .yearly
-            default:          return .custom
+            case "custom":    return .custom
+            default:          return .weekly
             }
         }()
 
@@ -500,12 +505,18 @@ struct AIChatView: View {
         // 预处理参数（custom 周期必须 custom_days >= 1）
         let cycleRaw = args["cycle"] as? String
         let customDaysRaw = (args["custom_days"] as? Int) ?? (args["custom_days"] as? Double).map(Int.init)
-        if cycleRaw == "custom" && (customDaysRaw ?? 0) < 1 {
-            return "自定义周期需要指定间隔天数（如：每3天），custom_days 至少为 1。"
-        }
 
         guard let match = await MainActor.run(body: { reminders.first(where: { $0.title.lowercased().contains(keyword) }) })
         else { return Localized("未找到包含「%@」的提醒", keyword) }
+
+        // C3: 用「生效后的周期」判断，而非「本次传入的周期」——
+        // 提醒已是 custom 时，模型只传 custom_days:0 而不传 cycle，旧守卫(cycleRaw=="custom")会被绕过，落入 C2 后果链
+        // D2: 未传 custom_days 不算「传了 0」——已建 custom 提醒只改标题/时间时应放行
+        // （Android `?: match.customDays` 保留原值不受影响，iOS 需显式判 nil）
+        let effectiveCycle = cycleRaw ?? match.cycle.rawValue
+        if args["custom_days"] != nil, effectiveCycle == "custom", (customDaysRaw ?? 0) < 1 {
+            return "自定义周期需要指定间隔天数（如：每3天），custom_days 至少为 1。"
+        }
 
         let updatedTitle = await MainActor.run {
             // 字符串字段
@@ -564,6 +575,8 @@ struct AIChatView: View {
             if let ah = (args["advance_days"] as? Int) ?? (args["advance_days"] as? Double).map(Int.init) {
                 match.advanceDays = ah
             }
+            let hasHour = (args["reminder_hour"] as? Int) != nil || (args["reminder_hour"] as? Double) != nil
+            let hasMinute = (args["reminder_minute"] as? Int) != nil || (args["reminder_minute"] as? Double) != nil
             if let rh = (args["reminder_hour"] as? Int) ?? (args["reminder_hour"] as? Double).map(Int.init) {
                 match.reminderHour = rh
             }
@@ -573,7 +586,8 @@ struct AIChatView: View {
 
             // Bug 3: cycle 类需同步改写锚点时分，否则 AI 改提醒时间对 cycle 无效
             // （date/rule 分支已用 comps.hour = reminderHour，仅 cycle 走 firstTriggerAt 锚点）
-            if match.kind == .cycle, match.cycle != .once {
+            // A7: 仅当本次 AI 真传了时分字段才重写锚点，避免「只改标题」也被对齐一次、静默改变触发时分
+            if match.kind == .cycle, match.cycle != .once, (hasHour || hasMinute) {
                 var anchorComps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: match.firstTriggerAt)
                 anchorComps.hour = match.reminderHour
                 anchorComps.minute = match.reminderMinute
@@ -581,6 +595,14 @@ struct AIChatView: View {
                 if let newAnchor = Calendar.current.date(from: anchorComps) {
                     match.firstTriggerAt = newAnchor
                 }
+            }
+
+            // C1: AI 修改已逾期提醒时，必须重新激活状态——否则下方 scheduleAllNotifications 的
+            // 幽灵守卫(status==.overdue 直接 return)会拦掉全部通知，导致「AI 说改好了，提醒却永久不响」
+            if match.status == .overdue {
+                match.status = .pending
+                match.retryStage = 0
+                match.lastRetryAt = nil
             }
 
             // 重算下次触发时间（按新参数）并保存

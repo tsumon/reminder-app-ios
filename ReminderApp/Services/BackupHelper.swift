@@ -38,6 +38,8 @@ enum BackupHelper {
     struct BackupRoot: Codable {
         var version: Int
         var exportedAt: Double
+        /// v2.0.17: 本地单调版本（判新主依据；Optional 兼容旧文件缺字段）
+        var dataVersion: Int?
         var reminders: [BackupItem]
     }
 
@@ -68,11 +70,17 @@ enum BackupHelper {
                 priority: r.priority.rawValue == "高" ? "high" : (r.priority.rawValue == "低" ? "low" : "normal"),
                 firstTriggerAt: r.firstTriggerAt.timeIntervalSince1970 * 1000,
                 nextTriggerAt: r.nextTriggerAt.timeIntervalSince1970 * 1000,
-                status: r.status.rawValue == "等待中" ? "pending" : (r.status.rawValue == "已完成" ? "confirmed" : "notifying"),
+                status: statusCode(r.status),
                 isActive: r.isEnabled
             )
         }
-        let root = BackupRoot(version: 1, exportedAt: exportedAt, reminders: items)
+        let root = BackupRoot(
+            version: 1,
+            exportedAt: exportedAt,
+            // v2.0.17: 单调版本随导出带上（判新主依据）
+            dataVersion: SyncStore.localVersion,
+            reminders: items
+        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(root) else { return "{}" }
@@ -86,6 +94,15 @@ enum BackupHelper {
             return nil
         }
         return root.exportedAt
+    }
+
+    /// 读取 JSON 中的 dataVersion（v2.0.17 单调版本；旧文件缺字段返回 0）
+    static func dataVersion(of json: String) -> Int {
+        guard let data = json.data(using: .utf8),
+              let root = try? JSONDecoder().decode(BackupRoot.self, from: data) else {
+            return 0
+        }
+        return root.dataVersion ?? 0
     }
 
     /// 从 JSON 解析提醒列表
@@ -135,13 +152,31 @@ enum BackupHelper {
             inserted.append(reminder)
             importedCount += 1
         }
-        try? context.save()
+        // E3: save 失败不能 touch——否则本地版本抬高 → 下轮 WebDAV 判「本地新」→
+        // 上传不含这批提醒的 JSON 覆盖远程（丢数据链）；导入应报失败
+        do {
+            try context.save()
+        } catch {
+            return ImportResult(imported: 0, skipped: 0, inserted: [])
+        }
         SyncStore.touchLocalChange()
 
         return ImportResult(imported: importedCount, skipped: skippedCount, inserted: inserted)
     }
 
     // MARK: - 编码映射（与 Android 的字符串值对齐）
+
+    /// E5: 导出状态写合法值——原实现把 active/snoozed/overdue 全写成 "notifying"（非法），
+    /// 导入时落 default→pending：重试中状态丢失、逾期提醒被当成待触发复活
+    private static func statusCode(_ s: ReminderStatus) -> String {
+        switch s {
+        case .pending:   return "pending"
+        case .active:    return "active"
+        case .snoozed:   return "snoozed"
+        case .confirmed: return "confirmed"
+        case .overdue:   return "overdue"
+        }
+    }
 
     private static func cycleCode(_ c: ReminderCycle) -> String {
         switch c {

@@ -3,9 +3,10 @@ import Foundation
 /// 统计洞察汇总（v1.8.7 任务③）
 ///
 /// 数据完全本地：复用 ReminderRecord（操作记录）按日聚合，无网络依赖。
-/// 口径（双端一致）：
-/// - 完成率 = confirm 次数 / (confirm + trigger/notified 次数)
-///   （notified/trigger = 提醒过但未及时确认，即"漏掉"）
+/// 口径（双端一致，v2.0.17 落文档防漂移）：
+/// - 完成率 = 确认天数 / (确认天数 + 漏掉天数)
+/// - 「漏掉」= 到点未确认进入重试才算（iOS escalateRetry 写 trigger / Android Worker escalate 写 notified）；
+///   按时确认**不**记漏 —— 否则每次发通知都记一条，完成率恒 ≈50%
 /// - 连续打卡 = confirm 记录按天去重后的连续天数（当前/最长）
 /// - 最常忘记时段 = trigger(未确认) 记录按小时分布 Top3
 /// - 月历热力图 = 每月每天 confirm 次数
@@ -25,8 +26,8 @@ struct StatsSummary {
 enum StatsService {
 
     static func summarize(records: [ReminderRecord]) -> StatsSummary {
-        let confirmDates = Set(records.filter { $0.type == "confirm" }.map { startOfDay($0.performedAt) })
-        let missed = records.filter { $0.type == "trigger" }
+        let confirmDates = Set(records.filter { $0.type == ReminderRecordType.confirm.rawValue }.map { startOfDay($0.performedAt) })
+        let missed = records.filter { $0.type == ReminderRecordType.trigger.rawValue }
         // v1.9.6 fix: missed 按天去重——同一次漏掉会有 4 条重试阶段 trigger 记录，
         // 直接用 count 会把一次漏记成 4 次，完成率严重失真（与 confirm 按天去重口径对齐）
         let missedDates = Set(missed.map { startOfDay($0.performedAt) })
@@ -56,7 +57,7 @@ enum StatsService {
         var heatmap: [String: Int] = [:]
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd"
-        for r in records where r.type == "confirm" {
+        for r in records where r.type == ReminderRecordType.confirm.rawValue {
             let key = df.string(from: r.performedAt)
             heatmap[key, default: 0] += 1
         }

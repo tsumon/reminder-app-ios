@@ -233,11 +233,11 @@ struct ReminderDetailView: View {
 
             ForEach(reminder.records.sorted(by: { $0.performedAt > $1.performedAt }).prefix(20), id: \.id) { record in
                 HStack {
-                    Image(systemName: record.type == "confirm" ? "checkmark.circle" : record.type == "snooze" ? "clock" : "bell")
-                        .foregroundStyle(record.type == "confirm" ? .green : record.type == "snooze" ? .orange : .blue)
+                    Image(systemName: record.type == ReminderRecordType.confirm.rawValue ? "checkmark.circle" : record.type == ReminderRecordType.snooze.rawValue ? "clock" : "bell")
+                        .foregroundStyle(record.type == ReminderRecordType.confirm.rawValue ? .green : record.type == ReminderRecordType.snooze.rawValue ? .orange : .blue)
                         .frame(width: 24)
 
-                    Text(record.type == "confirm" ? "确认完成" : record.type == "snooze" ? "稍后提醒" : "系统提醒")
+                    Text(record.type == ReminderRecordType.confirm.rawValue ? "确认完成" : record.type == ReminderRecordType.snooze.rawValue ? "稍后提醒" : "系统提醒")
                         .font(.subheadline)
 
                     Spacer()

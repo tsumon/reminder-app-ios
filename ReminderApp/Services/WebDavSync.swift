@@ -9,7 +9,8 @@ enum WebDavSync {
     private static let remoteFileName = "reminder_backup.json"
 
     enum SyncResult {
-        case success
+        /// conflict=true：检测到上次同步后双端都有修改，已按版本覆盖（UI 提示用户，v2.0.16）
+        case success(conflict: Bool)
         case failure(String)
     }
 
@@ -21,20 +22,24 @@ enum WebDavSync {
         do {
             let remoteJson = try await download()
 
-            // ⚠️ localVersion 必须在 download() 之后读取：网络 await 期间主线程
+            // ⚠️ 版本必须在 download() 之后读取：网络 await 期间主线程
             // 用户可能新建/编辑提醒（touchLocalChange），用旧快照比较会把新数据误判为「远程新」而覆盖丢失
-            let localVersion = SyncStore.lastLocalChange // 秒
+            // v2.0.17: 单调版本（localVer）为判新主依据；墙钟（localChange）仅兜底（旧文件/升级前本地无版本）
+            let localChange = SyncStore.lastLocalChange // 秒
+            let localVer = SyncStore.localVersion
 
             guard let remoteJson else {
                 // 远程无文件 → 上传本地
-                let exportedAt = max(Date().timeIntervalSince1970, localVersion + 1)
+                let exportedAt = max(Date().timeIntervalSince1970, localChange + 1)
                 let uploadJson = BackupHelper.exportJSON(reminders, exportedAt: exportedAt)
                 try await upload(uploadJson)
                 // 对齐版本，但要防止「回退」：上传期间用户编辑会抬高 lastLocalChange，
                 // 直接 set 会把版本回退成旧值，导致该编辑永远不同步
                 SyncStore.setLastLocalChange(max(exportedAt, SyncStore.lastLocalChange))
+                // v2.0.17: 记录已同步版本，防下轮误判（上传 dataVersion = 当前本地版本）
+                SyncStore.setLastSyncVersion(SyncStore.localVersion)
                 SyncStore.setLastSync()
-                return .success
+                return .success(conflict: false)
             }
 
             guard let rawRemoteVersion = BackupHelper.exportedAt(of: remoteJson) else {
@@ -42,8 +47,15 @@ enum WebDavSync {
             }
             // 兼容 Android 的毫秒时间戳
             let remoteVersion = rawRemoteVersion > 1e11 ? rawRemoteVersion / 1000 : rawRemoteVersion
+            // v2.0.17: 远程单调版本（旧文件无 dataVersion → 0，判新回退时间戳）
+            let remoteDataVersion = BackupHelper.dataVersion(of: remoteJson)
 
-            if remoteVersion > localVersion {
+            // v2.0.17 判新：双方都有单调版本 → 版本比较；任一为 0（旧文件/升级前）→ 时间戳兜底
+            let versionedCompare = remoteDataVersion > 0 && localVer > 0
+            let remoteIsNewer = versionedCompare ? remoteDataVersion > localVer : remoteVersion > localChange
+            let localIsNewer = versionedCompare ? localVer > remoteDataVersion : localChange > remoteVersion
+
+            if remoteIsNewer {
                 // 远程新 → 下载覆盖本地
                 guard let items = BackupHelper.importJSON(remoteJson) else {
                     return .failure("远程文件解析失败")
@@ -52,21 +64,37 @@ enum WebDavSync {
                 guard replaceLocal(reminders, items: items, in: modelContext) else {
                     return .failure("本地数据写入失败，未应用远程数据，请检查存储空间后重试")
                 }
+                // v2.0.17: 下载后本地数据 = 远程数据 → 单调版本对齐远程（旧文件 dataVersion=0 时保持本地版本）
+                if remoteDataVersion > 0 {
+                    SyncStore.setLocalVersion(remoteDataVersion)
+                }
+                // v2.0.16/17 冲突提示：上次同步后本地也改过（版本化判定；旧文件回退不提示）
+                let conflict = SyncStore.lastSyncVersion > 0 &&
+                    localVer > SyncStore.lastSyncVersion &&
+                    remoteDataVersion > SyncStore.lastSyncVersion
+                if remoteDataVersion > 0 {
+                    SyncStore.setLastSyncVersion(remoteDataVersion)
+                }
                 SyncStore.setLastLocalChange(remoteVersion)
                 SyncStore.setLastSync()
-                return .success
-            } else if localVersion > remoteVersion {
+                return .success(conflict: conflict)
+            } else if localIsNewer {
                 // 本地新 → 上传
                 let exportedAt = max(Date().timeIntervalSince1970, remoteVersion + 1)
                 let uploadJson = BackupHelper.exportJSON(reminders, exportedAt: exportedAt)
                 try await upload(uploadJson)
+                // v2.0.16/17 冲突提示：上次同步后远程也改过（版本化判定）
+                let conflict = SyncStore.lastSyncVersion > 0 &&
+                    localVer > SyncStore.lastSyncVersion &&
+                    remoteDataVersion > SyncStore.lastSyncVersion
                 // 同上：max 防止上传期间新编辑的版本被回退
                 SyncStore.setLastLocalChange(max(exportedAt, SyncStore.lastLocalChange))
+                SyncStore.setLastSyncVersion(localVer)
                 SyncStore.setLastSync()
-                return .success
+                return .success(conflict: conflict)
             } else {
                 SyncStore.setLastSync()
-                return .success // 无变更
+                return .success(conflict: false) // 无变更
             }
         } catch {
             return .failure(friendlyMessage(error))
@@ -119,7 +147,7 @@ enum WebDavSync {
 
         // 3. 清理测试文件（失败也不影响结论）
         try? await deleteTestFile(at: testURL, auth: auth)
-        return .success
+        return .success(conflict: false)
     }
 
     /// PROPFIND 验证读权限
@@ -185,6 +213,8 @@ enum WebDavSync {
             switch se {
             case .invalidURL:
                 return "WebDAV 地址无效。示例：https://dav.jianguoyun.com/dav/（坚果云必须以 /dav/ 结尾）"
+            case .invalidUTF8:
+                return "远程文件不是有效文本（文件可能已损坏），未覆盖本地数据"
             case .http(let code):
                 switch code {
                 case 401:
@@ -288,7 +318,11 @@ enum WebDavSync {
         guard (200...299).contains(code) else {
             throw SyncError.http(code)
         }
-        return String(data: data, encoding: .utf8)
+        // E4: 解码失败必须抛错而不是返回 nil——nil 会被 syncNow 当「远程无文件」→ 上传覆盖唯一备份
+        guard let decoded = String(data: data, encoding: .utf8) else {
+            throw SyncError.invalidUTF8
+        }
+        return decoded
     }
 
     private static func upload(_ json: String) async throws {
@@ -332,11 +366,13 @@ enum WebDavSync {
     private enum SyncError: LocalizedError {
         case invalidURL
         case http(Int)
+        case invalidUTF8
 
         var errorDescription: String? {
             switch self {
             case .invalidURL: return "WebDAV 地址无效"
             case .http(let code): return "HTTP \(code)"
+            case .invalidUTF8: return "远程文件不是有效文本（文件可能已损坏），未覆盖本地数据"
             }
         }
     }

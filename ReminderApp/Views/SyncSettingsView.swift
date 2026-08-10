@@ -121,9 +121,10 @@ struct SyncSettingsView: View {
             let result = await WebDavSync.syncNow(reminders: reminders, modelContext: modelContext)
             syncing = false
             switch result {
-            case .success:
+            case .success(let conflict):
                 isError = false
-                resultMsg = "同步完成"
+                // v2.0.16: 双端都改过 → 提示已按版本覆盖
+                resultMsg = conflict ? "已用最新版本覆盖（检测到双端都有修改，未合并）" : "同步完成"
             case .failure(let msg):
                 isError = true
                 resultMsg = msg

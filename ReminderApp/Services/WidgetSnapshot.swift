@@ -62,5 +62,31 @@ enum WidgetSnapshot {
         let remaining = Set(existing).subtracting(ids)
         defaults?.set(Array(remaining), forKey: completedIDsKey)
     }
+
+    // MARK: - 小组件「稍后提醒」标记（v2.0.16）
+    // 点击小组件稍后按钮 → AppIntent 把提醒 ID 记到 App Group；
+    // App 下次启动时读取并 snooze（推迟 15 分钟 + 重排），然后清空。
+
+    private static let snoozedIDsKey = "widget_snoozed_ids"
+
+    /// 标记一个提醒已在小组件上推迟（幂等）
+    static func markSnoozed(reminderID: String) {
+        var ids = snoozedReminderIDs()
+        ids.insert(reminderID)
+        defaults?.set(Array(ids), forKey: snoozedIDsKey)
+    }
+
+    /// 读取待同步的已推迟提醒 ID 集合
+    static func snoozedReminderIDs() -> Set<String> {
+        guard let raw = defaults?.array(forKey: snoozedIDsKey) as? [String] else { return [] }
+        return Set(raw)
+    }
+
+    /// 清空推迟标记（App 同步落库后调用）
+    static func clearSnoozedReminderIDs(_ ids: Set<String>) {
+        guard let existing = defaults?.array(forKey: snoozedIDsKey) as? [String] else { return }
+        let remaining = Set(existing).subtracting(ids)
+        defaults?.set(Array(remaining), forKey: snoozedIDsKey)
+    }
 }
 

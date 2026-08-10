@@ -88,18 +88,26 @@ enum ReminderStatus: String, Codable {
     case overdue   = "已过期"    // 超过递增重试上限
 }
 
+/// 操作记录类型常量（v2.0.16 枚举化，防 "notifying" 式拼写漂移；存储值勿改——已有历史数据落库）
+enum ReminderRecordType: String {
+    case confirm = "confirm"
+    case snooze = "snooze"
+    case trigger = "trigger"
+    case advance = "advance"
+}
+
 /// 确认/操作记录
 @Model
 final class ReminderRecord {
     var id: UUID
     var performedAt: Date
-    var type: String        // "confirm" | "snooze" | "trigger" | "advance"
+    var type: String        // 取值见 ReminderRecordType（统计口径用）
     var note: String
 
-    init(id: UUID = UUID(), performedAt: Date = Date(), type: String, note: String = "") {
+    init(id: UUID = UUID(), performedAt: Date = Date(), type: ReminderRecordType, note: String = "") {
         self.id = id
         self.performedAt = performedAt
-        self.type = type
+        self.type = type.rawValue
         self.note = note
     }
 }

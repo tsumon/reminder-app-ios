@@ -423,7 +423,8 @@ struct CreateReminderView: View {
             merged.minute = timeComponents.minute
 
             let firstTrigger = calendar.date(from: merged) ?? triggerDate
-            let days = cycle == .custom ? (Int(customDays) ?? 0) : 0
+            // C2: 用户选「自定义」但天数留空时，Int("") 得 0 → 周期锚点退回过去 → 确认后重试轰炸；兜底为 1
+            let days = cycle == .custom ? max(1, Int(customDays) ?? 1) : 0
 
             reminder = Reminder(
                 title: title.trimmingCharacters(in: .whitespaces),

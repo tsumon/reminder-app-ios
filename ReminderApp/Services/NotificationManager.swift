@@ -155,6 +155,7 @@ final class NotificationManager: NSObject, ObservableObject {
         }
         guard pending.count < 50 else {
             print("[NotificationManager] pending 已达 \(pending.count) 条，跳过重试链预排")
+            TelemetryService.logEvent("retry_chain_quota_exhausted", params: ["pending": "\(pending.count)"])
             return
         }
 

@@ -304,13 +304,19 @@ final class ReminderEngine: ObservableObject {
             // cyclesPassed 恒为 1，会把首个触发多推一个整周期
             // （daily 晚 1 天 / weekly 晚 7 天 / biweekly 晚 14 天…）。
             // 与月/季/年分支、Android 端实现保持一致。
-            var next = anchor
-            var guardCount = 0
+            // 先用整数除法估算要跳过的整周期数（对齐 Android 的整数累加），
+            // 既不逐日 3650 次循环（主线程卡顿），也不会在极端锚点（早于 10 年，
+            // 如旧备份恢复 / WebDAV 异常锚点）被 3650 上限截断而返回过去时间。
+            let daySeconds = Double(days) * 86400
+            var cyclesPassed = 0
+            if anchor < confirmedDate {
+                cyclesPassed = max(0, Int((confirmedDate.timeIntervalSince(anchor) / daySeconds).rounded(.up)))
+            }
+            guard var next = Calendar.current.date(byAdding: .day, value: cyclesPassed * days, to: anchor) else { return anchor }
+            // 微调：确保严格落在 confirmedDate 之后（兼容时分边界）
             while next <= confirmedDate {
                 guard let stepped = Calendar.current.date(byAdding: .day, value: days, to: next) else { break }
                 next = stepped
-                guardCount += 1
-                if guardCount > 3650 { break } // 防御：最多推进约 10 年
             }
             return next
         }
@@ -402,7 +408,7 @@ final class ReminderEngine: ObservableObject {
 
         let now = Date()
 
-        let record = ReminderRecord(type: "confirm", note: "手动确认")
+        let record = ReminderRecord(type: .confirm, note: "手动确认")
         reminder.records.append(record)
 
         // v1.8.7 任务⑥: 埋点
@@ -480,7 +486,7 @@ final class ReminderEngine: ObservableObject {
         let now = Date()
         let snoozeAt = Calendar.current.date(byAdding: .minute, value: 15, to: now) ?? now
 
-        let record = ReminderRecord(type: "snooze", note: "推迟15分钟")
+        let record = ReminderRecord(type: .snooze, note: "推迟15分钟")
         reminder.records.append(record)
 
         reminder.nextTriggerAt = snoozeAt
@@ -521,7 +527,7 @@ final class ReminderEngine: ObservableObject {
 
         reminder.updatedAt = now
 
-        let record = ReminderRecord(type: "trigger", note: Localized("重试阶段 %d", reminder.retryStage))
+        let record = ReminderRecord(type: .trigger, note: Localized("重试阶段 %d", reminder.retryStage))
         reminder.records.append(record)
 
         try? context.save()
@@ -568,10 +574,12 @@ final class ReminderEngine: ObservableObject {
         try? await NotificationManager.shared.addDdayNotification(for: reminder, badgeCount: count)
 
         // P1-2: 预排递增重试链。iOS 无 WorkManager，只能提前把后续重试交给系统持有。
-        // 给「近 31 天内到期」的提醒预排（覆盖周/双周/月等月内周期）；季/年等超长周期
-        // 仍不预排，避免远期提醒提前吃掉 64 条 pending 配额——它们会在用户回前台、进入窗口后
-        // 由 ensureRetryChains() 补排（若用户连续不开 App 超一个周期则无重试链，属已知边界）。
-        if reminder.nextTriggerAt.timeIntervalSinceNow <= Self.retryChainWindow {
+        // 给「近 31 天内到期」的月内周期（周/双周/月）预排；季/年等超长周期数量稀少、
+        // 且正是最需要到点重试的类型，豁免窗口直接预排（与 Android WorkManager 对齐）；
+        // 其余远期提醒会在用户回前台、进入窗口后由 ensureRetryChains() 补排。
+        let needsRetryChain = reminder.nextTriggerAt.timeIntervalSinceNow <= Self.retryChainWindow
+            || reminder.cycle == .quarterly || reminder.cycle == .yearly
+        if needsRetryChain {
             await NotificationManager.shared.addRetryNotifications(
                 for: reminder,
                 anchor: reminder.nextTriggerAt,
@@ -585,20 +593,23 @@ final class ReminderEngine: ObservableObject {
     /// 季/年超长周期不预排以省 64 条 pending 配额，回前台进入窗口后由 ensureRetryChains 补排）
     private static let retryChainWindow: TimeInterval = 31 * 86400
 
-    /// P1-2: 启动时为「进入 7 天窗口」的提醒补排递增重试链。
+    /// P1-2: 启动时为「进入 31 天窗口（及季/年周期）」的提醒补排递增重试链。
     ///
     /// 重试通知使用固定标识符 `reminder-<id>-retry-<stage>`，
     /// 重复调用只会覆盖同一条，不会重复轰炸，因此可以每次启动无脑跑一遍。
     func ensureRetryChains() async {
         guard let context = modelContext else { return }
         let now = Date()
-        let reminders = (try? context.fetch(FetchDescriptor<Reminder>())) ?? []
+        let reminders = (try? context.fetch(
+            FetchDescriptor<Reminder>(sortBy: [SortDescriptor(\.nextTriggerAt)])
+        )) ?? []
         let count = unconfirmedCount()
 
         for r in reminders {
             guard r.isEnabled, r.status != .confirmed, r.status != .overdue else { continue }
             let delta = r.nextTriggerAt.timeIntervalSince(now)
-            guard delta > 0, delta <= Self.retryChainWindow else { continue }
+            // 季/年周期豁免窗口，直接预排（数量稀少，正是最需要重试的类型）
+            guard delta > 0, (delta <= Self.retryChainWindow || r.cycle == .quarterly || r.cycle == .yearly) else { continue }
             await NotificationManager.shared.addRetryNotifications(
                 for: r,
                 anchor: r.nextTriggerAt,

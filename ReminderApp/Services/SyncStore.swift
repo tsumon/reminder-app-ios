@@ -12,6 +12,9 @@ enum SyncStore {
     private static let kAuto = "sync_auto"
     private static let kLastChange = "sync_last_local_change"
     private static let kLastSync = "sync_last_sync"
+    // v2.0.17: 单调版本——墙钟可回拨/双端时钟有偏差，判新改用自增版本，时间戳仅兜底
+    private static let kLocalVersion = "sync_local_version"
+    private static let kLastSyncVersion = "sync_last_sync_version"
 
     static var url: String { defaults.string(forKey: kURL) ?? "" }
     static var username: String { defaults.string(forKey: kUser) ?? "" }
@@ -28,6 +31,11 @@ enum SyncStore {
     static var lastLocalChange: TimeInterval { defaults.double(forKey: kLastChange) }
     static var lastSyncAt: TimeInterval { defaults.double(forKey: kLastSync) }
 
+    /// 本地自增单调版本（v2.0.17：判新主依据，防墙钟回拨/时钟偏差）
+    static var localVersion: Int { defaults.integer(forKey: kLocalVersion) }
+    /// 上次成功同步时的本地版本（冲突判定用；0 = 从未同步过）
+    static var lastSyncVersion: Int { defaults.integer(forKey: kLastSyncVersion) }
+
     static var isConfigured: Bool {
         !url.isEmpty && !username.isEmpty && !password.isEmpty
     }
@@ -42,11 +50,23 @@ enum SyncStore {
     /// 标记本地数据发生了变更（秒）
     static func touchLocalChange() {
         defaults.set(Date().timeIntervalSince1970, forKey: kLastChange)
+        // v2.0.17: 单调版本同步 +1（判新主依据）
+        defaults.set(localVersion + 1, forKey: kLocalVersion)
     }
 
     /// 同步下载覆盖本地后，将本地版本对齐到远程版本（秒）
     static func setLastLocalChange(_ value: TimeInterval) {
         defaults.set(value, forKey: kLastChange)
+    }
+
+    /// v2.0.17: 对齐本地单调版本（下载覆盖后 = 远程 dataVersion）
+    static func setLocalVersion(_ value: Int) {
+        defaults.set(value, forKey: kLocalVersion)
+    }
+
+    /// v2.0.17: 记录上次成功同步时的本地版本
+    static func setLastSyncVersion(_ value: Int) {
+        defaults.set(value, forKey: kLastSyncVersion)
     }
 
     static func setLastSync() {

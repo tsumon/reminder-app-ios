@@ -164,7 +164,7 @@ struct ReminderWidgetEntryView: View {
         .containerBackground(.fill.tertiary, for: .widget)
     }
 
-    // MARK: 完成按钮（v1.8.7，iOS 17 widget 交互）
+    // MARK: 完成/稍后按钮（v1.8.7 完成 / v2.0.16 稍后，iOS 17 widget 交互）
 
     @ViewBuilder
     private var completeButton: some View {
@@ -174,14 +174,30 @@ struct ReminderWidgetEntryView: View {
                 Label("已标记完成，打开 App 生效".localized, systemImage: "checkmark.circle.fill")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.green)
+            } else if WidgetSnapshot.snoozedReminderIDs().contains(id) {
+                // 已在小组件上标记推迟，等 App 启动同步落库（v2.0.16）
+                Label("已推迟 15 分钟，打开 App 生效".localized, systemImage: "clock.fill")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.orange)
             } else {
-                Button(intent: CompleteReminderIntent(reminderID: id)) {
-                    Label("完成".localized, systemImage: "checkmark.circle")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(.green.opacity(0.15), in: Capsule())
-                        .foregroundStyle(.green)
+                HStack(spacing: 8) {
+                    Button(intent: CompleteReminderIntent(reminderID: id)) {
+                        Label("完成".localized, systemImage: "checkmark.circle")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.green.opacity(0.15), in: Capsule())
+                            .foregroundStyle(.green)
+                    }
+                    // v2.0.16: 小组件「稍后提醒」快捷按钮
+                    Button(intent: SnoozeReminderIntent(reminderID: id)) {
+                        Label("稍后".localized, systemImage: "clock")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.orange.opacity(0.15), in: Capsule())
+                            .foregroundStyle(.orange)
+                    }
                 }
             }
         }
