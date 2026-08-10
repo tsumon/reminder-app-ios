@@ -296,7 +296,7 @@ final class NotificationManager: NSObject, ObservableObject {
     func dequeueAllPendingActions() -> [PendingNotificationAction] {
         let list = Self.loadPendingActions()
         if !list.isEmpty {
-            UserDefaults.standard.removeObject(forKey: pendingActionsKey)
+            UserDefaults.standard.removeObject(forKey: Self.pendingActionsKey)
         }
         return list
     }
