@@ -55,9 +55,9 @@ enum SyncStore {
 }
 
 #if canImport(Security)
-/// 极简 Keychain 封装：把少量敏感字段（如 WebDAV 密码）加密存于 Keychain，
-/// 而非明文 UserDefaults。
-private struct KeychainHelper {
+/// 极简 Keychain 封装：把少量敏感字段（如 WebDAV 密码、AI API Key）加密存于 Keychain，
+/// 而非明文 UserDefaults。internal 可见性，供 AISettings 等复用。
+struct KeychainHelper {
     static func save(_ value: String, service: String, account: String) {
         let data = Data(value.utf8)
         let query: [String: Any] = [
