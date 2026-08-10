@@ -568,8 +568,9 @@ final class ReminderEngine: ObservableObject {
         try? await NotificationManager.shared.addDdayNotification(for: reminder, badgeCount: count)
 
         // P1-2: 预排递增重试链。iOS 无 WorkManager，只能提前把后续重试交给系统持有。
-        // 只为「近 7 天内到期」的提醒预排，避免远期提醒提前吃掉 64 条 pending 配额；
-        // 远期提醒会在后续启动时由 ensureRetryChains() 进入窗口后补排。
+        // 给「近 31 天内到期」的提醒预排（覆盖周/双周/月等月内周期）；季/年等超长周期
+        // 仍不预排，避免远期提醒提前吃掉 64 条 pending 配额——它们会在用户回前台、进入窗口后
+        // 由 ensureRetryChains() 补排（若用户连续不开 App 超一个周期则无重试链，属已知边界）。
         if reminder.nextTriggerAt.timeIntervalSinceNow <= Self.retryChainWindow {
             await NotificationManager.shared.addRetryNotifications(
                 for: reminder,
@@ -580,8 +581,9 @@ final class ReminderEngine: ObservableObject {
         }
     }
 
-    /// 重试链预排窗口：只给 7 天内到期的提醒预排后续重试通知
-    private static let retryChainWindow: TimeInterval = 7 * 86400
+    /// 重试链预排窗口：给 31 天内到期的提醒预排后续重试通知（覆盖周/双周/月周期；
+    /// 季/年超长周期不预排以省 64 条 pending 配额，回前台进入窗口后由 ensureRetryChains 补排）
+    private static let retryChainWindow: TimeInterval = 31 * 86400
 
     /// P1-2: 启动时为「进入 7 天窗口」的提醒补排递增重试链。
     ///
