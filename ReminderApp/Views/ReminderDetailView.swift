@@ -142,6 +142,22 @@ struct ReminderDetailView: View {
 
             Divider()
 
+            // Item 2: 本次触发因节假日前移的说明
+            if let note = holidayAdjustNote {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "calendar.badge.exclamationmark")
+                        .foregroundStyle(.orange)
+                        .frame(width: 22)
+                    Text(note)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.orange.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+
             infoRow(label: "周期".localized, value: reminder.dateDisplayText)
             if reminder.kind == .cycle && reminder.cycle == .custom && reminder.customDays > 0 {
                 infoRow(label: "自定义天数".localized, value: Localized("%d 天", reminder.customDays))
@@ -249,6 +265,11 @@ struct ReminderDetailView: View {
     }
 
     // MARK: - 辅助
+
+    /// Item 2: 读取本次触发被前移的说明（来自 UserDefaults 侧存）
+    private var holidayAdjustNote: String? {
+        ReminderEngine.HolidayAdjustStore.note(for: reminder.id)
+    }
 
     private var statusIconName: String {
         switch reminder.status {

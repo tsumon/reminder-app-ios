@@ -89,6 +89,34 @@ struct AITools {
                     "required": ["title_keyword"]
                 ]
             ]
+        ],
+        [
+            "type": "function",
+            "function": [
+                "name": "update_reminder",
+                "description": "修改一个已有提醒的字段。用户说'把XX改成每周二''把交房租时间改到10点''把XX备注改成XXX'时调用。不传的字段保留原值。",
+                "parameters": [
+                    "type": "object",
+                    "properties": [
+                        "title_keyword": ["type": "string", "description": "提醒标题关键词，用于定位"],
+                        "new_title": ["type": "string", "description": "新的标题（可选）"],
+                        "note": ["type": "string", "description": "新的备注（可选）"],
+                        "cycle": ["type": "string", "enum": ["daily","weekly","biweekly","monthly","quarterly","yearly","custom","once"]],
+                        "custom_days": ["type": "integer"],
+                        "rule_period": ["type": "string", "enum": ["monthly","quarterly","yearly"]],
+                        "rule_week": ["type": "integer"],
+                        "rule_weekday": ["type": "integer"],
+                        "date_type": ["type": "string", "enum": ["solar_birthday","lunar_birthday","holiday"]],
+                        "target_month": ["type": "integer"],
+                        "target_day": ["type": "integer"],
+                        "holiday_name": ["type": "string"],
+                        "advance_days": ["type": "integer"],
+                        "reminder_hour": ["type": "integer"],
+                        "reminder_minute": ["type": "integer"]
+                    ],
+                    "required": ["title_keyword"]
+                ]
+            ]
         ]
     ]
 
@@ -102,6 +130,7 @@ struct AITools {
     - 用户要确认某个提醒已完成 → 调用 confirm_reminder
     - 用户要推迟某个提醒 → 调用 snooze_reminder
     - 用户要删除提醒 → 调用 delete_reminder
+    - 用户要修改/调整已有提醒（改标题、改周期、改时间、改备注等） → 调用 update_reminder（只传要改的字段，其余保留原值）
     - 用户问'有什么提醒''列表' → 调用 list_reminders
 
     **生日 / 日期提醒（重要）：**

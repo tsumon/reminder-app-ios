@@ -39,7 +39,7 @@
     box-shadow:0 10px 28px -12px rgba(70,50,120,.22), inset 0 0 0 1px rgba(255,255,255,.75);
     padding:15px 17px; margin-bottom:11px; display:flex; align-items:center; gap:14px;
   }
-  .glass .ic { width:46px; height:46px; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:21px; flex-shrink:0; }
+  .glass .ic { width:46px; height:46px; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0; font-weight:700; }
   .glass .body { flex:1; min-width:0; }
   .glass .name { font-size:16px; font-weight:700; color:#211A33; }
   .glass .meta { font-size:12px; color:#8B84A3; margin-top:3px; }
@@ -48,17 +48,15 @@
   .chip { display:inline-block; font-size:10.5px; padding:3px 10px; border-radius:20px; font-weight:700; margin-top:5px; }
 
   .navbar { display:flex; justify-content:space-around; align-items:center; padding:10px 16px 22px; background:rgba(255,255,255,.6); backdrop-filter:blur(24px); border-top:1px solid rgba(120,100,180,.10); flex-shrink:0; }
-  .navitem { display:flex; flex-direction:column; align-items:center; gap:3px; font-size:10px; color:#9A93B5; }
-  .navitem .ni { width:26px; height:26px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:14px; }
+  .navitem { display:flex; flex-direction:column; align-items:center; gap:3px; font-size:12px; color:#9A93B5; font-weight:600; }
   .navitem.active { color:#6750A4; font-weight:700; }
-  .navitem.active .ni { background:#EADDFF; }
 
   /* 详情页 */
   .backrow { display:flex; align-items:center; gap:10px; padding:8px 22px 4px; }
-  .backrow .back { width:32px; height:32px; border-radius:50%; background:rgba(255,255,255,.8); display:flex; align-items:center; justify-content:center; color:#6750A4; font-size:16px; box-shadow:0 4px 12px -4px rgba(70,50,120,.25); }
+  .backrow .back { width:32px; height:32px; border-radius:50%; background:rgba(255,255,255,.8); display:flex; align-items:center; justify-content:center; color:#6750A4; font-size:20px; box-shadow:0 4px 12px -4px rgba(70,50,120,.25); }
   .backrow .t { font-size:17px; font-weight:700; color:#211A33; }
   .statuscard { border-radius:28px; padding:22px 20px; display:flex; align-items:center; gap:16px; margin:8px 16px 14px; box-shadow:0 12px 30px -14px rgba(231,76,60,.5); }
-  .statuscard .bigic { width:58px; height:58px; border-radius:20px; display:flex; align-items:center; justify-content:center; font-size:27px; }
+  .statuscard .bigic { width:58px; height:58px; border-radius:20px; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:800; }
   .statuscard .lbl { font-size:15px; font-weight:600; color:rgba(255,255,255,.85); }
   .statuscard .val { font-size:23px; font-weight:800; color:#fff; margin-top:3px; }
   .inforow { display:flex; justify-content:space-between; align-items:center; padding:13px 18px; }
@@ -109,36 +107,36 @@
       <div class="screen">
         <div class="island"></div>
         <div class="statusbar"><span>9:41</span><span class="icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span>Wi‑Fi</span><span class="battery"><i></i></span></span></div>
-        <div class="appbar"><div class="title">循环提醒</div><div class="avatar">周</div></div>
+        <div class="appbar"><div class="title">循环提醒</div></div>
         <div class="content">
           <div class="sec"><span class="bar" style="background:#E74C3C"></span>提醒中</div>
           <div class="glass">
-            <div class="ic" style="background:#FDECEC;color:#E74C3C">💊</div>
+            <div class="ic" style="background:#FDECEC;color:#E74C3C">药</div>
             <div class="body"><div class="name">吃降压药</div><div class="meta">每天 09:00 · 第 2 次重试</div><span class="chip" style="background:#FDECEC;color:#E74C3C">需要确认</span></div>
             <div class="right"><div class="time" style="color:#E74C3C">09:00</div></div>
           </div>
           <div class="glass">
-            <div class="ic" style="background:#F9E7E3;color:#C0392B">📋</div>
+            <div class="ic" style="background:#F9E7E3;color:#C0392B">报</div>
             <div class="body"><div class="name">提交季度报表</div><div class="meta">每季度 · 已逾期</div><span class="chip" style="background:#F9E7E3;color:#C0392B">已逾期</span></div>
             <div class="right"><div class="time" style="color:#C0392B">08-05</div></div>
           </div>
           <div class="sec"><span class="bar" style="background:#3498DB"></span>等待中</div>
           <div class="glass">
-            <div class="ic" style="background:#E8F1FC;color:#3498DB">🐕</div>
+            <div class="ic" style="background:#E8F1FC;color:#3498DB">狗</div>
             <div class="body"><div class="name">遛狗</div><div class="meta">每天 20:00</div></div>
             <div class="right"><div class="time" style="color:#3498DB">20:00</div></div>
           </div>
           <div class="glass">
-            <div class="ic" style="background:#EDE7FB;color:#6750A4">🎂</div>
+            <div class="ic" style="background:#EDE7FB;color:#6750A4">生</div>
             <div class="body"><div class="name">妈妈的生日</div><div class="meta">农历八月十五 · 提前 3 天预告</div></div>
             <div class="right"><div class="time" style="color:#6750A4">08-27</div></div>
           </div>
         </div>
         <div class="navbar">
-          <div class="navitem active"><div class="ni">🏠</div>首页</div>
-          <div class="navitem"><div class="ni">📅</div>日历</div>
-          <div class="navitem"><div class="ni">📊</div>统计</div>
-          <div class="navitem"><div class="ni">⚙️</div>设置</div>
+          <div class="navitem active">首页</div>
+          <div class="navitem">日历</div>
+          <div class="navitem">统计</div>
+          <div class="navitem">设置</div>
         </div>
       </div>
     </div>
@@ -150,7 +148,7 @@
         <div class="statusbar"><span>9:41</span><span class="icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span>Wi‑Fi</span><span class="battery"><i></i></span></span></div>
         <div class="backrow"><div class="back">‹</div><div class="t">提醒详情</div></div>
         <div class="statuscard" style="background:linear-gradient(135deg,#F27C6D,#E74C3C)">
-          <div class="bigic" style="background:rgba(255,255,255,.22)">⏰</div>
+          <div class="bigic" style="background:rgba(255,255,255,.22);color:#fff">!</div>
           <div>
             <div class="lbl">当前状态</div>
             <div class="val">需要确认 · 第 2 次重试</div>
@@ -166,12 +164,12 @@
           </div>
           <div class="sec"><span class="bar" style="background:#6750A4"></span>最近记录</div>
           <div class="hrow">
-            <div class="hist"><div class="h-t">⏰ 重试阶段 2</div><div class="h-d">今天 10:00</div></div>
-            <div class="hist"><div class="h-t">🔔 到点触发</div><div class="h-d">今天 09:00</div></div>
+            <div class="hist"><div class="h-t">重试阶段 2</div><div class="h-d">今天 10:00</div></div>
+            <div class="hist"><div class="h-t">到点触发</div><div class="h-d">今天 09:00</div></div>
           </div>
           <div class="hrow" style="padding-top:0">
-            <div class="hist"><div class="h-t">⏰ 重试阶段 1</div><div class="h-d">昨天 20:00</div></div>
-            <div class="hist"><div class="h-t">✅ 确认完成</div><div class="h-d">昨天 08:55</div></div>
+            <div class="hist"><div class="h-t">重试阶段 1</div><div class="h-d">昨天 20:00</div></div>
+            <div class="hist"><div class="h-t">✓ 确认完成</div><div class="h-d">昨天 08:55</div></div>
           </div>
         </div>
         <div class="actionbar">
@@ -186,7 +184,7 @@
       <div class="screen">
         <div class="island"></div>
         <div class="statusbar"><span>9:41</span><span class="icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span>Wi‑Fi</span><span class="battery"><i></i></span></span></div>
-        <div class="appbar"><div class="title">统计</div><div class="avatar" style="background:#EADDFF;color:#6750A4">📊</div></div>
+        <div class="appbar"><div class="title">统计</div><div class="avatar" style="background:#EADDFF;color:#6750A4">计</div></div>
         <div class="content">
           <div class="stat-top">
             <div class="stat-card"><div class="n">42</div><div class="k">本月已完成</div></div>
@@ -219,10 +217,10 @@
           </div>
         </div>
         <div class="navbar">
-          <div class="navitem"><div class="ni">🏠</div>首页</div>
-          <div class="navitem"><div class="ni">📅</div>日历</div>
-          <div class="navitem active"><div class="ni">📊</div>统计</div>
-          <div class="navitem"><div class="ni">⚙️</div>设置</div>
+          <div class="navitem">首页</div>
+          <div class="navitem">日历</div>
+          <div class="navitem active">统计</div>
+          <div class="navitem">设置</div>
         </div>
       </div>
     </div>

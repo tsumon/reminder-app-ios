@@ -93,7 +93,7 @@ struct AIChatView: View {
         }
         .onAppear {
             if !settings.isConfigured {
-                let guide = "👋 你好！请先在右上角设置中配置 API Key（支持 DeepSeek / 通义千问 / 豆包等，均有免费额度）。\n\n我能帮你：\n• 创建提醒「每天提醒我喝水」\n• 查看列表「有什么提醒」\n• 确认完成「确认喝水」\n• 推迟/删除提醒"
+                let guide = "👋 你好！请先在右上角设置中配置 API Key（支持 DeepSeek / 通义千问 / 豆包等，均有免费额度）。\n\n我能帮你：\n• 创建提醒「每天提醒我喝水」\n• 查看列表「有什么提醒」\n• 确认完成「确认喝水」\n• 修改提醒「把交房租改成每月5号」\n• 推迟/删除提醒"
                 messages.append(ChatMessage(
                     role: .assistant,
                     content: guide,
@@ -310,6 +310,8 @@ struct AIChatView: View {
             return await handleSnooze(args: args)
         case "delete_reminder":
             return await handleDelete(args: args)
+        case "update_reminder":
+            return await handleUpdate(args: args)
         default:
             return Localized("未知工具: %@", name)
         }
@@ -489,6 +491,98 @@ struct AIChatView: View {
         // 删除前必须取消已排期的本地通知，否则到点仍会弹出（幽灵通知）
         await NotificationManager.shared.removePendingNotification(for: match.id)
         return Localized("已删除「%@」", title)
+    }
+
+    private func handleUpdate(args: [String: Any]) async -> String {
+        let keyword = (args["title_keyword"] as? String ?? "").lowercased()
+        guard !keyword.isEmpty else { return "请指定要修改的提醒标题（如：把「交房租」改成每月 5 号）。" }
+
+        // 预处理参数（custom 周期必须 custom_days >= 1）
+        let cycleRaw = args["cycle"] as? String
+        let customDaysRaw = (args["custom_days"] as? Int) ?? (args["custom_days"] as? Double).map(Int.init)
+        if cycleRaw == "custom" && (customDaysRaw ?? 0) < 1 {
+            return "自定义周期需要指定间隔天数（如：每3天），custom_days 至少为 1。"
+        }
+
+        guard let match = await MainActor.run(body: { reminders.first(where: { $0.title.lowercased().contains(keyword) }) })
+        else { return Localized("未找到包含「%@」的提醒", keyword) }
+
+        let updatedTitle = await MainActor.run {
+            // 字符串字段
+            if let nt = args["new_title"] as? String { match.title = nt }
+            if let n = args["note"] as? String { match.note = n }
+
+            // 周期 + 自定义天数
+            if let c = cycleRaw {
+                switch c {
+                case "once":      match.cycle = .once
+                case "daily":     match.cycle = .daily
+                case "weekly":    match.cycle = .weekly
+                case "biweekly":  match.cycle = .biweekly
+                case "monthly":   match.cycle = .monthly
+                case "quarterly": match.cycle = .quarterly
+                case "yearly":    match.cycle = .yearly
+                case "custom":    match.cycle = .custom
+                default: break
+                }
+            }
+            if let cd = customDaysRaw { match.customDays = cd }
+
+            // 规则参数（第N周周X）
+            if let rp = args["rule_period"] as? String {
+                switch rp {
+                case "monthly": match.rulePeriod = .monthly
+                case "yearly": match.rulePeriod = .yearly
+                default: match.rulePeriod = .quarterly
+                }
+            }
+            if let rw = (args["rule_week"] as? Int) ?? (args["rule_week"] as? Double).map(Int.init),
+               let w = RuleWeek(rawValue: rw) { match.ruleWeek = w }
+            if let rwd = (args["rule_weekday"] as? Int) ?? (args["rule_weekday"] as? Double).map(Int.init),
+               let wd = RuleWeekday(rawValue: rwd) { match.ruleWeekday = wd }
+
+            // 日期类参数
+            if let dt = args["date_type"] as? String {
+                switch dt {
+                case "solar_birthday": match.dateType = .solarBirthday
+                case "lunar_birthday": match.dateType = .lunarBirthday
+                case "holiday":        match.dateType = .holiday
+                default: break
+                }
+            }
+            if let tm = (args["target_month"] as? Int) ?? (args["target_month"] as? Double).map(Int.init) {
+                match.targetMonth = tm
+            }
+            if let td = (args["target_day"] as? Int) ?? (args["target_day"] as? Double).map(Int.init) {
+                match.targetDay = td
+            }
+            if let hn = args["holiday_name"] as? String {
+                match.holidayID = HolidayService.search(by: hn)?.id
+            }
+
+            // 提前 / 时分
+            if let ah = (args["advance_days"] as? Int) ?? (args["advance_days"] as? Double).map(Int.init) {
+                match.advanceDays = ah
+            }
+            if let rh = (args["reminder_hour"] as? Int) ?? (args["reminder_hour"] as? Double).map(Int.init) {
+                match.reminderHour = rh
+            }
+            if let rm = (args["reminder_minute"] as? Int) ?? (args["reminder_minute"] as? Double).map(Int.init) {
+                match.reminderMinute = rm
+            }
+
+            // 重算下次触发时间（按新参数）并保存
+            match.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(after: Date(), reminder: match)
+            // Item 2: 参数变更后清空旧的前移备注（避免误显示）
+            ReminderEngine.HolidayAdjustStore.setNote(nil, for: match.id)
+            try? modelContext.save()
+            SyncStore.touchLocalChange()
+            return match.title
+        }
+
+        // 重排本地通知
+        await ReminderEngine.shared.scheduleAllNotifications(for: match)
+        return Localized("已修改「%@」", updatedTitle)
     }
 
     private func nearestFuture() -> Date {

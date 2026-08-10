@@ -57,6 +57,8 @@ struct ReminderApp: App {
                     async let r1 = HolidayRemoteService.refresh(year: year)
                     async let r2 = HolidayRemoteService.refresh(year: year + 1)
                     _ = await (r1, r2)
+                    // Item 2: 启动后预检——把落在 ~1 个月内、恰逢法定节假日的循环/规则提醒前移
+                    await reminderEngine.runHolidayPreCheck()
                     #if DEBUG
                     // v1.9.8: 模拟器截图验证用演示数据（仅 Debug 构建）
                     seedDemoDataIfNeeded()

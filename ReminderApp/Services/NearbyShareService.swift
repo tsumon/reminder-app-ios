@@ -7,6 +7,9 @@ import Network
 /// 接收方：HTTP GET http://<ip>:47823/reminders.json 拉取并导入
 enum NearbyShareService {
     static let port: UInt16 = 47823
+    /// 端口的纯数字字符串：显式走 String 初始化，禁用任何本地化分组（如千位分隔符逗号），
+    /// 保证 UI 与二维码内容里都是干净的 "47823"。
+    static let portString: String = String(port)
     static let path = "/reminders.json"
 
     // MARK: - 服务端（发送方）
@@ -52,6 +55,10 @@ enum NearbyShareService {
             switch state {
             case .ready:
                 onEvent("服务已启动，等待对方连接...", false)
+            case .waiting(let error):
+                // iOS 14+：若用户未授予"本地网络"权限，NWListener 会长时间停留在 waiting 状态，
+                // 表现为服务"看似已就绪"但对方怎么也连不上。主动提示去设置开启。
+                onEvent(Localized("等待网络：%@（如长时间未就绪，请在 iOS「设置 → 本应用 → 本地网络」中开启权限）", error.localizedDescription), true)
             case .failed(let error):
                 // 端口占用等异步失败：cancel 释放监听，回传错误事件
                 listener.cancel()

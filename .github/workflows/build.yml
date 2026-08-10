@@ -115,8 +115,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            ReminderApp.ipa
-            ReminderApp-${{ env.VERSION }}.ipa
+          # 只挂带版本号的那一份；裸名（ReminderApp.ipa）作为 build artifact 已上传，不重复出现在 Release
+          files: ReminderApp-${{ env.VERSION }}.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

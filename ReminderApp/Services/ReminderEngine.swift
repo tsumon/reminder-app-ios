@@ -394,6 +394,10 @@ final class ReminderEngine: ObservableObject {
         try? context.save()
         SyncStore.touchLocalChange()
 
+        // Item 2: 本次已完成，清空前移备注；并预检下一次触发是否遇节假日
+        HolidayAdjustStore.setNote(nil, for: reminder.id)
+        Task { await runHolidayPreCheck() }
+
         // 重新调度通知
         Task {
             await scheduleAllNotifications(for: reminder)
@@ -412,6 +416,8 @@ final class ReminderEngine: ObservableObject {
         if reminder.nextTriggerAt <= now {
             reminder.nextTriggerAt = calculateNextTrigger(after: now, reminder: reminder)
         }
+        // Item 2: 重新打开时清空前移备注
+        HolidayAdjustStore.setNote(nil, for: reminder.id)
         reminder.status = .pending
         reminder.retryStage = 0
         reminder.lastRetryAt = nil
@@ -587,5 +593,110 @@ final class ReminderEngine: ObservableObject {
             await scheduleAllNotifications(for: reminder)
             print("[ReminderEngine] 过期提醒已自动推进: \(reminder.title)")
         }
+    }
+
+    // MARK: - 节假日前移预检（Item 2）
+
+    /// 节假日前移备注的本地存储。
+    /// 为避免改动 SwiftData schema 引发无法本地验证的迁移崩溃，
+    /// 仅把「本次触发被前移」的备注存到 UserDefaults（按提醒 UUID 索引）。
+    /// 备注为空即表示当前这次触发未被前移。
+    struct HolidayAdjustStore {
+        private static let key = "holiday_adjust_notes"
+        static func note(for id: UUID) -> String? {
+            guard let raw = UserDefaults.standard.dictionary(forKey: key)?[id.uuidString] as? String,
+                  !raw.isEmpty else { return nil }
+            return raw
+        }
+        static func setNote(_ note: String?, for id: UUID) {
+            var dict = UserDefaults.standard.dictionary(forKey: key) ?? [:]
+            if let note, !note.isEmpty {
+                dict[id.uuidString] = note
+            } else {
+                dict.removeValue(forKey: id.uuidString)
+            }
+            UserDefaults.standard.set(dict, forKey: key)
+        }
+    }
+
+    /// 节假日前移预检：对未完成的 cycle / rule 提醒，
+    /// 若下次触发落在 ~31 天内且恰逢法定节假日，则前移到假期前最近工作日
+    /// （循环锚点 firstTriggerAt 不变，确认完成后备注清空、下一周期照常推进）。
+    /// 仅非生日循环/规则提醒参与；日期提醒（生日、节假日本身）不参与。
+    func runHolidayPreCheck() async {
+        guard let context = modelContext else { return }
+        let now = Date()
+        let window: TimeInterval = 31 * 86400
+        let reminders = (try? context.fetch(FetchDescriptor<Reminder>())) ?? []
+
+        for r in reminders {
+            guard r.isEnabled, r.status != .confirmed, r.status != .overdue else { continue }
+            guard r.kind == .cycle || r.kind == .rule else { continue }
+            // 本次已前移过则跳过，避免重复
+            if HolidayAdjustStore.note(for: r.id) != nil { continue }
+
+            let occ = r.nextTriggerAt
+            guard occ > now, occ.timeIntervalSince(now) <= window else { continue }
+
+            let cal = Calendar.current
+            let y = cal.component(.year, from: occ)
+            let m = cal.component(.month, from: occ)
+            let d = cal.component(.day, from: occ)
+
+            // 确保当年节假日数据就绪
+            await HolidayRemoteService.refresh(year: y)
+
+            guard let st = HolidayRemoteService.status(year: y, month: m, day: d),
+                  st.isHoliday else { continue }
+
+            // 前移到假期前最近工作日
+            guard let shifted = lastWorkingDay(before: occ), shifted > now else { continue }
+
+            // 保留原触发时间的「时分」
+            var comps = cal.dateComponents([.hour, .minute], from: occ)
+            let shiftedAt = cal.date(bySettingHour: comps.hour ?? r.reminderHour,
+                                      minute: comps.minute ?? r.reminderMinute,
+                                      second: 0, of: shifted) ?? shifted
+
+            let fmt = DateFormatter()
+            fmt.locale = Locale(identifier: "zh_CN")
+            fmt.dateFormat = "M月d日"
+            let note = Localized("因%@放假，已前移至假期前最近工作日（%@）", st.name, fmt.string(from: shiftedAt))
+
+            r.nextTriggerAt = shiftedAt
+            r.updatedAt = Date()
+            HolidayAdjustStore.setNote(note, for: r.id)
+            try? context.save()
+            SyncStore.touchLocalChange()
+
+            await scheduleAllNotifications(for: r)
+            print("[ReminderEngine] 节假日前移: \(r.title) → \(fmt.string(from: shiftedAt))")
+        }
+    }
+
+    /// 返回 date 之前（不含）最近的一个工作日；极端情况下找不到返回 nil
+    private func lastWorkingDay(before date: Date) -> Date? {
+        var cursor = Calendar.current.date(byAdding: .day, value: -1, to: date) ?? date
+        for _ in 0..<10 {
+            if !isOffDay(cursor) { return cursor }
+            guard let prev = Calendar.current.date(byAdding: .day, value: -1, to: cursor) else { return nil }
+            cursor = prev
+        }
+        return nil
+    }
+
+    /// 某天是否休息日：法定节假日(isHoliday) 或 普通周末（远端无数据时按星期判断）。
+    /// 远端 holiday-cn 只列出法定节假日与调休上班日，普通周末 status 为 nil，
+    /// 故 nil 时按星期判断周末；调休上班日(isHoliday=false)视为工作日。
+    private func isOffDay(_ date: Date) -> Bool {
+        let cal = Calendar.current
+        let y = cal.component(.year, from: date)
+        let m = cal.component(.month, from: date)
+        let d = cal.component(.day, from: date)
+        if let st = HolidayRemoteService.status(year: y, month: m, day: d) {
+            return st.isHoliday
+        }
+        let w = cal.component(.weekday, from: date) // 1=周日..7=周六
+        return w == 1 || w == 7
     }
 }

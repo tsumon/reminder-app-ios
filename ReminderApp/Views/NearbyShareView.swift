@@ -75,13 +75,13 @@ struct NearbyShareView: View {
                 Text("本机地址".localized)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("http://\(ip):\(NearbyShareService.port)")
+                Text("http://\(ip):\(NearbyShareService.portString)")
                     .font(.title3.monospaced().weight(.semibold))
                     .textSelection(.enabled)
 
                 // 二维码：对方扫码即自动填入地址
                 VStack(spacing: 4) {
-                    if let qr = QRCodeService.generateQRCode(from: "http://\(ip):\(NearbyShareService.port)\(NearbyShareService.path)") {
+                    if let qr = QRCodeService.generateQRCode(from: "http://\(ip):\(NearbyShareService.portString)\(NearbyShareService.path)") {
                         Image(uiImage: qr)
                             .interpolation(.none)
                             .resizable()
@@ -298,7 +298,7 @@ struct NearbyShareView: View {
             guard let json, let items = BackupHelper.importJSON(json) else {
                 isReceiving = false
                 isError = true
-                resultMsg = "下载失败：请确认两台设备在同一 Wi-Fi、地址正确，且发送方已开始共享"
+                resultMsg = "下载失败：请确认两台设备在同一 Wi-Fi、发送方已点「开始共享」、地址正确；如仍失败请检查路由器是否开启客户端隔离，并请发送方在 iOS「设置 → 本应用 → 本地网络」中开启权限"
                 return
             }
 
