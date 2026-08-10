@@ -571,6 +571,18 @@ struct AIChatView: View {
                 match.reminderMinute = rm
             }
 
+            // Bug 3: cycle 类需同步改写锚点时分，否则 AI 改提醒时间对 cycle 无效
+            // （date/rule 分支已用 comps.hour = reminderHour，仅 cycle 走 firstTriggerAt 锚点）
+            if match.kind == .cycle, match.cycle != .once {
+                var anchorComps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: match.firstTriggerAt)
+                anchorComps.hour = match.reminderHour
+                anchorComps.minute = match.reminderMinute
+                anchorComps.second = 0
+                if let newAnchor = Calendar.current.date(from: anchorComps) {
+                    match.firstTriggerAt = newAnchor
+                }
+            }
+
             // 重算下次触发时间（按新参数）并保存
             match.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(after: Date(), reminder: match)
             // Item 2: 参数变更后清空旧的前移备注（避免误显示）

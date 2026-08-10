@@ -201,7 +201,10 @@ struct ReminderDetailView: View {
 
                     if newValue {
                         Task {
-                            await NotificationManager.shared.scheduleNotification(for: reminder, badgeCount: ReminderEngine.shared.unconfirmedCount())
+                            // Bug 2: 开关重开必须走 scheduleAllNotifications，
+                            // 否则缺幽灵守卫 / 日期类提前预告 / 递增重试链
+                            // （scheduleNotification 只排 D-day 单条）。
+                            await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
                         }
                     } else {
                         Task {

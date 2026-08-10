@@ -299,9 +299,20 @@ final class ReminderEngine: ObservableObject {
             }
             return cursor
         default:
-            let elapsedDays = Calendar.current.dateComponents([.day], from: anchor, to: confirmedDate).day ?? 0
-            let cyclesPassed = (elapsedDays / days) + 1
-            return Calendar.current.date(byAdding: .day, value: cyclesPassed * days, to: anchor) ?? confirmedDate
+            // 时间戳 while 循环：从锚点逐周期推进直到超过 confirmedDate。
+            // 旧整数日公式 (elapsedDays/days+1) 在「锚点落在未来」时 elapsedDays 为负、
+            // cyclesPassed 恒为 1，会把首个触发多推一个整周期
+            // （daily 晚 1 天 / weekly 晚 7 天 / biweekly 晚 14 天…）。
+            // 与月/季/年分支、Android 端实现保持一致。
+            var next = anchor
+            var guardCount = 0
+            while next <= confirmedDate {
+                guard let stepped = Calendar.current.date(byAdding: .day, value: days, to: next) else { break }
+                next = stepped
+                guardCount += 1
+                if guardCount > 3650 { break } // 防御：最多推进约 10 年
+            }
+            return next
         }
     }
 
