@@ -12,6 +12,34 @@ final class ReminderEngine: ObservableObject {
         self.modelContext = context
     }
 
+    /// 引擎是否已就绪（modelContext 已注入）。冷启动期间 didReceive 据此决定是否立即排空动作队列。
+    var isConfigured: Bool { modelContext != nil }
+
+    // MARK: - 冷启动通知动作排空
+
+    /// 排空 NotificationManager 持久化队列中的通知动作（确认/稍后/消除）。
+    /// 冷启动：App 经通知按钮拉起时 didReceive 早于视图订阅，动作已入队，待引擎就绪后此处统一处理。
+    /// 热启动：scenePhase.active 或 didReceive 引擎已就绪时调用，逻辑一致。
+    func drainPendingNotificationActions() {
+        guard let context = modelContext else { return }
+        let actions = NotificationManager.shared.dequeueAllPendingActions()
+        guard !actions.isEmpty else { return }
+        for item in actions {
+            guard let uuid = UUID(uuidString: item.reminderID) else { continue }
+            let descriptor = FetchDescriptor<Reminder>(predicate: #Predicate { $0.id == uuid })
+            guard let reminder = try? context.fetch(descriptor).first else {
+                print("[ReminderEngine] 排空动作时未找到提醒 \(item.reminderID)，跳过")
+                continue
+            }
+            switch item.action {
+            case .confirm: confirmReminder(reminder)
+            case .snooze:  snoozeReminder(reminder)
+            case .dismiss: escalateRetry(reminder)
+            }
+            print("[ReminderEngine] 已排空通知动作: \(item.action.rawValue) \(reminder.title)")
+        }
+    }
+
     // MARK: - 计算下一次触发时间
 
     /// 计算下一次「正式提醒」（D-day）的触发时间
@@ -451,8 +479,10 @@ final class ReminderEngine: ObservableObject {
         try? context.save()
         SyncStore.touchLocalChange()
 
+        // P1-2: 走完整排期（含重试链）。稍后不改 retryStage，
+        // 15 分钟后那次通知仍然是「第 retryStage+1 次触发」，后续重试链接着往下走。
         Task {
-            await NotificationManager.shared.scheduleNotification(for: reminder, badgeCount: self.unconfirmedCount())
+            await self.scheduleAllNotifications(for: reminder)
         }
 
         print("[ReminderEngine] 已推迟: \(reminder.title)")
@@ -464,21 +494,15 @@ final class ReminderEngine: ObservableObject {
         guard let context = modelContext else { return }
 
         let now = Date()
-        reminder.retryStage = min(reminder.retryStage + 1, 5)
+        reminder.retryStage = min(reminder.retryStage + 1, RetrySchedule.maxStage)
         reminder.lastRetryAt = now
 
-        let nextDelay: TimeInterval
-        switch reminder.retryStage {
-        case 1:  nextDelay = 3600
-        case 2:  nextDelay = 14400
-        case 3:  nextDelay = 43200
-        case 4:  nextDelay = 86400
-        default: nextDelay = 86400
-        }
-
+        // 间隔序列统一由 RetrySchedule 提供（1h/4h/12h/24h/24h），
+        // 与预排重试链、启动追赶三处共用同一张表，避免各自维护导致漂移。
+        let nextDelay = RetrySchedule.delay(afterStage: reminder.retryStage)
         reminder.nextTriggerAt = Date(timeIntervalSinceNow: nextDelay)
 
-        if reminder.retryStage >= 5 {
+        if reminder.retryStage >= RetrySchedule.maxStage {
             reminder.status = .overdue
         } else {
             reminder.status = .active
@@ -492,8 +516,15 @@ final class ReminderEngine: ObservableObject {
         try? context.save()
         SyncStore.touchLocalChange()
 
+        // P1-2: 达到上限直接清空待发通知（原实现仍会再排一条，导致 overdue 后还在响）；
+        // 未达上限则走完整排期，把后续重试链一并预排好。
+        let reachedLimit = reminder.status == .overdue
         Task {
-            await NotificationManager.shared.scheduleNotification(for: reminder, badgeCount: self.unconfirmedCount())
+            if reachedLimit {
+                await NotificationManager.shared.removePendingNotification(for: reminder.id)
+            } else {
+                await self.scheduleAllNotifications(for: reminder)
+            }
         }
 
         print("[ReminderEngine] 递增重试: \(reminder.title) 阶段 \(reminder.retryStage)")
@@ -509,10 +540,12 @@ final class ReminderEngine: ObservableObject {
     }
 
     func scheduleAllNotifications(for reminder: Reminder) async {
-        // 先清除旧通知
+        // 先清除旧通知（含预告 / D-day / 重试链，userInfo.reminderID 命中即移除）
         await NotificationManager.shared.removePendingNotification(for: reminder.id)
 
         guard reminder.isEnabled else { return }
+        // 幽灵通知防御（对齐 Android Worker）：已完成 / 已逾期不再排任何通知
+        guard reminder.status != .confirmed, reminder.status != .overdue else { return }
 
         if reminder.kind == .date {
             // 日期类：安排提前预告通知 + D-day 通知
@@ -522,6 +555,44 @@ final class ReminderEngine: ObservableObject {
         // D-day 通知（带确认/稍后按钮）；角标用真实未确认数量
         let count = unconfirmedCount()
         try? await NotificationManager.shared.addDdayNotification(for: reminder, badgeCount: count)
+
+        // P1-2: 预排递增重试链。iOS 无 WorkManager，只能提前把后续重试交给系统持有。
+        // 只为「近 7 天内到期」的提醒预排，避免远期提醒提前吃掉 64 条 pending 配额；
+        // 远期提醒会在后续启动时由 ensureRetryChains() 进入窗口后补排。
+        if reminder.nextTriggerAt.timeIntervalSinceNow <= Self.retryChainWindow {
+            await NotificationManager.shared.addRetryNotifications(
+                for: reminder,
+                anchor: reminder.nextTriggerAt,
+                currentStage: reminder.retryStage,
+                badgeCount: count
+            )
+        }
+    }
+
+    /// 重试链预排窗口：只给 7 天内到期的提醒预排后续重试通知
+    private static let retryChainWindow: TimeInterval = 7 * 86400
+
+    /// P1-2: 启动时为「进入 7 天窗口」的提醒补排递增重试链。
+    ///
+    /// 重试通知使用固定标识符 `reminder-<id>-retry-<stage>`，
+    /// 重复调用只会覆盖同一条，不会重复轰炸，因此可以每次启动无脑跑一遍。
+    func ensureRetryChains() async {
+        guard let context = modelContext else { return }
+        let now = Date()
+        let reminders = (try? context.fetch(FetchDescriptor<Reminder>())) ?? []
+        let count = unconfirmedCount()
+
+        for r in reminders {
+            guard r.isEnabled, r.status != .confirmed, r.status != .overdue else { continue }
+            let delta = r.nextTriggerAt.timeIntervalSince(now)
+            guard delta > 0, delta <= Self.retryChainWindow else { continue }
+            await NotificationManager.shared.addRetryNotifications(
+                for: r,
+                anchor: r.nextTriggerAt,
+                currentStage: r.retryStage,
+                badgeCount: count
+            )
+        }
     }
 
     /// 日期类的提前预告通知
@@ -561,37 +632,51 @@ final class ReminderEngine: ObservableObject {
 
     // MARK: - 启动时检查遗漏
 
+    /// 启动/回前台时补偿「到期未确认」的提醒。
+    ///
+    /// P1-2（v2.0.8）：从「自动推进到下一周期」改为「递增重试追赶」，与 Android 完全对齐 ——
+    /// 到期未确认 → 1h → 4h → 12h → 24h → 24h → overdue，
+    /// **重试期间不推进周期**，周期只在「确认完成 / 重新打开」时前进。
+    ///
+    /// 为什么要追赶：iOS 没有 WorkManager，App 被杀期间只有系统在按预排的时间发通知，
+    /// 数据库里的 retryStage / status 不会自己动。回到 App 时按错过的次数把阶段一次性补齐，
+    /// 保证「通知发了几次」和「库里记了几阶段」一致。
     func checkMissedReminders(reminders: [Reminder]) async {
         let now = Date()
         for reminder in reminders {
             guard reminder.isEnabled else { continue }
-            guard reminder.status != .confirmed else { continue }
+            guard reminder.status != .confirmed, reminder.status != .overdue else { continue }
             guard reminder.nextTriggerAt <= now else { continue }
 
-            // 过期未触发：自动推进到下一次触发时间并重新调度。
-            // 这样周期提醒即使用户未点「确认完成」也会继续滚动，
-            // 不会再每次打开 App 都对旧日期误响。
-            if reminder.cycle == .once {
-                // 一次性提醒过期未确认 → 标记逾期归档，不再推进/重排：
-                // calculateNextTrigger 对 once 会返回过去的锚点，若推进则每次启动立即重弹
-                reminder.status = .overdue
-                reminder.updatedAt = now
-                try? modelContext?.save()
-                SyncStore.touchLocalChange()
-                print("[ReminderEngine] 一次性提醒已逾期归档: \(reminder.title)")
-                continue
-            }
-            reminder.nextTriggerAt = calculateNextTrigger(after: now, reminder: reminder)
-            reminder.status = .pending
-            reminder.retryStage = 0
-            reminder.lastRetryAt = nil
+            // 每错过一次触发就前进一个重试阶段，直到下次触发落在未来或达到上限
+            let caught = RetrySchedule.catchUp(stage: reminder.retryStage,
+                                               dueAt: reminder.nextTriggerAt,
+                                               now: now)
+            let stage = caught.stage
+            let due = caught.dueAt
+
+            reminder.retryStage = stage
+            reminder.lastRetryAt = now
             reminder.updatedAt = now
 
+            if caught.isOverdue {
+                // 达到上限：标逾期停止轰炸，留在列表等用户手动确认 / 重新打开
+                reminder.status = .overdue
+                reminder.nextTriggerAt = due
+                try? modelContext?.save()
+                SyncStore.touchLocalChange()
+                await NotificationManager.shared.removePendingNotification(for: reminder.id)
+                print("[ReminderEngine] 递增重试已达上限，标记逾期: \(reminder.title)")
+                continue
+            }
+
+            reminder.nextTriggerAt = due
+            reminder.status = .active
             try? modelContext?.save()
             SyncStore.touchLocalChange()
 
             await scheduleAllNotifications(for: reminder)
-            print("[ReminderEngine] 过期提醒已自动推进: \(reminder.title)")
+            print("[ReminderEngine] 过期提醒进入重试阶段 \(stage): \(reminder.title), 下次: \(due)")
         }
     }
 

@@ -44,7 +44,13 @@ struct HolidayService {
     /// 计算指定节假日的下一个日期
     static func nextDate(for holiday: Holiday, from now: Date = Date()) -> Date? {
         if holiday.isLunar {
-            // 农历节假日→用农历转换
+            // 除夕 = 农历正月初一的前一天（腊月最后一天）。
+            // 2025–2029 连续无年三十，硬写 12/30 会得到错误日期，故取「春节 - 1 天」。
+            if holiday.name == "除夕" {
+                guard let spring = LunarCalendar.nextLunarBirthday(month: 1, day: 1, from: now) else { return nil }
+                return spring.addingTimeInterval(-86400)
+            }
+            // 其它农历节假日→用农历转换
             return LunarCalendar.nextLunarBirthday(month: holiday.month, day: holiday.day, from: now)
         } else {
             // 公历节假日→直接计算

@@ -47,6 +47,72 @@ struct LunarCalendarCheck {
         assertLunar(date(2027, 2, 6), 2027, 1, 1, false, "02-06 应为正月初一")
         assertLunar(date(2027, 2, 5), 2026, 12, 29, false, "02-05 应为除夕(腊月廿九)")
 
+        // 2b. P0-2 农历整年平移回归（2025–2030 官方口径锚点）
+        // 2026 春节官方=02-17 与 CLDR 一致，不平移；2027–2030 比 CLDR 早 1 天。
+        let shiftedSprings: [(Int, Int, Int)] = [
+            (2027, 2, 6), (2028, 1, 26), (2029, 2, 13), (2030, 2, 3)
+        ]
+        for (y, m, d) in shiftedSprings {
+            check("修正后 \(y) 春节 = \(m)-\(d) (CLDR 早1天)",
+                  LunarCalendar.lunarToSolar(lunarYear: y, lunarMonth: 1, lunarDay: 1) == date(y, m, d))
+            assertLunar(date(y, m, d), y, 1, 1, false, "\(y) 春节正月初一")
+        }
+        // 2026 春节不平移（官方=02-17，与 CLDR 一致）
+        check("2026 春节不平移 = 02-17",
+              LunarCalendar.lunarToSolar(lunarYear: 2026, lunarMonth: 1, lunarDay: 1) == date(2026, 2, 17))
+        // 无年三十年份（官方口径）腊月三十不存在
+        // 注：2029 农历有腊月三十（公历 2030-02-02），2030 无；故集合以 2030 收尾。
+        for y in [2025, 2026, 2027, 2028, 2030] {
+            check("农历\(y) 无腊月三十 → nil",
+                  LunarCalendar.lunarToSolar(lunarYear: y, lunarMonth: 12, lunarDay: 30) == nil)
+        }
+        // 除夕连续性：平移年份 除夕(腊月廿九)=春节-1，反向查表一致
+        assertLunar(date(2028, 1, 25), 2027, 12, 29, false, "2028 除夕=腊月廿九")
+        assertLunar(date(2028, 1, 26), 2028, 1, 1, false, "2028 春节=正月初一")
+        assertLunar(date(2029, 2, 12), 2028, 12, 29, false, "2029 除夕=腊月廿九")
+        // 农历2029年 腊月为大月(30天)，有年三十：除夕 = 2030-02-02 = 腊月三十（HKO 口径）
+        assertLunar(date(2030, 2, 1), 2029, 12, 29, false, "2030-02-01 = 农历2029年腊月廿九")
+        assertLunar(date(2030, 2, 2), 2029, 12, 30, false, "2030 除夕=腊月三十(2029有年三十)")
+        check("农历2029 有腊月三十 = 2030-02-02",
+              LunarCalendar.lunarToSolar(lunarYear: 2029, lunarMonth: 12, lunarDay: 30) == date(2030, 2, 2))
+        let d20300202 = LunarCalendar.solarToLunar(date(2030, 2, 2))
+        check("2030-02-02 反向查表 = 农历2029年腊月三十",
+              d20300202.year == 2029 && d20300202.month == 12 && d20300202.day == 30)
+
+        // 2c. P1-2 递增重试时间轴回归（与 Android retryIntervals / MAX_ESCALATION 对齐）
+        // 单测 RetrySchedule 纯逻辑，避免「iOS 改了没法本地验证」盲区。
+        check("RetrySchedule.maxStage == 5 (第5阶段标 overdue)", RetrySchedule.maxStage == 5)
+        // delay(afterStage:) 序列（秒）：0/1→1h，2→4h，3→12h，4+→24h
+        check("delay(0..1) == 3600", RetrySchedule.delay(afterStage: 0) == 3600)
+        check("delay(1) == 3600", RetrySchedule.delay(afterStage: 1) == 3600)
+        check("delay(2) == 14400", RetrySchedule.delay(afterStage: 2) == 14400)
+        check("delay(3) == 43200", RetrySchedule.delay(afterStage: 3) == 43200)
+        check("delay(4) == 86400", RetrySchedule.delay(afterStage: 4) == 86400)
+        check("delay(5) == 86400 (封顶 24h)", RetrySchedule.delay(afterStage: 5) == 86400)
+        check("delay(99) == 86400 (封顶 24h)", RetrySchedule.delay(afterStage: 99) == 86400)
+        // cumulativeOffset：D-day 起累计时间轴
+        check("cumulativeOffset(1) == 0 (D-day)", RetrySchedule.cumulativeOffset(toStage: 1) == 0)
+        check("cumulativeOffset(2) == 3600 (T+1h)", RetrySchedule.cumulativeOffset(toStage: 2) == 3600)
+        check("cumulativeOffset(3) == 18000 (T+5h)", RetrySchedule.cumulativeOffset(toStage: 3) == 18000)
+        check("cumulativeOffset(4) == 61200 (T+17h)", RetrySchedule.cumulativeOffset(toStage: 4) == 61200)
+        check("cumulativeOffset(5) == 147600 (T+41h)", RetrySchedule.cumulativeOffset(toStage: 5) == 147600)
+        // catchUp：App 被杀一段时间后回来，按错过次数补齐阶段
+        let baseT = date(2030, 1, 1)
+        let now41h = baseT.addingTimeInterval(41 * 3600)
+        let caughtA = RetrySchedule.catchUp(stage: 0, dueAt: baseT, now: now41h)
+        check("catchUp(stage0, now=T+41h) → stage=5 overdue",
+              caughtA.stage == 5 && caughtA.isOverdue)
+        let now5h = baseT.addingTimeInterval(5 * 3600)
+        let caughtB = RetrySchedule.catchUp(stage: 0, dueAt: baseT, now: now5h)
+        check("catchUp(stage0, now=T+5h) → stage=3 due=T+17h 非逾期",
+              caughtB.stage == 3
+              && !caughtB.isOverdue
+              && Int(caughtB.dueAt.timeIntervalSince(baseT)) == 17 * 3600)
+        // catchUp 保证单调推进、不回退
+        let caughtC = RetrySchedule.catchUp(stage: 3, dueAt: baseT.addingTimeInterval(17 * 3600), now: now41h)
+        check("catchUp(stage3, now=T+41h) 从阶段3继续 → stage=5 overdue",
+              caughtC.stage == 5 && caughtC.isOverdue)
+
         // 3. 2020 闰四月
         assertLunar(date(2020, 6, 6), 2020, 4, 15, true, "2020 闰四月十五")
         check("lunarToSolar(2020 闰四月十五) = 06-06",

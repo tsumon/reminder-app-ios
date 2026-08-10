@@ -7718,6 +7718,74 @@
           }
         }
       }
+    },
+    "还没确认哦，这是第 %d 次提醒": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没确认哦，这是第 %d 次提醒"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Still unconfirmed — reminder #%d"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "還沒確認哦，這是第 %d 次提醒"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まだ未確認です（%d 回目のお知らせ）"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아직 확인되지 않았습니다 (%d번째 알림)"
+          }
+        }
+      }
+    },
+    "还没确认哦（第 %d 次提醒）：%@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没确认哦（第 %d 次提醒）：%@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Still unconfirmed (reminder #%d): %@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "還沒確認哦（第 %d 次提醒）：%@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まだ未確認です（%d 回目のお知らせ）：%@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아직 확인되지 않았습니다 (%d번째 알림): %@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

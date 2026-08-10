@@ -204,12 +204,6 @@ struct ReminderListView: View {
             .onChange(of: reminders) { _, newValue in
                 saveWidgetSnapshot(newValue)
             }
-            // v1.9.6 fix: 通知动作全局处理（合并 publisher 减链长，处理逻辑在独立方法）。
-            // 原实现只在详情页 onReceive → 其他页点通知按钮操作静默丢失；
-            // dismiss(滑动消除) 也从未触发递增重试 → 统计「漏掉」恒为 0。
-            .onReceive(notificationActionPublisher) { notification in
-                handleNotificationAction(notification.name, notification)
-            }
             .alert("同步".localized, isPresented: Binding(
                 get: { syncMessage != nil },
                 set: { if !$0 { syncMessage = nil } }
@@ -339,33 +333,6 @@ struct ReminderListView: View {
         let ics = IcsExporter.generateICS(reminders: reminders)
         icsDocument = ReminderBackupDocument(text: ics)
         showIcsExporter = true
-    }
-
-    // MARK: - 通知动作（全局处理）
-
-    /// 通知栏「确认/稍后/消除」合并 publisher（类型显式化，避免 body 链类型检查超时）
-    private var notificationActionPublisher: AnyPublisher<Notification, Never> {
-        NotificationCenter.default.publisher(for: .reminderConfirmed)
-            .merge(with: NotificationCenter.default.publisher(for: .reminderSnoozed))
-            .merge(with: NotificationCenter.default.publisher(for: .reminderDismissed))
-            .eraseToAnyPublisher()
-    }
-
-    /// 处理通知栏「确认/稍后/消除」广播：在根视图统一监听，
-    /// 避免只在详情页监听导致其他页面操作静默丢失
-    private func handleNotificationAction(_ name: Notification.Name, _ notification: Notification) {
-        guard let id = notification.userInfo?["reminderID"] as? UUID,
-              let r = reminders.first(where: { $0.id == id }) else { return }
-        switch name {
-        case .reminderConfirmed:
-            ReminderEngine.shared.confirmReminder(r)
-        case .reminderSnoozed:
-            ReminderEngine.shared.snoozeReminder(r)
-        case .reminderDismissed:
-            ReminderEngine.shared.escalateRetry(r)
-        default:
-            break
-        }
     }
 
     // MARK: - 同步

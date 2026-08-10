@@ -49,13 +49,15 @@ targets:
       testTargets:
         - LunarCalendarCheck
 
-  # 历法回归检查：macOS 命令行工具（无需 iOS 模拟器/host app），
-  # 直接编译产品代码 LunarCalendar.swift 并断言权威农历事实，CI 里 build + run。
+  # 纯逻辑回归检查：macOS 命令行工具（无需 iOS 模拟器/host app），
+  # 直接编译产品代码并断言事实，CI 里 build + run。
+  # 覆盖：LunarCalendar（权威农历事实）+ RetrySchedule（双端递增重试时间轴）。
   LunarCalendarCheck:
     type: tool
     platform: macOS
     sources:
       - path: ReminderApp/Services/LunarCalendar.swift
+      - path: ReminderApp/Services/RetrySchedule.swift
       - path: ReminderAppTests/LunarCalendarCheckMain.swift
     settings:
       base:
@@ -93,7 +95,7 @@ targets:
       path: ReminderWidget/Info.plist
       properties:
         CFBundleDisplayName: 循环提醒小组件
-        CFBundleShortVersionString: "2.0.7"
-        CFBundleVersion: "31"
+        CFBundleShortVersionString: "2.0.8"
+        CFBundleVersion: "32"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension

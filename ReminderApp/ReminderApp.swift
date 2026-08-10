@@ -38,6 +38,14 @@ struct ReminderApp: App {
                     if phase == .active {
                         Task {
                             await syncWidgetCompletedReminders()
+                            // 冷启动后经通知按钮拉起：排空入队的通知动作（确认/稍后/消除）
+                            reminderEngine.drainPendingNotificationActions()
+                            // P1-2: 后台期间系统按预排时间发过的重试通知，回前台补齐库内阶段
+                            let descriptor = FetchDescriptor<Reminder>()
+                            if let reminders = try? sharedModelContainer.mainContext.fetch(descriptor) {
+                                await reminderEngine.checkMissedReminders(reminders: reminders)
+                            }
+                            await reminderEngine.ensureRetryChains()
                         }
                         // 通知角标：进入前台即清零（原实现从不清零，误导性未读数）
                         UIApplication.shared.applicationIconBadgeNumber = 0
@@ -50,6 +58,8 @@ struct ReminderApp: App {
                     if let reminders = try? sharedModelContainer.mainContext.fetch(descriptor) {
                         await reminderEngine.checkMissedReminders(reminders: reminders)
                     }
+                    // P1-2: 为进入 7 天窗口的提醒补排递增重试链（固定标识符，重复调用只覆盖）
+                    await reminderEngine.ensureRetryChains()
                     // v1.8.7: 同步小组件「完成」标记 → confirm + 重排通知 → 清空
                     await syncWidgetCompletedReminders()
                     // v1.8.7 任务②: 后台刷新联网节假日数据（当年 + 下一年，跨年预取）
@@ -59,6 +69,8 @@ struct ReminderApp: App {
                     _ = await (r1, r2)
                     // Item 2: 启动后预检——把落在 ~1 个月内、恰逢法定节假日的循环/规则提醒前移
                     await reminderEngine.runHolidayPreCheck()
+                    // 冷启动排空：App 经通知按钮拉起时 didReceive 已入队动作，引擎就绪后在此统一处理
+                    reminderEngine.drainPendingNotificationActions()
                     #if DEBUG
                     // v1.9.8: 模拟器截图验证用演示数据（仅 Debug 构建）
                     seedDemoDataIfNeeded()
