@@ -34,8 +34,9 @@ struct ReminderApp: App {
         let config = ModelConfiguration(schema: Schema(versionedSchema: ReminderSchemaV1.self), isStoredInMemoryOnly: false)
 
         do {
+            // for: 需传 Schema（经 Schema(versionedSchema:) 显式走 v1），migrationPlan: 传计划本身
             return try ModelContainer(
-                for: ReminderSchemaV1.self,
+                for: Schema(versionedSchema: ReminderSchemaV1.self),
                 migrationPlan: ReminderMigrationPlan.self,
                 configurations: [config]
             )
