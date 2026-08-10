@@ -282,7 +282,7 @@ final class NotificationManager: NSObject, ObservableObject {
         let enqueuedAt: Date
     }
 
-    private let pendingActionsKey = "pendingNotificationActions"
+    private static let pendingActionsKey = "pendingNotificationActions"
 
     /// 入队一条通知动作（持久化到 UserDefaults，App 启动后排空）
     private func enqueueNotificationAction(_ action: NotificationActionType, _ reminderID: UUID) {
