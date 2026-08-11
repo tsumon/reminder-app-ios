@@ -49,7 +49,17 @@ jobs:
         # actool (AssetCatalogSimulatorAgent) 需要 iOS 模拟器运行时才能编译 Assets.xcassets，
         # macOS runner 默认未安装，会导致 archive 阶段 "No simulator runtime version ... available" 失败。
         run: |
-          xcodebuild -downloadPlatform iOS
+          # macos-15 runner 偶发网络中断导致 exit 70（"Unable to connect to simulator"），
+          # 与代码无关；自愈重试最多 3 次，避免手动 rerun。
+          for i in 1 2 3; do
+            echo "Attempt $i: xcodebuild -downloadPlatform iOS"
+            if xcodebuild -downloadPlatform iOS; then
+              echo "downloadPlatform ok"
+              break
+            fi
+            echo "downloadPlatform failed (exit $?), retrying in 10s..."
+            sleep 10
+          done
           xcrun simctl list runtimes
 
       - name: Build (archive, no signing)
