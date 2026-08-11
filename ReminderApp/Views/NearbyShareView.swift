@@ -304,13 +304,19 @@ struct NearbyShareView: View {
 
             let result = BackupHelper.importItems(items, existing: reminders, into: modelContext)
             isReceiving = false
-            isError = false
-            resultMsg = Localized("导入完成：新增 %d 条，跳过重复 %d 条", result.imported, result.skipped)
+            // I8: 区分「写入失败」与「重复跳过」
+            if let err = result.error {
+                isError = true
+                resultMsg = "导入失败：\(err)"
+            } else {
+                isError = false
+                resultMsg = Localized("导入完成：新增 %d 条，跳过重复 %d 条", result.imported, result.skipped)
 
-            // 重新调度本次导入的提醒通知
-            Task {
-                for r in result.inserted where r.isEnabled {
-                    await ReminderEngine.shared.scheduleAllNotifications(for: r)
+                // 重新调度本次导入的提醒通知
+                Task {
+                    for r in result.inserted where r.isEnabled {
+                        await ReminderEngine.shared.scheduleAllNotifications(for: r)
+                    }
                 }
             }
         }

@@ -6,15 +6,15 @@ struct ReminderRowView: View {
 
     var body: some View {
         HStack(spacing: 13) {
-            // v1.9.8 设计图风格：彩色圆角方块图标容器（44pt / 圆角 14）
+            // v1.9.8 设计图风格：彩色圆角方块图标容器（44pt / 圆角 14），内放「提醒类型 emoji」（对齐 Android reminderEmoji）
             ZStack {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(kindBadgeColor.opacity(0.15))
                     .frame(width: 44, height: 44)
-                statusIcon
+                Text(reminder.typeEmoji)
                     .font(.system(size: 20))
             }
-            .accessibilityLabel(Localized("状态：%@", reminder.status.rawValue))
+            .accessibilityLabel(Localized("提醒类型"))
 
             VStack(alignment: .leading, spacing: 4) {
                 // 已完成：标题划线变灰（滴答清单风格）
@@ -104,29 +104,6 @@ struct ReminderRowView: View {
             case .holiday:       return .orange
             case .none:          return .gray
             }
-        }
-    }
-
-    // MARK: - 状态图标
-
-    @ViewBuilder
-    private var statusIcon: some View {
-        switch reminder.status {
-        case .pending:
-            Image(systemName: "clock")
-                .foregroundStyle(.blue)
-        case .active:
-            Image(systemName: "bell.badge.fill")
-                .foregroundStyle(.red)
-        case .snoozed:
-            Image(systemName: "moon.zzz.fill")
-                .foregroundStyle(.orange)
-        case .confirmed:
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-        case .overdue:
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
         }
     }
 

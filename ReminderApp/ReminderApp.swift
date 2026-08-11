@@ -69,9 +69,11 @@ struct ReminderApp: App {
                             // P1-2: 后台期间系统按预排时间发过的重试通知，回前台补齐库内阶段
                             let descriptor = FetchDescriptor<Reminder>()
                             if let reminders = try? sharedModelContainer.mainContext.fetch(descriptor) {
-                                await reminderEngine.checkMissedReminders(reminders: reminders)
-                            }
-                            await reminderEngine.ensureRetryChains()
+                            await reminderEngine.checkMissedReminders(reminders: reminders)
+                        }
+                        await reminderEngine.ensureRetryChains()
+                        // 批次2 功能3: 回前台刷新周报通知内容（本周至今统计）
+                        await refreshWeeklyReport()
                         }
                         // 通知角标：进入前台即清零（原实现从不清零，误导性未读数）
                         UIApplication.shared.applicationIconBadgeNumber = 0
@@ -99,6 +101,8 @@ struct ReminderApp: App {
                     await reminderEngine.runHolidayPreCheck()
                     // 冷启动排空：App 经通知按钮拉起时 didReceive 已入队动作，引擎就绪后在此统一处理
                     reminderEngine.drainPendingNotificationActions()
+                    // 批次2 功能3: 启动时刷新周报通知内容（本周至今统计）
+                    await refreshWeeklyReport()
                     #if DEBUG
                     // v1.9.8: 模拟器截图验证用演示数据（仅 Debug 构建）
                     seedDemoDataIfNeeded()
@@ -106,6 +110,13 @@ struct ReminderApp: App {
                 }
         }
         .modelContainer(sharedModelContainer)
+    }
+
+    /// 批次2 功能3: 统计周报 —— 计算「本周至今」统计并覆盖安排每周日 20:00 通知
+    private func refreshWeeklyReport() async {
+        let descriptor = FetchDescriptor<ReminderRecord>()
+        let records = (try? sharedModelContainer.mainContext.fetch(descriptor)) ?? []
+        await WeeklyReportService.schedule(records: records)
     }
 
     /// 把用户在小组件上点「完成」的提醒同步到数据库

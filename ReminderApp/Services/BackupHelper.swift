@@ -9,6 +9,7 @@ enum BackupHelper {
         let imported: Int
         let skipped: Int
         let inserted: [Reminder]
+        let error: String?   // I8: 写入失败原因（区别于「重复跳过」），nil 表示成功
     }
 
     /// 导出的单条提醒（纯值类型，便于 JSON 编解码）
@@ -33,6 +34,8 @@ enum BackupHelper {
         var nextTriggerAt: Double
         var status: String
         var isActive: Bool
+        /// H1: 关键提醒标记（iOS 存 UserDefaults CriticalStore，不动 schema；缺省 false 兼容旧文件）
+        var isCritical: Bool = false
     }
 
     struct BackupRoot: Codable {
@@ -46,6 +49,16 @@ enum BackupHelper {
     /// 将 [Reminder] 导出为 JSON 字符串
     static func exportJSON(_ reminders: [Reminder]) -> String {
         exportJSON(reminders, exportedAt: Date().timeIntervalSince1970)
+    }
+
+    /// 批次3 功能6: 单条提醒分享卡片 —— 复用备份信封格式导出单条
+    static func exportSingle(_ reminder: Reminder) -> String {
+        exportJSON([reminder])
+    }
+
+    /// 批次3 功能6: 从分享卡片 JSON 解析出单条（解析失败返回 nil）
+    static func importSingle(_ json: String) -> BackupItem? {
+        importJSON(json)?.first
     }
 
     /// 带指定 exportedAt（秒）的导出，用于同步时保证版本递增
@@ -71,7 +84,9 @@ enum BackupHelper {
                 firstTriggerAt: r.firstTriggerAt.timeIntervalSince1970 * 1000,
                 nextTriggerAt: r.nextTriggerAt.timeIntervalSince1970 * 1000,
                 status: statusCode(r.status),
-                isActive: r.isEnabled
+                isActive: r.isEnabled,
+                // H1: 关键提醒标记纳入导出（读 CriticalStore）
+                isCritical: ReminderEngine.CriticalStore.isCritical(r.id)
             )
         }
         let root = BackupRoot(
@@ -103,6 +118,15 @@ enum BackupHelper {
             return 0
         }
         return root.dataVersion ?? 0
+    }
+
+    /// 读取 JSON 内提醒条数（v2.0.21 F1：首次同步冲突判定用；解析失败返回 0）
+    static func itemCount(of json: String) -> Int {
+        guard let data = json.data(using: .utf8),
+              let root = try? JSONDecoder().decode(BackupRoot.self, from: data) else {
+            return 0
+        }
+        return root.reminders.count
     }
 
     /// 从 JSON 解析提醒列表
@@ -157,11 +181,14 @@ enum BackupHelper {
         do {
             try context.save()
         } catch {
-            return ImportResult(imported: 0, skipped: 0, inserted: [])
+            // I8: 写入失败 → 回滚已 insert 但未保存的对象，避免后续任意成功 save 意外落库；
+            //     并返回 error 区分于「重复跳过」，调用方据此提示而非误报「已存在」
+            context.rollback()
+            return ImportResult(imported: 0, skipped: 0, inserted: [], error: "导入保存失败：\(error.localizedDescription)")
         }
         SyncStore.touchLocalChange()
 
-        return ImportResult(imported: importedCount, skipped: skippedCount, inserted: inserted)
+        return ImportResult(imported: importedCount, skipped: skippedCount, inserted: inserted, error: nil)
     }
 
     // MARK: - 编码映射（与 Android 的字符串值对齐）
@@ -251,7 +278,7 @@ enum BackupHelper {
             }
         }()
 
-        return Reminder(
+        let reminder = Reminder(
             title: item.title,
             note: item.note,
             kind: kind,
@@ -273,5 +300,8 @@ enum BackupHelper {
             priority: priority,
             isEnabled: item.isActive
         )
+        // H1: 导入时写回关键标记到 CriticalStore（保持 UserDefaults 方案，不动 schema）
+        ReminderEngine.CriticalStore.setCritical(item.isCritical, for: reminder.id)
+        return reminder
     }
 }

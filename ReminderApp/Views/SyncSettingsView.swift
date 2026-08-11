@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 /// WebDAV 同步设置
 struct SyncSettingsView: View {
@@ -15,6 +16,11 @@ struct SyncSettingsView: View {
     @State private var testing = false
     @State private var resultMsg: String?
     @State private var isError = false
+
+    // 批次3 功能4: 日历订阅链接
+    @State private var icsBusy = false
+    @State private var icsResult: WebDavSync.ICSUploadResult?
+    @State private var icsCopied = false
 
     var body: some View {
         Form {
@@ -78,6 +84,29 @@ struct SyncSettingsView: View {
                 .disabled(syncing || url.trimmingCharacters(in: .whitespaces).isEmpty || username.isEmpty || password.isEmpty)
             }
 
+            // 批次3 功能4: 系统日历订阅链接（.ics 上传 WebDAV，返回可订阅直链）
+            Section("日历订阅".localized) {
+                Text("把全部提醒导出为 .ics 日历文件上传到 WebDAV 目录。系统日历不能直接订阅带账号密码的地址——需在网盘网页端对该文件「创建分享链接」，再把分享直链填进日历订阅。".localized)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    generateSubscriptionLink()
+                } label: {
+                    if icsBusy {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
+                        }
+                    } else {
+                        Label("生成日历订阅链接".localized, systemImage: "calendar.badge.plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .disabled(icsBusy || url.trimmingCharacters(in: .whitespaces).isEmpty || username.isEmpty || password.isEmpty)
+            }
+
             if let resultMsg {
                 Section {
                     Text(resultMsg.localized)
@@ -87,7 +116,27 @@ struct SyncSettingsView: View {
         }
         .navigationTitle("同步设置".localized)
         .navigationBarTitleDisplayMode(.inline)
+        .alert("日历订阅链接".localized, isPresented: $icsAlertPresented) {
+            if case .success(let url, _) = icsResult {
+                Button("复制链接".localized) {
+                    UIPasteboard.general.string = url
+                    icsCopied = true
+                }
+            }
+            Button("好".localized, role: .cancel) { icsCopied = false }
+        } message: {
+            switch icsResult {
+            case .success(let url, let count):
+                Text(Localized("已上传 %d 条提醒的日历文件。网盘网页端对该文件「创建分享链接」，再把分享直链填进系统日历的「订阅」即可。\n\n直链：%@", count, url))
+            case .failure(let msg):
+                Text(msg)
+            case .none:
+                Text("")
+            }
+        }
     }
+
+    @State private var icsAlertPresented = false
 
     /// 测试连接：用当前输入验证（不持久化——避免手滑填错覆盖已有好配置），通过后再「保存并立即同步」
     private func testConnection() {
@@ -129,6 +178,18 @@ struct SyncSettingsView: View {
                 isError = true
                 resultMsg = msg
             }
+        }
+    }
+
+    // 批次3 功能4: 生成日历订阅链接
+    private func generateSubscriptionLink() {
+        icsBusy = true
+        icsResult = nil
+        Task {
+            let result = await WebDavSync.uploadICS(reminders: reminders)
+            icsBusy = false
+            icsResult = result
+            icsAlertPresented = true
         }
     }
 

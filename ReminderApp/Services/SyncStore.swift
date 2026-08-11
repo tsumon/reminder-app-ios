@@ -15,6 +15,8 @@ enum SyncStore {
     // v2.0.17: 单调版本——墙钟可回拨/双端时钟有偏差，判新改用自增版本，时间戳仅兜底
     private static let kLocalVersion = "sync_local_version"
     private static let kLastSyncVersion = "sync_last_sync_version"
+    // v2.0.21 F1: 是否成功同步过至少一次（首次同步版本不可比，需回退时间戳判新）
+    private static let kHasSyncedOnce = "sync_has_synced_once"
 
     static var url: String { defaults.string(forKey: kURL) ?? "" }
     static var username: String { defaults.string(forKey: kUser) ?? "" }
@@ -35,6 +37,20 @@ enum SyncStore {
     static var localVersion: Int { defaults.integer(forKey: kLocalVersion) }
     /// 上次成功同步时的本地版本（冲突判定用；0 = 从未同步过）
     static var lastSyncVersion: Int { defaults.integer(forKey: kLastSyncVersion) }
+
+    /// v2.0.21 F1: 是否成功同步过至少一次。
+    ///
+    /// 首次同步时远程 dataVersion 是「该账号历史累计值」（可能很大），而本地 localVersion 从 0 起，
+    /// 两者不同源不可比——直接版本比较会永远判「远程新」，把本机新建的提醒静默覆盖掉。
+    /// 因此首次同步回退时间戳判新。
+    static var hasSyncedOnce: Bool { defaults.bool(forKey: kHasSyncedOnce) }
+
+    /// 是否为「首次同步」（版本不可比场景）：从未成功同步过且无历史同步版本（老用户 lastSyncVersion > 0 不受影响）
+    static var isFirstSync: Bool { !hasSyncedOnce && lastSyncVersion <= 0 }
+
+    static func setHasSyncedOnce() {
+        defaults.set(true, forKey: kHasSyncedOnce)
+    }
 
     static var isConfigured: Bool {
         !url.isEmpty && !username.isEmpty && !password.isEmpty

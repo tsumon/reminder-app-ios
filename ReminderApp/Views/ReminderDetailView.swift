@@ -9,6 +9,10 @@ struct ReminderDetailView: View {
     let reminder: Reminder
     @State private var showDeleteAlert = false
     @State private var appeared = false
+    // 批次2 功能2: 打卡成功 → 正向反馈卡片文案（非空即展示）
+    @State private var checkInText: String?
+    // v2.0.21 G3: 每次打卡自增，作为自动消失计时器的 id（换值即取消上一条的计时，防提前清空）
+    @State private var checkInToken = 0
 
     var body: some View {
         ScrollView {
@@ -43,6 +47,14 @@ struct ReminderDetailView: View {
         }
         .navigationTitle(reminder.title)
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                // 批次3 功能6: 单条提醒分享卡片（导出为 JSON 经系统分享面板发出）
+                ShareLink(item: BackupHelper.exportSingle(reminder)) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+            }
+        }
         .alert("确认删除".localized, isPresented: $showDeleteAlert) {
             Button("取消".localized, role: .cancel) {}
             Button("删除".localized, role: .destructive) { deleteReminder() }
@@ -52,6 +64,17 @@ struct ReminderDetailView: View {
         .onAppear {
             ReminderEngine.shared.configure(with: modelContext)
             appeared = true
+        }
+        // 批次2 功能2: 打卡成功卡片（顶部浮层，不拦截点击）
+        .overlay {
+            CheckInFeedbackBanner(text: checkInText)
+        }
+        // v2.0.21 G3: 自动消失改用可取消的 task（原 asyncAfter 无法撤销，连续确认会提前清掉后一条）
+        .task(id: checkInToken) {
+            guard checkInToken > 0, checkInText != nil else { return }
+            try? await Task.sleep(nanoseconds: 2_800_000_000)
+            guard !Task.isCancelled else { return }
+            checkInText = nil
         }
     }
 
@@ -110,27 +133,56 @@ struct ReminderDetailView: View {
     @ViewBuilder
     private var actionButtons: some View {
         if reminder.status == .active || reminder.status == .snoozed || reminder.status == .overdue {
-            HStack(spacing: 12) {
-                Button {
-                    ReminderEngine.shared.confirmReminder(reminder)
-                } label: {
-                    Label("确认完成".localized, systemImage: "checkmark.circle.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.green)
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    Button {
+                        performCheckIn()
+                    } label: {
+                        Label("确认完成".localized, systemImage: "checkmark.circle.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
 
-                Button {
-                    ReminderEngine.shared.snoozeReminder(reminder)
-                } label: {
-                    Label("稍后提醒".localized, systemImage: "clock.arrow.circlepath")
-                        .frame(maxWidth: .infinity)
+                    Button {
+                        ReminderEngine.shared.snoozeReminder(reminder)
+                    } label: {
+                        Label("稍后提醒".localized, systemImage: "clock.arrow.circlepath")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.orange)
                 }
-                .buttonStyle(.bordered)
-                .tint(.orange)
+
+                // 已逾期：给一个明确的「补打今天」入口——按今天完成、推进周期、计入统计
+                if reminder.status == .overdue {
+                    Button {
+                        performCheckIn(source: "补打卡")
+                    } label: {
+                        Label("补打今天".localized, systemImage: "checkmark.circle.badge.questionmark")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(ThemeTokens.statusOverdue)
+                    .accessibilityHint("把这条逾期提醒按今天完成，并推进到下一个周期".localized)
+                }
             }
             .controlSize(.large)
         }
+    }
+
+    /// 打卡（确认完成 / 补打今天共用）：确认 + 弹正向反馈卡片
+    private func performCheckIn(source: String = "手动确认") {
+        ReminderEngine.shared.confirmReminder(reminder, source: source)
+        // 批次2 功能2: 打卡成功卡片（计算当前连续天数）
+        let descriptor = FetchDescriptor<ReminderRecord>()
+        let records = (try? modelContext.fetch(descriptor)) ?? []
+        let streak = StatsService.summarize(records: records).currentStreak
+        let prefix = source == "补打卡" ? "补打卡成功".localized : "打卡成功".localized
+        checkInText = streak > 1
+            ? Localized("%@，已连续 %d 天 🎉", prefix, streak)
+            : "\(prefix) 🎉"
+        checkInToken += 1
     }
 
     // MARK: - 信息卡片
@@ -215,6 +267,27 @@ struct ReminderDetailView: View {
             )) {
                 Text("启用提醒".localized)
                     .font(.subheadline)
+            }
+
+            // 批次3 功能5: 关键提醒开关（触发更激进的重复 alert 脉冲）
+            Toggle(isOn: Binding(
+                get: { ReminderEngine.CriticalStore.isCritical(reminder.id) },
+                set: { newValue in
+                    ReminderEngine.CriticalStore.setCritical(newValue, for: reminder.id)
+                    if reminder.isEnabled {
+                        Task {
+                            await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
+                        }
+                    }
+                }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("关键提醒".localized)
+                        .font(.subheadline)
+                    Text("重要事项，错过会重复提醒直到确认".localized)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding()

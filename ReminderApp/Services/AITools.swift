@@ -117,6 +117,43 @@ struct AITools {
                     "required": ["title_keyword"]
                 ]
             ]
+        ],
+        [
+            "type": "function",
+            "function": [
+                "name": "import_tasks",
+                "description": "把用户给的多段待办文本批量解析为多条提醒并预览，确认后再批量创建",
+                "parameters": [
+                    "type": "object",
+                    "properties": [
+                        "items": [
+                            "type": "array",
+                            "description": "逐条待办，每条解析为一条提醒",
+                            "items": [
+                                "type": "object",
+                                "properties": [
+                                    "title":         ["type": "string", "description": "提醒标题"],
+                                    "note":          ["type": "string", "description": "备注（可选）"],
+                                    "kind":          ["type": "string", "enum": ["cycle", "date", "rule"], "description": "周期/日期/规则"],
+                                    "cycle":         ["type": "string", "enum": ["daily","weekly","biweekly","monthly","quarterly","yearly","custom","once"], "description": "周期类型"],
+                                    "custom_days":   ["type": "integer", "description": "自定义天数"],
+                                    "rule_period":   ["type": "string", "enum": ["monthly","quarterly","yearly"], "description": "规则频率"],
+                                    "rule_week":     ["type": "integer", "description": "第几周 1-5"],
+                                    "rule_weekday":  ["type": "integer", "description": "周几 1=周一...7=周日"],
+                                    "date_type":     ["type": "string", "enum": ["solar_birthday","lunar_birthday","holiday"], "description": "日期子类型"],
+                                    "target_month":  ["type": "integer", "description": "目标月 1-12"],
+                                    "target_day":    ["type": "integer", "description": "目标日 1-31"],
+                                    "holiday_name":  ["type": "string", "description": "节假日名称"],
+                                    "advance_days":  ["type": "integer", "description": "提前天数，默认3"],
+                                    "reminder_hour": ["type": "integer", "description": "小时 0-23，默认9"],
+                                    "reminder_minute": ["type": "integer", "description": "分钟 0-59，默认0"]
+                                ]
+                            ]
+                        ]
+                    ],
+                    "required": ["items"]
+                ]
+            ]
         ]
     ]
 
@@ -140,6 +177,8 @@ struct AITools {
     - "春节/中秋/端午/清明/国庆/元旦" → kind=date, date_type=holiday, holiday_name=名称
 
     **批量创建（关键）：** 若用户一次给出多个生日（例如"老公生日:新历9月5号 / 婆婆生日:农历7月初五 / 老娘生日:新历1月14号，旧历12月18 / 啊姨生日:新历7月14号，旧历6月15"），必须为每一个人分别调用一次 create_reminder（一次只创建一条），title 用"XX生日"。优先取"新历/公历"日期；若只给了"旧历/农历"，则使用 lunar_birthday 与对应月日。不要合并、也不要漏掉任何一个人。
+
+    **批量整理（关键）：** 若用户粘贴了一段包含多条待办的文字（聊天记录 / 便签 / 需求文档 / 多行清单），→ 调用 import_tasks，把每段解析为一条提醒（尽量补全 title / 周期 / 时间），批量预览确认后再创建。不要逐条调用 create_reminder。
 
     **周期提醒：**
     - 每天 → kind=cycle, cycle=daily

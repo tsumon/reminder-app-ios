@@ -77,6 +77,28 @@ actor AIService {
         endpoint: String,
         apiKey: String
     ) async throws -> ChatMessage {
+        try await send(model: model, messages: messages, endpoint: endpoint, apiKey: apiKey, useTools: true)
+    }
+
+    /// 纯文本补全（不带 tools）——用于周报 AI 解读这类「只要一段话」的场景，
+    /// 避免模型误触发 function call 导致返回 content 为空。
+    func complete(
+        model: String,
+        messages: [ChatMessage],
+        endpoint: String,
+        apiKey: String
+    ) async throws -> String {
+        let msg = try await send(model: model, messages: messages, endpoint: endpoint, apiKey: apiKey, useTools: false)
+        return (msg.content ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func send(
+        model: String,
+        messages: [ChatMessage],
+        endpoint: String,
+        apiKey: String,
+        useTools: Bool
+    ) async throws -> ChatMessage {
         // endpoint 来自用户设置自由输入，可能含空格/中文/无 host，强制解包会崩溃
         guard let url = URL(string: "\(endpoint)/chat/completions") else {
             throw AIError.invalidResponse
@@ -89,8 +111,8 @@ actor AIService {
         let body = ChatRequest(
             model: model,
             messages: messages,
-            tools: encodeTools(),
-            tool_choice: "auto"
+            tools: useTools ? encodeTools() : nil,
+            tool_choice: useTools ? "auto" : nil
         )
 
         req.httpBody = try JSONEncoder().encode(body)

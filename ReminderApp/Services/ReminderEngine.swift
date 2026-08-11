@@ -403,12 +403,14 @@ final class ReminderEngine: ObservableObject {
 
     // MARK: - 确认完成
 
-    func confirmReminder(_ reminder: Reminder) {
+    /// - Parameter source: 记录备注来源。默认「手动确认」；补打卡入口传「补打卡」，
+    ///   统计口径仍算 .confirm（计入完成 / 连续天数），只在历史里区分是不是事后补的。
+    func confirmReminder(_ reminder: Reminder, source: String = "手动确认") {
         guard let context = modelContext else { return }
 
         let now = Date()
 
-        let record = ReminderRecord(type: .confirm, note: "手动确认")
+        let record = ReminderRecord(type: .confirm, note: source)
         reminder.records.append(record)
 
         // v1.8.7 任务⑥: 埋点
@@ -423,6 +425,8 @@ final class ReminderEngine: ObservableObject {
             try? context.save()
             SyncStore.touchLocalChange()
             Task { await NotificationManager.shared.removePendingNotification(for: reminder.id) }
+            // 批次2 功能2: 打卡成功 → 正向反馈卡片
+            NotificationCenter.default.post(name: .reminderConfirmed, object: reminder)
             print("[ReminderEngine] 一次性提醒已完成: \(reminder.title)")
             return
         }
@@ -442,6 +446,9 @@ final class ReminderEngine: ObservableObject {
         // Item 2: 本次已完成，清空前移备注；并预检下一次触发是否遇节假日
         HolidayAdjustStore.setNote(nil, for: reminder.id)
         Task { await runHolidayPreCheck() }
+
+        // 批次2 功能2: 打卡成功 → 正向反馈卡片（列表/详情页监听）
+        NotificationCenter.default.post(name: .reminderConfirmed, object: reminder)
 
         // 重新调度通知
         Task {
@@ -721,6 +728,28 @@ final class ReminderEngine: ObservableObject {
             var dict = UserDefaults.standard.dictionary(forKey: key) ?? [:]
             if let note, !note.isEmpty {
                 dict[id.uuidString] = note
+            } else {
+                dict.removeValue(forKey: id.uuidString)
+            }
+            UserDefaults.standard.set(dict, forKey: key)
+        }
+    }
+
+    // MARK: - 关键提醒（批次3 功能5）
+
+    /// 关键提醒标记（critical）的本地存储。
+    /// 与 HolidayAdjustStore 同理：为避免改动 SwiftData schema 引发无法本地验证的迁移崩溃，
+    /// 把「是否为关键提醒」存到 UserDefaults（按提醒 UUID 索引）。
+    /// 关键提醒用于触发更激进的提醒策略（重复 alert 脉冲），确保重要事项不被漏看。
+    struct CriticalStore {
+        private static let key = "critical_reminders"
+        static func isCritical(_ id: UUID) -> Bool {
+            UserDefaults.standard.dictionary(forKey: key)?[id.uuidString] as? Bool ?? false
+        }
+        static func setCritical(_ value: Bool, for id: UUID) {
+            var dict = UserDefaults.standard.dictionary(forKey: key) ?? [:]
+            if value {
+                dict[id.uuidString] = true
             } else {
                 dict.removeValue(forKey: id.uuidString)
             }

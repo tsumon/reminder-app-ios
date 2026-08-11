@@ -46,6 +46,14 @@ struct MainTabView: View {
             .tabItem { Label("设置".localized, systemImage: "gearshape.fill") }
             .tag(3)
         }
+        // 批次2 功能1: 点击通知本体 → 切回首页 Tab（详情页在首页栈内 push）
+        .onReceive(NotificationCenter.default.publisher(for: .openReminderDetail)) { _ in
+            selectedTab = 0
+        }
+        // 批次2 功能3: 点击统计周报通知 → 切到统计 Tab
+        .onReceive(NotificationCenter.default.publisher(for: .openStatsTab)) { _ in
+            selectedTab = 2
+        }
         .tint(ThemeTokens.brandPrimary)
     }
 }

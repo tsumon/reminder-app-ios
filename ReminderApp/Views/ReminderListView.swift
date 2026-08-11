@@ -39,10 +39,20 @@ struct ReminderListView: View {
     @State private var showExportExporter = false
     @State private var exportDocument: ReminderBackupDocument?
     @State private var showImportImporter = false
+    // 批次3 功能6: 单条分享卡片粘贴导入
+    @State private var showCardImport = false
+    @State private var cardImportText = ""
+    @State private var cardImportMsg: String?
     // v1.8.7 任务④: .ics 日历导出
     @State private var showIcsExporter = false
     @State private var showNearbyShare = false
     @State private var icsDocument: ReminderBackupDocument?
+    // 批次2 功能1: 通知点击直达确认面板 —— 待 push 的提醒 id
+    @State private var pendingDetailID: UUID?
+    // 批次2 功能2: 打卡成功 → 正向反馈卡片文案（非空即展示）
+    @State private var checkInText: String?
+    // v2.0.21 G3: 每次打卡自增，作为自动消失计时器的 id（换值即取消上一条的计时，防提前清空）
+    @State private var checkInToken = 0
     // v1.8.7 在线升级
     @State private var updateInfo: AppUpdateInfo?
     @State private var downloading = false
@@ -59,7 +69,7 @@ struct ReminderListView: View {
 
     var body: some View {
         // v1.9.8: NavigationStack 由 MainTabView 的 Tab 提供，避免嵌套双层导航栏
-        mainContent
+        mainContentWrapped
     }
 
     private var mainContent: some View {
@@ -146,47 +156,29 @@ struct ReminderListView: View {
                         } label: {
                             Label("导入提醒".localized, systemImage: "square.and.arrow.down")
                         }
+                        // 批次3 功能6: 单条分享卡片粘贴导入（聊天里收到的 JSON 直接粘进来）
+                        Button {
+                            menuAction { showCardImport = true }
+                        } label: {
+                            Label("导入分享卡片".localized, systemImage: "doc.on.clipboard")
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.title3.weight(.semibold))
                     }
                 }
             }
-            .sheet(isPresented: $showCreateSheet) {
-                CreateReminderView()
-            }
-            // 近场传输: 同一局域网互传提醒
-            .sheet(isPresented: $showNearbyShare) {
-                NearbyShareView()
-            }
-            .fileExporter(
-                isPresented: $showExportExporter,
-                document: exportDocument,
-                contentType: .json,
-                defaultFilename: "reminder_backup_\(Int(Date().timeIntervalSince1970))"
-            ) { result in
-                if case .failure(let error) = result {
-                    print("[导出] 失败: \(error)")
-                }
-            }
-            .fileExporter(
-                isPresented: $showIcsExporter,
-                document: icsDocument,
-                contentType: .plainText,
-                defaultFilename: "reminders"
-            ) { result in
-                if case .failure(let error) = result {
-                    print("[.ics 导出] 失败: \(error)")
-                }
-            }
-            .fileImporter(
-                isPresented: $showImportImporter,
-                allowedContentTypes: [.json, .plainText]
-            ) { result in
-                importBackup(result)
-            }
+    }
+
+    private var mainContentWrapped: some View {
+        sheetsWrapped
             .onAppear {
                 saveWidgetSnapshot(reminders)
+                // 批次2 功能1: 冷启动兜底 —— 消费持久化的「通知点击直达确认面板」目标
+                if let pending = NotificationManager.takePendingDetailID(),
+                   let uuid = UUID(uuidString: pending) {
+                    pendingDetailID = uuid
+                }
                 // 自动同步（限频 5 分钟）
                 if SyncStore.autoSync && SyncStore.isConfigured &&
                     Date().timeIntervalSince1970 - SyncStore.lastSyncAt > 300 {
@@ -203,6 +195,40 @@ struct ReminderListView: View {
             }
             .onChange(of: reminders) { _, newValue in
                 saveWidgetSnapshot(newValue)
+            }
+            // 批次2 功能1: 点击通知本体 → 直达该提醒的确认面板
+            // navigationDestination(item:) 需 Hashable → 用 UUID（SwiftData 模型非 Hashable，规避）
+            .navigationDestination(item: $pendingDetailID) { id in
+                if let reminder = reminders.first(where: { $0.id == id }) {
+                    ReminderDetailView(reminder: reminder)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .openReminderDetail)) { note in
+                guard let idString = note.object as? String,
+                      let uuid = UUID(uuidString: idString) else { return }
+                pendingDetailID = uuid
+            }
+            // 批次2 功能2: 确认完成 → 打卡成功卡片（含当前连续天数）
+            .onReceive(NotificationCenter.default.publisher(for: .reminderConfirmed)) { _ in
+                let descriptor = FetchDescriptor<ReminderRecord>()
+                let records = (try? modelContext.fetch(descriptor)) ?? []
+                let streak = StatsService.summarize(records: records).currentStreak
+                checkInText = streak > 1
+                    ? "打卡成功，已连续 \(streak) 天 🎉"
+                    : "打卡成功 🎉"
+                checkInToken += 1
+            }
+            .overlay {
+                CheckInFeedbackBanner(text: checkInText)
+            }
+            // v2.0.21 G3: 自动消失改用可取消的 task —— 原 asyncAfter(2.8s) 无法撤销，
+            // 连续确认两条时第一条的计时器会把第二条卡片提前清掉。
+            // task(id:) 在 token 变化时自动取消上一个（对齐 Android LaunchedEffect(text) 语义）。
+            .task(id: checkInToken) {
+                guard checkInToken > 0, checkInText != nil else { return }
+                try? await Task.sleep(nanoseconds: 2_800_000_000)
+                guard !Task.isCancelled else { return }
+                checkInText = nil
             }
             .alert("同步".localized, isPresented: Binding(
                 get: { syncMessage != nil },
@@ -268,6 +294,74 @@ struct ReminderListView: View {
             .sheet(isPresented: $showDaySheet) {
                 if let day = selectedDay {
                     DayTasksSheet(day: day, reminders: reminders)
+                }
+            }
+    }
+
+    private var sheetsWrapped: some View {
+        mainContent
+            .sheet(isPresented: $showCreateSheet) {
+                CreateReminderView()
+            }
+            // 近场传输: 同一局域网互传提醒
+            .sheet(isPresented: $showNearbyShare) {
+                NearbyShareView()
+            }
+            .fileExporter(
+                isPresented: $showExportExporter,
+                document: exportDocument,
+                contentType: .json,
+                defaultFilename: "reminder_backup_\(Int(Date().timeIntervalSince1970))"
+            ) { result in
+                if case .failure(let error) = result {
+                    print("[导出] 失败: \(error)")
+                }
+            }
+            .fileExporter(
+                isPresented: $showIcsExporter,
+                document: icsDocument,
+                contentType: .plainText,
+                defaultFilename: "reminders"
+            ) { result in
+                if case .failure(let error) = result {
+                    print("[.ics 导出] 失败: \(error)")
+                }
+            }
+            .fileImporter(
+                isPresented: $showImportImporter,
+                allowedContentTypes: [.json, .plainText]
+            ) { result in
+                importBackup(result)
+            }
+            // 批次3 功能6: 单条分享卡片粘贴导入
+            .sheet(isPresented: $showCardImport) {
+                NavigationStack {
+                    Form {
+                        Section("粘贴分享卡片".localized) {
+                            TextEditor(text: $cardImportText)
+                                .frame(minHeight: 200)
+                        }
+                        if let msg = cardImportMsg {
+                            Section {
+                                Text(msg)
+                                    .foregroundStyle(msg.hasPrefix("✅") ? .green : .red)
+                            }
+                        }
+                    }
+                    .navigationTitle("导入分享卡片".localized)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("取消".localized) {
+                                showCardImport = false
+                                cardImportMsg = nil
+                                cardImportText = ""
+                            }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("导入".localized) { importCard() }
+                                .fontWeight(.semibold)
+                        }
+                    }
                 }
             }
     }
@@ -365,6 +459,11 @@ struct ReminderListView: View {
 
             // 通用导入（去重 / 过期重算 / 插入 / 保存 / touch 变更）
             let result = BackupHelper.importItems(items, existing: reminders, into: modelContext)
+            // I8: 写入失败（区别于「重复跳过」）直接返回，不再调度空列表、不误报成功
+            if let err = result.error {
+                print("[导入] 保存失败: \(err)")
+                return
+            }
             print("[导入] 新增 \(result.imported) 条，跳过重复 \(result.skipped) 条")
 
             // 重新调度通知：必须遍历本次实际导入的模型对象。
@@ -376,6 +475,29 @@ struct ReminderListView: View {
             }
         case .failure(let error):
             print("[导入] 失败: \(error)")
+        }
+    }
+
+    /// 批次3 功能6: 单条分享卡片粘贴导入
+    private func importCard() {
+        guard let item = BackupHelper.importSingle(cardImportText) else {
+            cardImportMsg = "无法解析：请粘贴有效的分享卡片 JSON"
+            return
+        }
+        let result = BackupHelper.importItems([item], existing: reminders, into: modelContext)
+        // I8: 区分「写入失败」与「重复跳过」，避免保存失败被误报成「已存在」
+        if let err = result.error {
+            cardImportMsg = "导入失败：\(err)"
+        } else if result.imported > 0 {
+            Task {
+                for reminder in result.inserted where reminder.isEnabled {
+                    await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
+                }
+            }
+            cardImportMsg = "✅ 已导入 1 条提醒"
+            cardImportText = ""
+        } else {
+            cardImportMsg = "该提醒已存在，跳过导入"
         }
     }
 
@@ -662,7 +784,7 @@ struct ReminderListView: View {
 
     // MARK: - 滑动操作
 
-    /// 右滑 → 完成
+    /// 右滑 → 完成。已逾期的额外给一个「补打今天」入口（记录备注区分为补打卡）
     @ViewBuilder
     private func completeSwipe(for reminder: Reminder) -> some View {
         Button {
@@ -671,6 +793,15 @@ struct ReminderListView: View {
             Label("完成".localized, systemImage: "checkmark")
         }
         .tint(.green)
+
+        if reminder.status == .overdue {
+            Button {
+                ReminderEngine.shared.confirmReminder(reminder, source: "补打卡")
+            } label: {
+                Label("补打今天".localized, systemImage: "checkmark.circle.badge.questionmark")
+            }
+            .tint(ThemeTokens.statusOverdue)
+        }
     }
 
     /// 右滑（已完成行）→ 重新打开

@@ -41,6 +41,14 @@ struct CreateReminderView: View {
 
     @State private var priority: ReminderPriority = .normal
 
+    // MARK: - 关键提醒（批次3 功能5）
+
+    @State private var isCritical = false
+
+    // MARK: - 功能8 智能频率建议
+
+    @State private var suggestionText: String? = nil
+
     // MARK: - 首次触发时间（周期类用）
 
     @State private var triggerDate = Date()
@@ -84,6 +92,16 @@ struct CreateReminderView: View {
                         }
                     }
                     .pickerStyle(.menu)
+
+                    // 批次3 功能5: 关键提醒开关（触发更激进的重复 alert 脉冲）
+                    Toggle(isOn: $isCritical) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("关键提醒".localized)
+                            Text("重要事项，错过会重复提醒直到确认".localized)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
 
                 // MARK: 周期提醒设置
@@ -214,6 +232,35 @@ struct CreateReminderView: View {
             .pickerStyle(.menu)
             .onChange(of: cycle) { _, newValue in
                 showCustomDaysField = newValue == .custom
+            }
+
+            // 功能8 智能频率建议入口
+            Button {
+                Task {
+                    let all = (try? modelContext.fetch(FetchDescriptor<Reminder>())) ?? []
+                    // I18: 显式预取 confirm 记录（强制 SwiftData 惰性关系在当前 context 解析），
+                    //     对齐 Android 显式传入 confirmMillisByReminder，避免 iOS 静默看到 0 条间隔
+                    let confirmTimestampsByReminder: [UUID: [TimeInterval]] = Dictionary(
+                        uniqueKeysWithValues: all.map { r in
+                            (r.id, r.records
+                                .filter { $0.type == ReminderRecordType.confirm.rawValue }
+                                .map { $0.performedAt.timeIntervalSince1970 })
+                        }
+                    )
+                    let s = FrequencySuggester.suggest(title: title, reminders: all,
+                                                       confirmTimestampsByReminder: confirmTimestampsByReminder)
+                    cycle = s.cycle
+                    customDays = s.cycle == .custom ? String(s.customDays) : ""
+                    suggestionText = s.reason
+                }
+            } label: {
+                Label("智能建议频率", systemImage: "wand.and.stars")
+            }
+
+            if let tip = suggestionText {
+                Text(tip)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             if showCustomDaysField {
@@ -550,6 +597,9 @@ struct CreateReminderView: View {
         modelContext.insert(reminder)
         try? modelContext.save()
         SyncStore.touchLocalChange()
+
+        // 批次3 功能5: 关键提醒标记落 UserDefaults 侧存（避免改 SwiftData schema）
+        ReminderEngine.CriticalStore.setCritical(isCritical, for: reminder.id)
 
         Task {
             await ReminderEngine.shared.scheduleAllNotifications(for: reminder)

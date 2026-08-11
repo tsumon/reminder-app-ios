@@ -7,6 +7,8 @@ import WidgetKit
 @MainActor
 enum WebDavSync {
     private static let remoteFileName = "reminder_backup.json"
+    /// 批次3 功能4: 日历订阅用的 .ics 文件名（与备份 JSON 同目录）
+    static let remoteICSFileName = "reminders.ics"
 
     enum SyncResult {
         /// conflict=true：检测到上次同步后双端都有修改，已按版本覆盖（UI 提示用户，v2.0.16）
@@ -27,6 +29,9 @@ enum WebDavSync {
             // v2.0.17: 单调版本（localVer）为判新主依据；墙钟（localChange）仅兜底（旧文件/升级前本地无版本）
             let localChange = SyncStore.lastLocalChange // 秒
             let localVer = SyncStore.localVersion
+            // v2.0.21 F1: 首次同步 + 上次同步版本必须在分支改写前快照，否则冲突判定会拿到刚写入的新值恒 false
+            let firstSync = SyncStore.isFirstSync
+            let lastSyncVer = SyncStore.lastSyncVersion
 
             guard let remoteJson else {
                 // 远程无文件 → 上传本地
@@ -39,6 +44,7 @@ enum WebDavSync {
                 // v2.0.17: 记录已同步版本，防下轮误判（上传 dataVersion = 当前本地版本）
                 SyncStore.setLastSyncVersion(SyncStore.localVersion)
                 SyncStore.setLastSync()
+                SyncStore.setHasSyncedOnce()
                 return .success(conflict: false)
             }
 
@@ -50,10 +56,25 @@ enum WebDavSync {
             // v2.0.17: 远程单调版本（旧文件无 dataVersion → 0，判新回退时间戳）
             let remoteDataVersion = BackupHelper.dataVersion(of: remoteJson)
 
+            // v2.0.21 F1: 首次同步的冲突判定依据「两边都有数据」（版本不可比，无法用版本差判断）
+            let remoteHasData = BackupHelper.itemCount(of: remoteJson) > 0
+            let localHasData = !reminders.isEmpty
+
             // v2.0.17 判新：双方都有单调版本 → 版本比较；任一为 0（旧文件/升级前）→ 时间戳兜底
-            let versionedCompare = remoteDataVersion > 0 && localVer > 0
-            let remoteIsNewer = versionedCompare ? remoteDataVersion > localVer : remoteVersion > localChange
-            let localIsNewer = versionedCompare ? localVer > remoteDataVersion : localChange > remoteVersion
+            // v2.0.21 F1: 首次同步两边版本不同源（远程是历史累计、本地从 0 起）→ 一律回退时间戳，
+            //             否则永远判「远程新」，本机新建的提醒会被静默覆盖。
+            // v2.0.21 F2: 版本相等（双端自同一基线各改相同次数）时用时间戳决胜，
+            //             否则两个判新都是 false → 落入「无变更」→ 双方改动都不同步且不提示。
+            let versionedCompare = !firstSync && remoteDataVersion > 0 && localVer > 0
+            let remoteIsNewer: Bool
+            let localIsNewer: Bool
+            if versionedCompare && remoteDataVersion != localVer {
+                remoteIsNewer = remoteDataVersion > localVer
+                localIsNewer = localVer > remoteDataVersion
+            } else {
+                remoteIsNewer = remoteVersion > localChange
+                localIsNewer = localChange > remoteVersion
+            }
 
             if remoteIsNewer {
                 // 远程新 → 下载覆盖本地
@@ -69,14 +90,20 @@ enum WebDavSync {
                     SyncStore.setLocalVersion(remoteDataVersion)
                 }
                 // v2.0.16/17 冲突提示：上次同步后本地也改过（版本化判定；旧文件回退不提示）
-                let conflict = SyncStore.lastSyncVersion > 0 &&
-                    localVer > SyncStore.lastSyncVersion &&
-                    remoteDataVersion > SyncStore.lastSyncVersion
+                let conflict = isConflict(
+                    firstSync: firstSync,
+                    localHasData: localHasData,
+                    remoteHasData: remoteHasData,
+                    localVer: localVer,
+                    remoteDataVersion: remoteDataVersion,
+                    lastSyncVer: lastSyncVer
+                )
                 if remoteDataVersion > 0 {
                     SyncStore.setLastSyncVersion(remoteDataVersion)
                 }
                 SyncStore.setLastLocalChange(remoteVersion)
                 SyncStore.setLastSync()
+                SyncStore.setHasSyncedOnce()
                 return .success(conflict: conflict)
             } else if localIsNewer {
                 // 本地新 → 上传
@@ -84,21 +111,50 @@ enum WebDavSync {
                 let uploadJson = BackupHelper.exportJSON(reminders, exportedAt: exportedAt)
                 try await upload(uploadJson)
                 // v2.0.16/17 冲突提示：上次同步后远程也改过（版本化判定）
-                let conflict = SyncStore.lastSyncVersion > 0 &&
-                    localVer > SyncStore.lastSyncVersion &&
-                    remoteDataVersion > SyncStore.lastSyncVersion
+                let conflict = isConflict(
+                    firstSync: firstSync,
+                    localHasData: localHasData,
+                    remoteHasData: remoteHasData,
+                    localVer: localVer,
+                    remoteDataVersion: remoteDataVersion,
+                    lastSyncVer: lastSyncVer
+                )
                 // 同上：max 防止上传期间新编辑的版本被回退
                 SyncStore.setLastLocalChange(max(exportedAt, SyncStore.lastLocalChange))
                 SyncStore.setLastSyncVersion(localVer)
                 SyncStore.setLastSync()
+                SyncStore.setHasSyncedOnce()
                 return .success(conflict: conflict)
             } else {
+                // 版本与时间戳都相等 → 两边确为同一份数据，无变更
+                // （F2：版本相等但时间戳不同的情况已在上面用时间戳决胜，不会落到这里）
                 SyncStore.setLastSync()
-                return .success(conflict: false) // 无变更
+                SyncStore.setHasSyncedOnce()
+                return .success(conflict: false)
             }
         } catch {
             return .failure(friendlyMessage(error))
         }
+    }
+
+    // MARK: - 冲突判定（v2.0.21）
+
+    /// 是否需要提示「已按版本覆盖」。
+    ///
+    /// - 首次同步：无 lastSyncVersion 基线可比，只要两边都有数据就意味着一方内容会被整体覆盖 → 提示
+    /// - 后续同步：自上次同步后双端都推进过版本 → 提示
+    private static func isConflict(
+        firstSync: Bool,
+        localHasData: Bool,
+        remoteHasData: Bool,
+        localVer: Int,
+        remoteDataVersion: Int,
+        lastSyncVer: Int
+    ) -> Bool {
+        if firstSync {
+            return localHasData && remoteHasData
+        }
+        return lastSyncVer > 0 && localVer > lastSyncVer && remoteDataVersion > lastSyncVer
     }
 
     // MARK: - 测试连接（添加 WebDAV 时验证账号/路径，坚果云友好提示）
@@ -291,10 +347,64 @@ enum WebDavSync {
 
     // MARK: - WebDAV 请求
 
-    private static func remoteURL() -> String {
+    private static func remoteURL() -> String { remoteURL(remoteFileName) }
+
+    private static func remoteURL(_ fileName: String) -> String {
         var base = SyncStore.url.trimmingCharacters(in: .whitespaces)
         if base.hasSuffix("/") { base.removeLast() }
-        return "\(base)/\(remoteFileName)"
+        return "\(base)/\(fileName)"
+    }
+
+    // MARK: - 批次3 功能4: 日历订阅链接
+
+    /// 把当前全部提醒导出为 .ics 上传到 WebDAV 目录，返回该文件的 WebDAV URL。
+    ///
+    /// 注意这个 URL 需要账号密码，系统日历不能直接订阅——网盘的正确姿势是上传后
+    /// 在网页端对该文件「创建分享链接」，再把分享直链填进日历订阅。UI 会连同指引一起展示。
+    /// 每次调用覆盖同名文件，订阅端下次刷新即可拿到最新日程。
+    static func uploadICS(reminders: [Reminder]) async -> ICSUploadResult {
+        guard SyncStore.isConfigured else {
+            return .failure("请先配置 WebDAV 服务器".localized)
+        }
+        guard !reminders.isEmpty else {
+            return .failure("当前没有可导出的提醒".localized)
+        }
+        do {
+            let ics = IcsExporter.generateICS(reminders: reminders)
+            try await uploadRaw(ics, fileName: remoteICSFileName, contentType: "text/calendar; charset=utf-8")
+            return .success(url: remoteURL(remoteICSFileName), count: reminders.count)
+        } catch {
+            return .failure(friendlyMessage(error))
+        }
+    }
+
+    enum ICSUploadResult {
+        case success(url: String, count: Int)
+        case failure(String)
+    }
+
+    /// 通用 PUT：404 时先 MKCOL 建目录再重试一次（与 upload 同策略）
+    private static func uploadRaw(_ content: String, fileName: String, contentType: String) async throws {
+        guard let url = URL(string: remoteURL(fileName)) else {
+            throw SyncError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.timeoutInterval = 30
+        request.setValue(authHeader(), forHTTPHeaderField: "Authorization")
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.httpBody = content.data(using: .utf8)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if code == 404 {
+            try? await mkcolIfNeeded()
+            let (_, retryResp) = try await URLSession.shared.data(for: request)
+            let retryCode = (retryResp as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200...299).contains(retryCode) else { throw SyncError.http(retryCode) }
+            return
+        }
+        guard (200...299).contains(code) else { throw SyncError.http(code) }
     }
 
     private static func authHeader() -> String {

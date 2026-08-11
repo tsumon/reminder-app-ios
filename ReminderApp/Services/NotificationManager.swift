@@ -108,6 +108,9 @@ final class NotificationManager: NSObject, ObservableObject {
             "reminderID": reminder.id.uuidString,
             "reminderTitle": reminder.title
         ]
+        // 功能7 轻量手表伴侣：按提醒 ID 分组，watchOS / 锁屏只保留最新一张卡片，不刷屏
+        // （watchOS 自动镜像 iPhone 通知，确认/稍后按钮本就可点；真正表盘复杂功能需独立 Watch App target，属「完整原生」范畴，未做）
+        content.threadIdentifier = reminder.id.uuidString
 
         // 计算触发时间
         let triggerDate = reminder.nextTriggerAt
@@ -131,6 +134,60 @@ final class NotificationManager: NSObject, ObservableObject {
             print("[NotificationManager] 通知已安排: \(reminder.title) @ \(triggerDate)")
         } catch {
             print("[NotificationManager] 安排通知失败: \(error.localizedDescription)")
+        }
+
+        // 批次3 功能5: 关键提醒 → 重复 alert 脉冲。
+        // iOS 无 Critical Alert 授权时无法穿透静音/勿扰，改用「D-day 后每 60s 再响一次」的脉冲，
+        // 连续若干次直到用户打开确认（确认时 removePendingNotification 按 reminderID 一并清除）。
+        if ReminderEngine.CriticalStore.isCritical(reminder.id) {
+            let now = Date()
+            for i in 1...Self.criticalBurstCount {
+                let fireAt = triggerDate.addingTimeInterval(TimeInterval(Self.criticalBurstInterval * i))
+                if fireAt > now {
+                    await addCriticalRepeat(for: reminder, at: fireAt, index: i, badgeCount: badgeCount)
+                }
+            }
+        }
+    }
+
+    /// 关键提醒重复脉冲参数
+    private static let criticalBurstCount = 5
+    private static let criticalBurstInterval = 60 // 秒
+
+    /// 单条关键提醒重复通知（与 D-day 同分类、同 userInfo.reminderID，确认时一并清除）
+    private func addCriticalRepeat(for reminder: Reminder, at date: Date, index: Int, badgeCount: Int) async {
+        let content = UNMutableNotificationContent()
+        content.title = "⚠️ " + Localized("重要提醒：%@", reminder.title)
+        content.body = reminder.note.isEmpty
+            ? Localized("请尽快处理（第 %d 次提醒）", index)
+            : Localized("请尽快处理（第 %d 次提醒）：%@", index, reminder.note)
+        content.sound = .default
+        content.badge = NSNumber(value: badgeCount)
+        content.categoryIdentifier = Self.categoryIdentifier
+        content.userInfo = [
+            "reminderID": reminder.id.uuidString,
+            "reminderTitle": reminder.title,
+            "type": "critical",
+            "criticalIndex": index
+        ]
+        // 功能7 轻量手表伴侣：与 D-day 同分组，手表只显示最新一张
+        content.threadIdentifier = reminder.id.uuidString
+
+        let components = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second],
+            from: date
+        )
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "reminder-\(reminder.id.uuidString)-critical-\(index)",
+            content: content,
+            trigger: trigger
+        )
+
+        do {
+            try await UNUserNotificationCenter.current().add(request)
+        } catch {
+            print("[NotificationManager] 关键提醒脉冲安排失败: \(error.localizedDescription)")
         }
     }
 
@@ -192,6 +249,8 @@ final class NotificationManager: NSObject, ObservableObject {
             "type": "retry",
             "retryStage": stage
         ]
+        // 功能7 轻量手表伴侣：与 D-day 同分组，手表只显示最新一张
+        content.threadIdentifier = reminder.id.uuidString
 
         let components = Calendar.current.dateComponents(
             [.year, .month, .day, .hour, .minute, .second],
@@ -227,6 +286,8 @@ final class NotificationManager: NSObject, ObservableObject {
             "type": "advance",
             "daysBefore": daysBefore
         ]
+        // I14: 预告通知也按提醒 ID 分组（功能7），避免手表/锁屏单独成组
+        content.threadIdentifier = reminder.id.uuidString
 
         let components = Calendar.current.dateComponents(
             [.year, .month, .day, .hour, .minute],
@@ -311,6 +372,23 @@ final class NotificationManager: NSObject, ObservableObject {
         guard let data = try? JSONEncoder().encode(list) else { return }
         UserDefaults.standard.set(data, forKey: pendingActionsKey)
     }
+
+    // MARK: - 通知点击直达确认面板（批次2 功能1，冷启动兜底）
+
+    private static let pendingDetailKey = "pendingDetailReminderID"
+
+    /// 记录「点击通知本体要直达的提醒 id」——post 通知可能早于视图订阅而丢失，
+    /// 落 UserDefaults 由列表页 onAppear 兜底消费，与 pendingActions 同一模式。
+    static func savePendingDetailID(_ idString: String) {
+        UserDefaults.standard.set(idString, forKey: pendingDetailKey)
+    }
+
+    /// 取出并清空待直达的提醒 id（只消费一次）
+    static func takePendingDetailID() -> String? {
+        let v = UserDefaults.standard.string(forKey: pendingDetailKey)
+        if v != nil { UserDefaults.standard.removeObject(forKey: pendingDetailKey) }
+        return v
+    }
 }
 
 // MARK: - UNUserNotificationCenterDelegate
@@ -332,6 +410,14 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
+
+        // 批次2 功能3: 统计周报 → 打开统计 Tab（无 reminderID，type 标记）
+        if userInfo["type"] as? String == "weekly_report" {
+            NotificationCenter.default.post(name: .openStatsTab, object: nil)
+            completionHandler()
+            return
+        }
+
         guard let reminderIDString = userInfo["reminderID"] as? String,
               let reminderID = UUID(uuidString: reminderIDString) else {
             completionHandler()
@@ -347,7 +433,11 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             // 用户滑动消除 → 进入递增重试（1h→4h→12h→24h），并写入 trigger 记录供统计
             enqueueNotificationAction(.dismiss, reminderID)
         default:
-            break
+            // 批次2 功能1: 点击通知本体（非操作按钮）→ 直达该提醒的确认面板
+            // （ReminderListView 监听后程序化 push ReminderDetailView）
+            // 双通道：post 热启动即时响应 + UserDefaults 冷启动兜底（视图未就绪时事件不丢）
+            NotificationManager.savePendingDetailID(reminderIDString)
+            NotificationCenter.default.post(name: .openReminderDetail, object: reminderIDString)
         }
 
         // 冷启动兜底：didReceive 可能早于视图订阅/引擎就绪，仅持久化入队；
@@ -367,4 +457,8 @@ extension Notification.Name {
     static let reminderConfirmed = Notification.Name("reminderConfirmed")
     static let reminderSnoozed = Notification.Name("reminderSnoozed")
     static let reminderDismissed = Notification.Name("reminderDismissed")
+    // 批次2 功能1: 点击通知本体 → 直达确认面板（object 为 reminderID 的 uuidString）
+    static let openReminderDetail = Notification.Name("openReminderDetail")
+    // 批次2 功能3: 点击统计周报通知 → 打开统计 Tab
+    static let openStatsTab = Notification.Name("openStatsTab")
 }

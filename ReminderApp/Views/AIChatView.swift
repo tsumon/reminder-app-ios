@@ -26,6 +26,7 @@ struct AIChatView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var scrollToID: UUID?
+    @State private var importPreview: ImportPreview?
 
     @Query(sort: \Reminder.title) private var reminders: [Reminder]
 
@@ -101,6 +102,66 @@ struct AIChatView: View {
                 ))
             }
         }
+        .sheet(item: $importPreview) { preview in
+            importPreviewSheet(preview)
+        }
+    }
+
+    // MARK: - 批量导入预览
+
+    @ViewBuilder
+    private func importPreviewSheet(_ preview: ImportPreview) -> some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(Array(preview.items.enumerated()), id: \.offset) { _, item in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.title)
+                                .font(.body.weight(.medium))
+                            Text(describeReminder(item))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if !item.note.isEmpty {
+                                Text(item.note)
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(2)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                } header: {
+                    Text(Localized("共解析出 %d 条提醒", preview.items.count))
+                } footer: {
+                    Text("确认后将一次性创建并安排通知。".localized)
+                }
+            }
+            .navigationTitle("批量创建预览".localized)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消".localized) { importPreview = nil }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("确认创建".localized) {
+                        let items = preview.items
+                        importPreview = nil
+                        Task {
+                            await commitImport(items)
+                            await MainActor.run {
+                                messages.append(ChatMessage(
+                                    role: .assistant,
+                                    content: Localized("✅ 已批量创建 %d 条提醒。", items.count),
+                                    timestamp: Date()
+                                ))
+                            }
+                        }
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 
     // MARK: - Welcome
@@ -312,6 +373,8 @@ struct AIChatView: View {
             return await handleDelete(args: args)
         case "update_reminder":
             return await handleUpdate(args: args)
+        case "import_tasks":
+            return await handleImportTasks(args: args)
         default:
             return Localized("未知工具: %@", name)
         }
@@ -319,7 +382,9 @@ struct AIChatView: View {
 
     // MARK: - Tool Handlers
 
-    private func handleCreate(args: [String: Any]) async -> String {
+    // 解析工具参数 → 构造 Reminder。返回 (reminder, nil) 成功；(nil, errorMessage) 校验失败。
+    // handleCreate 与 import_tasks 共用，避免重复解析逻辑。
+    private func buildReminder(from args: [String: Any]) -> (Reminder?, String?) {
         let title = args["title"] as? String ?? "未命名提醒"
         let kind = args["kind"] as? String ?? "cycle"
         let note = args["note"] as? String ?? ""
@@ -327,7 +392,7 @@ struct AIChatView: View {
         let customDays = args["custom_days"] as? Int ?? 0
         // C2: AI 创建 custom 周期必须 customDays>=1（对齐 Android handleCreate 守卫），否则 interval=0 → 确认后死循环
         if cycle == "custom", customDays < 1 {
-            return "自定义周期需要指定间隔天数（如：每3天），custom_days 至少为 1。"
+            return (nil, "自定义周期需要指定间隔天数（如：每3天），custom_days 至少为 1。")
         }
         let dateType = args["date_type"] as? String
         // 不能给月/日一个「看起来合法」的缺省值（如 1），
@@ -358,20 +423,20 @@ struct AIChatView: View {
         if kind == "date" {
             if dateType == "holiday" {
                 if (holidayName ?? "").trimmingCharacters(in: .whitespaces).isEmpty {
-                    return "需要指定节假日名称（例如：春节、中秋节）才能创建节假日提醒。"
+                    return (nil, "需要指定节假日名称（例如：春节、中秋节）才能创建节假日提醒。")
                 }
             } else if !(1...12).contains(targetMonth) || !(1...31).contains(targetDay) {
-                return "需要具体的公历/农历月日才能创建日期提醒（例如：农历八月十五、公历5月1日）。请补充月日，我再为你创建。"
+                return (nil, "需要具体的公历/农历月日才能创建日期提醒（例如：农历八月十五、公历5月1日）。请补充月日，我再为你创建。")
             }
         }
         // v1.9.0 fix: 规则提醒必须带全 频率/第几周/周几
         if kind == "rule" {
             guard let rp = rulePeriodRaw, let rw = ruleWeekRaw, let rwd = ruleWeekdayRaw else {
-                return "规则提醒需要指定频率（每月/每季度/每年）、第几周和星期几，例如：每季度第一周周四。请补充完整，我再为你创建。"
+                return (nil, "规则提醒需要指定频率（每月/每季度/每年）、第几周和星期几，例如：每季度第一周周四。请补充完整，我再为你创建。")
             }
             guard ["monthly", "quarterly", "yearly"].contains(rp),
                   (1...5).contains(rw), (1...7).contains(rwd) else {
-                return "规则提醒参数不合法：频率应为每月/每季度/每年，第几周 1-5，星期几 1=周一...7=周日。"
+                return (nil, "规则提醒参数不合法：频率应为每月/每季度/每年，第几周 1-5，星期几 1=周一...7=周日。")
             }
         }
 
@@ -435,20 +500,79 @@ struct AIChatView: View {
             firstTriggerAt: anchor,
             nextTriggerAt: anchor
         )
+        return (reminder, nil)
+    }
 
+    private func handleCreate(args: [String: Any]) async -> String {
+        let (reminder, err) = buildReminder(from: args)
+        guard let reminder else { return err ?? "创建失败" }
         await MainActor.run {
             modelContext.insert(reminder)
             try? modelContext.save()
             // 用引擎重算 nextTriggerAt（日期/规则类按目标月日计算，避免落到 +1 分钟）
-            reminder.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(after: now, reminder: reminder)
+            reminder.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(after: Date(), reminder: reminder)
             try? modelContext.save()
             // v1.9.6 fix: 漏 touchLocalChange → AI 新建的提醒永远不同步 / 被远程旧数据覆盖
             SyncStore.touchLocalChange()
         }
-
         await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
+        return Localized("已创建提醒：「%@」", reminder.title)
+    }
 
-        return Localized("已创建提醒：「%@」", title)
+    /// import_tasks 工具：把多段待办解析为多条提醒，挂起预览弹窗等用户确认。
+    /// 不直接写入数据库——确认逻辑在 commitImport（用户点「确认创建」时调用）。
+    private func handleImportTasks(args: [String: Any]) async -> String {
+        guard let items = args["items"] as? [[String: Any]], !items.isEmpty else {
+            return "没有解析到可批量创建的提醒。"
+        }
+        var built: [Reminder] = []
+        var skipped = 0
+        var skippedReasons: [String] = []
+        for item in items {
+            // I24: 透传 buildReminder 校验失败原因，避免静默计入 skipped 让用户不知为何被跳过
+            let (r, err) = buildReminder(from: item)
+            if let r { built.append(r) } else { skipped += 1; skippedReasons.append(err ?? "格式无法识别") }
+        }
+        guard !built.isEmpty else {
+            return "解析失败：所有条目都无法识别为有效提醒。"
+        }
+        await MainActor.run { importPreview = ImportPreview(items: built) }
+        var preview = Localized("已解析出 %d 条提醒，请确认后批量创建：", built.count)
+        for (i, r) in built.enumerated() {
+            preview += "\n\(i + 1). \(r.title) 〔\(describeReminder(r))〕"
+        }
+        if skipped > 0 {
+            preview += "\n（\(skipped) 条无法解析已跳过："
+            preview += skippedReasons.enumerated().map { "\($0 + 1). \($1)" }.joined(separator: "；")
+            preview += "）"
+        }
+        return preview
+    }
+
+    private func describeReminder(_ r: Reminder) -> String {
+        switch r.kind {
+        case .date:  return r.dateDisplayText
+        case .rule:  return r.cycle.rawValue
+        case .cycle: return r.cycle.rawValue
+        }
+    }
+
+    /// 用户确认预览后批量写入：逐条 insert + 调度 + 标记本地变更
+    private func commitImport(_ items: [Reminder]) async {
+        await MainActor.run {
+            for r in items { modelContext.insert(r) }
+            try? modelContext.save()
+            // I1: 批量导入按提醒类型重算 nextTriggerAt（日期类按目标月日、规则类按第N周周X，
+            // 避免 buildReminder 的泛型锚点导致错日触发——对齐 handleCreate 单条路径）
+            for r in items {
+                r.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(after: Date(), reminder: r)
+            }
+            try? modelContext.save()
+            SyncStore.touchLocalChange()
+        }
+        for r in items {
+            await ReminderEngine.shared.scheduleAllNotifications(for: r)
+        }
     }
 
     private func handleList() async -> String {
@@ -513,8 +637,10 @@ struct AIChatView: View {
         // 提醒已是 custom 时，模型只传 custom_days:0 而不传 cycle，旧守卫(cycleRaw=="custom")会被绕过，落入 C2 后果链
         // D2: 未传 custom_days 不算「传了 0」——已建 custom 提醒只改标题/时间时应放行
         // （Android `?: match.customDays` 保留原值不受影响，iOS 需显式判 nil）
-        let effectiveCycle = cycleRaw ?? match.cycle.rawValue
-        if args["custom_days"] != nil, effectiveCycle == "custom", (customDaysRaw ?? 0) < 1 {
+        // I2: 显式切到 custom 周期但缺/非法 custom_days 时拒绝（镜像创建路径守卫），
+        //     避免 customDays 留旧值(常0)导致 calculateNextCycleTrigger 返回过去锚点、提醒永不触发；
+        //     已为 custom 且只改标题/时间（未传 cycle）放行 → 仅当 cycleRaw=="custom" 才拦截
+        if cycleRaw == "custom", (customDaysRaw ?? 0) < 1 {
             return "自定义周期需要指定间隔天数（如：每3天），custom_days 至少为 1。"
         }
 
@@ -682,4 +808,13 @@ struct ChatBubble: View {
             .foregroundStyle(color)
             .frame(width: 32, height: 32)
     }
+}
+
+// MARK: - 批量导入预览载体
+
+/// AI 用 import_tasks 解析出的待创建提醒列表（尚未写入 modelContext）。
+/// 用户在预览弹窗点「确认创建」后才批量落库。
+struct ImportPreview: Identifiable {
+    let id = UUID()
+    let items: [Reminder]
 }

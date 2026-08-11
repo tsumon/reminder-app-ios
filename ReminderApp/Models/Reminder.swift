@@ -258,4 +258,31 @@ final class Reminder {
             }
         }
     }
+
+    /// 提醒类型的展示用 emoji（对齐 Android reminderEmoji：容器里放类型 emoji，而非状态 SF Symbol）
+    var typeEmoji: String {
+        switch kind {
+        case .date:
+            switch dateType {
+            case .holiday:       return "🎉"
+            case .lunarBirthday: return "🌙"
+            case .solarBirthday: return "🎂"
+            case .none:          break
+            }
+        case .rule:
+            return "📅"
+        case .cycle:
+            break
+        }
+        switch cycle {
+        case .once:      return "⏰"
+        case .daily:     return "🔁"
+        case .weekly:    return "📆"
+        case .biweekly:  return "📆"
+        case .monthly:   return "🗓"
+        case .quarterly: return "📊"
+        case .yearly:    return "🎯"
+        case .custom:    return "⏳"
+        }
+    }
 }
