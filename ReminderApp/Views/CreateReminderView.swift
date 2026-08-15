@@ -52,7 +52,17 @@ struct CreateReminderView: View {
     // MARK: - 首次触发时间（周期类用）
 
     @State private var triggerDate = Date()
-    @State private var triggerTime = Date()
+    // v2.0.22: 默认时间向上取整到下一分钟——原默认值是当前时刻，用户立即保存时
+    // firstTrigger 是当前分钟的 xx:xx:00（已过去），首个通知会被系统丢弃或误判为遗漏
+    @State private var triggerTime: Date = {
+        let calendar = Calendar.current
+        let now = Date()
+        let currentMinute = calendar.date(bySetting: .second, value: 0, of: now) ?? now
+        return calendar.date(byAdding: .minute, value: 1, to: currentMinute) ?? now
+    }()
+
+    // v2.0.22: 保存失败/校验失败提示（原来 try? save() 吞错后直接关页面）
+    @State private var errorMessage: String?
 
     // MARK: - 自然语言快速创建
 
@@ -138,6 +148,11 @@ struct CreateReminderView: View {
                         .fontWeight(.semibold)
                         .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
+            }
+            .alert("无法保存".localized, isPresented: errorAlertBinding) {
+                Button("好".localized, role: .cancel) {}
+            } message: {
+                Text(errorMessage ?? "")
             }
         }
     }
@@ -470,19 +485,40 @@ struct CreateReminderView: View {
             merged.minute = timeComponents.minute
 
             let firstTrigger = calendar.date(from: merged) ?? triggerDate
-            // C2: 用户选「自定义」但天数留空时，Int("") 得 0 → 周期锚点退回过去 → 确认后重试轰炸；兜底为 1
-            let days = cycle == .custom ? max(1, Int(customDays) ?? 1) : 0
-
-            reminder = Reminder(
-                title: title.trimmingCharacters(in: .whitespaces),
-                note: note.trimmingCharacters(in: .whitespaces),
-                kind: .cycle,
-                cycle: cycle,
-                customDays: days,
-                firstTriggerAt: firstTrigger,
-                nextTriggerAt: firstTrigger,
-                priority: priority
-            )
+            // v2.0.22: 保存前兜底——合并时间可能仍是过去（跨午夜/秒差），
+            // 统一顺延到下一分钟，避免「立即创建立即过期」的首个通知丢失
+            let finalTrigger = firstTrigger > Date()
+                ? firstTrigger
+                : (calendar.date(byAdding: .minute, value: 1, to: firstTrigger) ?? firstTrigger)
+            // v2.0.22: 自定义周期留空/非法时禁止保存（原实现静默兜底成每天一次，
+            // 用户没输入也会被高频打扰）；改成保存按钮直接拦截
+            if cycle == .custom {
+                guard let days = Int(customDays.trimmingCharacters(in: .whitespaces)), days >= 1 else {
+                    errorMessage = Localized("自定义周期请输入至少 1 天")
+                    return
+                }
+                reminder = Reminder(
+                    title: title.trimmingCharacters(in: .whitespaces),
+                    note: note.trimmingCharacters(in: .whitespaces),
+                    kind: .cycle,
+                    cycle: cycle,
+                    customDays: days,
+                    firstTriggerAt: finalTrigger,
+                    nextTriggerAt: finalTrigger,
+                    priority: priority
+                )
+            } else {
+                reminder = Reminder(
+                    title: title.trimmingCharacters(in: .whitespaces),
+                    note: note.trimmingCharacters(in: .whitespaces),
+                    kind: .cycle,
+                    cycle: cycle,
+                    customDays: 0,
+                    firstTriggerAt: finalTrigger,
+                    nextTriggerAt: finalTrigger,
+                    priority: priority
+                )
+            }
 
         case .rule:
             // 用户选择的首次时间作为锚点，取锚点之后的下一个规则日
@@ -595,7 +631,14 @@ struct CreateReminderView: View {
         }
 
         modelContext.insert(reminder)
-        try? modelContext.save()
+        // v2.0.22: 保存失败不再吞掉——保存成功后才推进同步版本、排通知、关页面；
+        // 否则 UI 显示已创建但数据没落盘，同步还会上传不完整数据
+        do {
+            try modelContext.save()
+        } catch {
+            errorMessage = Localized("保存失败，请重试：%@", error.localizedDescription)
+            return
+        }
         SyncStore.touchLocalChange()
 
         // 批次3 功能5: 关键提醒标记落 UserDefaults 侧存（避免改 SwiftData schema）
@@ -606,6 +649,14 @@ struct CreateReminderView: View {
         }
 
         dismiss()
+    }
+
+    /// v2.0.22: 保存校验/失败提示（自定义周期、保存错误等）
+    private var errorAlertBinding: Binding<Bool> {
+        Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )
     }
 }
 

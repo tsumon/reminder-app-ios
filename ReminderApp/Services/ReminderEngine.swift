@@ -629,8 +629,13 @@ final class ReminderEngine: ObservableObject {
     /// 日期类的提前预告通知
     private func scheduleAdvanceNotifications(reminder: Reminder) async {
         let calendar = Calendar.current
-        // 上限 14：iOS pending 通知上限 64 条/App，30 天预告 ×3 个提醒就会超限被静默丢弃
-        let advanceDays = min(max(reminder.advanceDays, 0), 14)
+        // v2.0.22: 全局预算——预告/脉冲/重试共享 iOS 单 App 64 条 pending 上限。
+        // 之前只有重试链检查配额，多提醒 + 长预告 + 关键提醒叠加时系统会静默丢弃。
+        // 预算分配：保留 1 条 D-day + 关键提醒脉冲，剩余给预告。
+        let pendingCount = await NotificationManager.shared.pendingNotificationCount()
+        let criticalReserve = ReminderEngine.CriticalStore.isCritical(reminder.id) ? 5 : 0
+        let budget = max(0, 64 - pendingCount - 1 - criticalReserve)
+        let advanceDays = min(max(reminder.advanceDays, 0), 14, budget)
 
         guard advanceDays > 0 else { return }
 

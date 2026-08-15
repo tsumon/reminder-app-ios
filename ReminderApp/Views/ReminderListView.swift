@@ -63,6 +63,8 @@ struct ReminderListView: View {
 
     // 同步提示
     @State private var syncMessage: String?
+    // v2.0.22: 删除保存失败提示（不再吞错后假装删除成功）
+    @State private var deleteError: String?
     // 点击日历某天 → 查看当日任务
     @State private var selectedDay: Date?
     @State private var showDaySheet = false
@@ -237,6 +239,15 @@ struct ReminderListView: View {
                 Button("好".localized, role: .cancel) {}
             } message: {
                 Text((syncMessage ?? "").localized)
+            }
+            // v2.0.22: 删除保存失败提示
+            .alert("删除失败".localized, isPresented: Binding(
+                get: { deleteError != nil },
+                set: { if !$0 { deleteError = nil } }
+            )) {
+                Button("好".localized, role: .cancel) {}
+            } message: {
+                Text(deleteError ?? "")
             }
             // v1.8.7 在线升级(自签): 发现新版本 → 下载 ipa 到本地文件 App
             .alert(
@@ -871,7 +882,14 @@ struct ReminderListView: View {
             }
             modelContext.delete(reminder)
         }
-        try? modelContext.save()
+        // v2.0.22: 保存失败时回滚并提示，不推进同步版本（否则会上传不完整数据）
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            deleteError = Localized("删除失败，请重试：%@", error.localizedDescription)
+            return
+        }
         SyncStore.touchLocalChange()
     }
 
@@ -880,7 +898,13 @@ struct ReminderListView: View {
             await NotificationManager.shared.removePendingNotification(for: reminder.id)
         }
         modelContext.delete(reminder)
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            deleteError = Localized("删除失败，请重试：%@", error.localizedDescription)
+            return
+        }
         SyncStore.touchLocalChange()
     }
 }

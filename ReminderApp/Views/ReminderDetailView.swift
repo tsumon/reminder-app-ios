@@ -9,6 +9,8 @@ struct ReminderDetailView: View {
     let reminder: Reminder
     @State private var showDeleteAlert = false
     @State private var appeared = false
+    // v2.0.22: 删除保存失败提示（不直接关页面）
+    @State private var deleteErrorMessage: String?
     // 批次2 功能2: 打卡成功 → 正向反馈卡片文案（非空即展示）
     @State private var checkInText: String?
     // v2.0.21 G3: 每次打卡自增，作为自动消失计时器的 id（换值即取消上一条的计时，防提前清空）
@@ -60,6 +62,14 @@ struct ReminderDetailView: View {
             Button("删除".localized, role: .destructive) { deleteReminder() }
         } message: {
             Text(Localized("将永久删除「%@」提醒，此操作不可撤销。", reminder.title))
+        }
+        .alert("删除失败".localized, isPresented: Binding(
+            get: { deleteErrorMessage != nil },
+            set: { if !$0 { deleteErrorMessage = nil } }
+        )) {
+            Button("好".localized, role: .cancel) {}
+        } message: {
+            Text(deleteErrorMessage ?? "")
         }
         .onAppear {
             ReminderEngine.shared.configure(with: modelContext)
@@ -405,7 +415,14 @@ struct ReminderDetailView: View {
             await NotificationManager.shared.removePendingNotification(for: reminder.id)
         }
         modelContext.delete(reminder)
-        try? modelContext.save()
+        // v2.0.22: 保存失败不再吞掉后直接关页面——UI 已消失但数据还在，
+        // 用户会以为删掉了；失败时保留页面并提示
+        do {
+            try modelContext.save()
+        } catch {
+            deleteErrorMessage = Localized("删除失败，请重试：%@", error.localizedDescription)
+            return
+        }
         SyncStore.touchLocalChange()
         dismiss()
     }

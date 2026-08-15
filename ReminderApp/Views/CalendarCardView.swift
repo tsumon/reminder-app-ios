@@ -131,9 +131,16 @@ struct CalendarCardView: View {
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
-                    Text(Localized("农历%@ · %@%@", todayLunarText, todayWeekdayText, todayHolidaySuffix))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    // v2.0.22: 副标题只描述当前浏览月份——原实现切到其他月份时
+                    // 仍显示「今天」的农历/星期/节假日，标题与副标题语义错位
+                    if isCurrentMonth {
+                        Text(Localized("今天 · 农历%@ · %@%@", todayLunarText, todayWeekdayText, todayHolidaySuffix))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text(" ")
+                            .font(.caption)
+                    }
                 }
             }
             .buttonStyle(.plain)

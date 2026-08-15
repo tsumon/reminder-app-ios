@@ -24,6 +24,11 @@ enum WebDavSync {
         do {
             let remoteJson = try await download()
 
+            // v2.0.22: 下载完成后重新读取当前提醒——网络 await 期间主线程用户可能
+            // 新建/编辑提醒，调用方传入的 reminders 快照已经过期；
+            // 用旧快照导出/比较会把用户刚做的改动覆盖掉（或上传旧数据）。
+            let currentReminders = (try? modelContext.fetch(FetchDescriptor<Reminder>())) ?? reminders
+
             // ⚠️ 版本必须在 download() 之后读取：网络 await 期间主线程
             // 用户可能新建/编辑提醒（touchLocalChange），用旧快照比较会把新数据误判为「远程新」而覆盖丢失
             // v2.0.17: 单调版本（localVer）为判新主依据；墙钟（localChange）仅兜底（旧文件/升级前本地无版本）
@@ -36,7 +41,7 @@ enum WebDavSync {
             guard let remoteJson else {
                 // 远程无文件 → 上传本地
                 let exportedAt = max(Date().timeIntervalSince1970, localChange + 1)
-                let uploadJson = BackupHelper.exportJSON(reminders, exportedAt: exportedAt)
+                let uploadJson = BackupHelper.exportJSON(currentReminders, exportedAt: exportedAt)
                 try await upload(uploadJson)
                 // 对齐版本，但要防止「回退」：上传期间用户编辑会抬高 lastLocalChange，
                 // 直接 set 会把版本回退成旧值，导致该编辑永远不同步
@@ -58,7 +63,7 @@ enum WebDavSync {
 
             // v2.0.21 F1: 首次同步的冲突判定依据「两边都有数据」（版本不可比，无法用版本差判断）
             let remoteHasData = BackupHelper.itemCount(of: remoteJson) > 0
-            let localHasData = !reminders.isEmpty
+            let localHasData = !currentReminders.isEmpty
 
             // v2.0.17 判新：双方都有单调版本 → 版本比较；任一为 0（旧文件/升级前）→ 时间戳兜底
             // v2.0.21 F1: 首次同步两边版本不同源（远程是历史累计、本地从 0 起）→ 一律回退时间戳，
@@ -82,7 +87,7 @@ enum WebDavSync {
                     return .failure("远程文件解析失败")
                 }
                 // 保存失败时不更新版本号，避免本地旧数据与远程版本对齐后永远无法再同步
-                guard replaceLocal(reminders, items: items, in: modelContext) else {
+                guard replaceLocal(currentReminders, items: items, in: modelContext) else {
                     return .failure("本地数据写入失败，未应用远程数据，请检查存储空间后重试")
                 }
                 // v2.0.17: 下载后本地数据 = 远程数据 → 单调版本对齐远程（旧文件 dataVersion=0 时保持本地版本）
@@ -108,7 +113,7 @@ enum WebDavSync {
             } else if localIsNewer {
                 // 本地新 → 上传
                 let exportedAt = max(Date().timeIntervalSince1970, remoteVersion + 1)
-                let uploadJson = BackupHelper.exportJSON(reminders, exportedAt: exportedAt)
+                let uploadJson = BackupHelper.exportJSON(currentReminders, exportedAt: exportedAt)
                 try await upload(uploadJson)
                 // v2.0.16/17 冲突提示：上次同步后远程也改过（版本化判定）
                 let conflict = isConflict(

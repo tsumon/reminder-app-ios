@@ -60,10 +60,12 @@ final class NotificationManager: NSObject, ObservableObject {
         )
 
         // 「稍后提醒」按钮
+        // v2.0.22: 去掉 .authenticationRequired —— 代码注释明确「不需要解锁也能操作」，
+        // 但该选项实际要求认证，锁屏上点稍后会被系统拦下，与产品预期相反
         let snoozeAction = UNNotificationAction(
             identifier: Self.snoozeActionID,
             title: "稍后提醒",
-            options: [.authenticationRequired]  // 不需要解锁也能操作
+            options: []
         )
 
         let category = UNNotificationCategory(
@@ -96,6 +98,14 @@ final class NotificationManager: NSObject, ObservableObject {
 
     /// 真正添加 D-day 通知（不含移除逻辑，供 scheduleAllNotifications 在统一移除后调用）
     func addDdayNotification(for reminder: Reminder, badgeCount: Int = 1) async throws {
+        // 计算触发时间
+        let triggerDate = reminder.nextTriggerAt
+        // v2.0.22: 触发时间已过去时直接跳过——UNCalendarNotificationTrigger
+        // 对过去时间的处理行为不定，且会与「启动遗漏检查」双重弹通知
+        guard triggerDate > Date() else {
+            print("[NotificationManager] 触发时间已过去，跳过排期: \(reminder.title) @ \(triggerDate)")
+            return
+        }
         let content = UNMutableNotificationContent()
         content.title = "⏰ \(reminder.title)"
         content.body = reminder.note.isEmpty
@@ -112,8 +122,6 @@ final class NotificationManager: NSObject, ObservableObject {
         // （watchOS 自动镜像 iPhone 通知，确认/稍后按钮本就可点；真正表盘复杂功能需独立 Watch App target，属「完整原生」范畴，未做）
         content.threadIdentifier = reminder.id.uuidString
 
-        // 计算触发时间
-        let triggerDate = reminder.nextTriggerAt
         let components = Calendar.current.dateComponents(
             [.year, .month, .day, .hour, .minute, .second],
             from: triggerDate
@@ -192,6 +200,13 @@ final class NotificationManager: NSObject, ObservableObject {
     }
 
     // MARK: - 递增重试链（P1-2：对齐 Android WorkManager 自动重试）
+
+    /// 当前 pending 通知数量（v2.0.22：全局预算用——预告/脉冲/重试共享 iOS 64 条上限）
+    func pendingNotificationCount() async -> Int {
+        await withCheckedContinuation { (cont: CheckedContinuation<Int, Never>) in
+            UNUserNotificationCenter.current().getPendingNotificationRequests { cont.resume(returning: $0.count) }
+        }
+    }
 
     /// 预排「递增重试」通知链。
     ///

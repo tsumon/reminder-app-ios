@@ -760,8 +760,9 @@ struct ChatBubble: View {
             if message.role == .assistant || message.role == .system {
                 avatar(systemName: "sparkles", color: ThemeTokens.brandPrimary)
                 bubbleContent
-                    // v1.9.8 设计图风格：AI 白底 + 左上尖角 + 轻阴影
-                    .background(Color.white)
+                    // v2.0.22: AI 气泡改系统表面色——原固定白色在深色模式下刺眼，
+                    // 与玻璃卡片和整体背景不一致
+                    .background(Color(.secondarySystemBackground))
                     .clipShape(
                         UnevenRoundedRectangle(
                             cornerRadii: .init(topLeading: 6, bottomLeading: 18, bottomTrailing: 18, topTrailing: 18),

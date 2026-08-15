@@ -17,7 +17,14 @@ enum WeeklyReportService {
     /// 在 App 启动 / 回前台时调用。
     @MainActor
     static func schedule(records: [ReminderRecord]) async {
-        guard !records.isEmpty else { return }
+        // v2.0.22: 无记录时不再直接 return——用户清空数据后，旧周报通知
+        // （固定 identifier）仍然存在，会在周日继续弹出过期的「本周统计」。
+        // 必须先取消旧通知，再跳过本轮安排。
+        guard !records.isEmpty else {
+            UNUserNotificationCenter.current()
+                .removePendingNotificationRequests(withIdentifiers: [identifier])
+            return
+        }
 
         // 本周起点（周一到周日，与 Android 对齐）
         let weekStart = startOfWeek(Date())
