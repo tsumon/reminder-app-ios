@@ -68,6 +68,26 @@ targets:
         PRODUCT_NAME: "LunarCalendarCheck"
         GENERATE_INFOPLIST_FILE: "YES"
 
+  # 阶段2: 跨端备份/同步协议回归检查（macOS 命令行工具，CI 里 build + run）。
+  # fixture 与 Android 仓库 app/src/test/resources/fixtures/ 内容一致（双端共享 golden fixture）。
+  BackupProtocolCheck:
+    type: tool
+    platform: macOS
+    sources:
+      - path: ReminderApp/Models/Reminder.swift
+      - path: ReminderApp/Services/SyncStore.swift
+      - path: ReminderApp/Services/BackupHelper.swift
+      - path: ReminderApp/Services/Localization.swift
+      - path: ReminderApp/Services/HolidayService.swift
+      - path: ReminderApp/Services/LunarCalendar.swift
+      - path: ReminderAppTests/TestShims.swift
+      - path: ReminderAppTests/BackupProtocolCheckMain.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.reminder.protocolchk
+        PRODUCT_NAME: "BackupProtocolCheck"
+        GENERATE_INFOPLIST_FILE: "YES"
+
   ReminderWidget:
     type: app-extension
     platform: iOS

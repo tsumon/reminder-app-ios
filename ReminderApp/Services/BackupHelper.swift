@@ -12,8 +12,30 @@ enum BackupHelper {
         let error: String?   // I8: 写入失败原因（区别于「重复跳过」），nil 表示成功
     }
 
+    /// 兼容旧 JSON 的 id 字段：Android 旧导出是本地自增数字（无跨端意义 → nil），
+    /// iOS 旧导出是 UUID 字符串（→ 沿用）。协议 v2 的跨端 ID 请用 syncId。
+    struct LooseID: Codable, Equatable {
+        var stringValue: String?
+        init(from decoder: Decoder) throws {
+            let c = try decoder.singleValueContainer()
+            if let s = try? c.decode(String.self) {
+                stringValue = s
+            } else if (try? c.decode(Int.self)) != nil {
+                stringValue = nil
+            }
+        }
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.singleValueContainer()
+            try c.encodeNil()
+        }
+    }
+
     /// 导出的单条提醒（纯值类型，便于 JSON 编解码）
     struct BackupItem: Codable {
+        /// 阶段2: 跨端稳定 ID（UUID 字符串；旧文件缺省 nil → 导入时重新生成）
+        var syncId: String?
+        /// 兼容旧字段（数字忽略；旧 iOS 导出的 UUID 字符串兜底）
+        var id: LooseID?
         var title: String
         var note: String
         var kind: String
@@ -22,6 +44,8 @@ enum BackupHelper {
         var dateType: String?
         var targetMonth: Int?
         var targetDay: Int?
+        /// 阶段2: 跨端统一为稳定节假日 ID（旧文件只有 holidayName，且 iOS 旧导出实际塞的是 ID）→ 导入兜底
+        var holidayId: String?
         var holidayName: String?
         var advanceDays: Int
         var reminderHour: Int
@@ -34,12 +58,15 @@ enum BackupHelper {
         var nextTriggerAt: Double
         var status: String
         var isActive: Bool
-        /// H1: 关键提醒标记（iOS 存 UserDefaults CriticalStore，不动 schema；缺省 false 兼容旧文件）
-        var isCritical: Bool = false
+        /// H1: 关键提醒标记（iOS 存 UserDefaults CriticalStore，不动 schema；
+        /// Optional 兼容旧文件缺 isCritical 键——旧协议是 is_critical snake_case，读取为 nil → false）
+        var isCritical: Bool? = nil
     }
 
     struct BackupRoot: Codable {
         var version: Int
+        /// 阶段2: 协议版本（2 = id/holidayId；缺省视为 1——旧协议）
+        var schemaVersion: Int?
         var exportedAt: Double
         /// v2.0.17: 本地单调版本（判新主依据；Optional 兼容旧文件缺字段）
         var dataVersion: Int?
@@ -65,6 +92,8 @@ enum BackupHelper {
     static func exportJSON(_ reminders: [Reminder], exportedAt: TimeInterval) -> String {
         let items = reminders.map { r in
             BackupItem(
+                // 阶段2: 跨端稳定 ID —— iOS 的 Reminder.id 就是 UUID，直接透传
+                syncId: r.id.uuidString,
                 title: r.title,
                 note: r.note,
                 kind: r.kind.rawValue == "周期提醒" ? "cycle" : (r.kind.rawValue == "规则提醒" ? "rule" : "date"),
@@ -73,6 +102,8 @@ enum BackupHelper {
                 dateType: dateTypeCode(r.dateType),
                 targetMonth: r.kind == .date ? r.targetMonth : nil,
                 targetDay: r.kind == .date ? r.targetDay : nil,
+                // 阶段2: holidayId 写稳定 ID（holidayName 保留导出供旧版读取）
+                holidayId: r.holidayID,
                 holidayName: r.holidayID,
                 advanceDays: r.advanceDays,
                 reminderHour: r.reminderHour,
@@ -91,6 +122,8 @@ enum BackupHelper {
         }
         let root = BackupRoot(
             version: 1,
+            // 阶段2: 协议版本 2（id/holidayId/isCritical camelCase）
+            schemaVersion: 2,
             exportedAt: exportedAt,
             // v2.0.17: 单调版本随导出带上（判新主依据）
             dataVersion: SyncStore.localVersion,
@@ -120,13 +153,22 @@ enum BackupHelper {
         return root.dataVersion ?? 0
     }
 
-    /// 读取 JSON 内提醒条数（v2.0.21 F1：首次同步冲突判定用；解析失败返回 0）
+    /// 读取 JSON 内的提醒条数（v2.0.21 F1：首次同步冲突判定用；解析失败返回 0）
     static func itemCount(of json: String) -> Int {
         guard let data = json.data(using: .utf8),
               let root = try? JSONDecoder().decode(BackupRoot.self, from: data) else {
             return 0
         }
         return root.reminders.count
+    }
+
+    /// 阶段2: 读取协议 schemaVersion（缺省视为 1——旧协议无 id/holidayId）
+    static func schemaVersion(of json: String) -> Int {
+        guard let data = json.data(using: .utf8),
+              let root = try? JSONDecoder().decode(BackupRoot.self, from: data) else {
+            return 1
+        }
+        return root.schemaVersion ?? 1
     }
 
     /// 从 JSON 解析提醒列表
@@ -278,7 +320,15 @@ enum BackupHelper {
             }
         }()
 
+        // 阶段2: 跨端稳定 ID 沿用（syncId 优先，旧 iOS 导出的 id 字符串兜底，都没有 → 重新生成）；
+        // holidayId 优先，旧文件只有 holidayName（iOS 旧导出实际塞的是 ID）→ 兜底
+        let resolvedID = item.syncId.flatMap(UUID.init(uuidString:))
+            ?? item.id?.stringValue.flatMap(UUID.init(uuidString:))
+            ?? UUID()
+        let resolvedHolidayID = item.holidayId ?? item.holidayName
+
         let reminder = Reminder(
+            id: resolvedID,
             title: item.title,
             note: item.note,
             kind: kind,
@@ -290,7 +340,7 @@ enum BackupHelper {
             advanceDays: item.advanceDays,
             reminderHour: item.reminderHour,
             reminderMinute: item.reminderMinute,
-            holidayID: item.holidayName,
+            holidayID: resolvedHolidayID,
             rulePeriod: rulePeriod,
             ruleWeek: RuleWeek(rawValue: item.ruleWeek ?? 2) ?? .w2,
             ruleWeekday: RuleWeekday(rawValue: item.ruleWeekday ?? 2) ?? .tue,
@@ -301,7 +351,7 @@ enum BackupHelper {
             isEnabled: item.isActive
         )
         // H1: 导入时写回关键标记到 CriticalStore（保持 UserDefaults 方案，不动 schema）
-        ReminderEngine.CriticalStore.setCritical(item.isCritical, for: reminder.id)
+        ReminderEngine.CriticalStore.setCritical(item.isCritical ?? false, for: reminder.id)
         return reminder
     }
 }

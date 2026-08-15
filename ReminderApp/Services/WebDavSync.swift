@@ -87,7 +87,7 @@ enum WebDavSync {
                     return .failure("远程文件解析失败")
                 }
                 // 保存失败时不更新版本号，避免本地旧数据与远程版本对齐后永远无法再同步
-                guard replaceLocal(currentReminders, items: items, in: modelContext) else {
+                guard mergeRemote(currentReminders, items: items, in: modelContext) else {
                     return .failure("本地数据写入失败，未应用远程数据，请检查存储空间后重试")
                 }
                 // v2.0.17: 下载后本地数据 = 远程数据 → 单调版本对齐远程（旧文件 dataVersion=0 时保持本地版本）
@@ -309,36 +309,61 @@ enum WebDavSync {
         return error.localizedDescription
     }
 
-    // MARK: - 覆盖本地
+    // MARK: - 合并远程数据（阶段2：按 id upsert，不再整库 delete/reinsert）
 
-    private static func replaceLocal(
+    /// 用远程数据合并本地：
+    /// - 远程条目按 id（跨端稳定 UUID）匹配本地 → 更新现有对象（引用不失效、操作记录保留）
+    /// - 无 id 的旧协议条目 → 指纹匹配（识别上轮已导入的条目）→ 更新；否则插入
+    /// - 本地有而远程没有的条目保留（无 tombstone，无法区分「远端已删」与「远端从未有过」，保守不删）
+    /// - 覆盖前自动存本地 JSON 快照（可恢复；保留最近 5 份）
+    private static func mergeRemote(
         _ current: [Reminder],
         items: [BackupHelper.BackupItem],
         in context: ModelContext
     ) -> Bool {
-        // 先清空旧通知，避免被删提醒的「幽灵通知」继续到点弹出
+        // 阶段2: 覆盖前自动存本地快照（可恢复）
+        snapshotLocal(current)
+
+        // 先清空旧通知，避免被删提醒的「幽灵通知」继续到点弹出（保留的条目下面会重排）
         NotificationManager.shared.removeAllPendingNotifications()
 
-        var inserted: [Reminder] = []
-        for r in current {
-            context.delete(r)
-        }
+        let existingByID = Dictionary(uniqueKeysWithValues: current.map { ($0.id, $0) })
+        let existingByFingerprint = Dictionary(
+            uniqueKeysWithValues: current.map {
+                ("\($0.title)|\(Int($0.nextTriggerAt.timeIntervalSince1970))", $0)
+            }
+        )
+        var upserted: [Reminder] = []
+
         for item in items {
-            let reminder = BackupHelper.makeReminder(from: item)
-            context.insert(reminder)
-            inserted.append(reminder)
+            let fresh = BackupHelper.makeReminder(from: item)
+            let fingerprint = "\(fresh.title)|\(Int(fresh.nextTriggerAt.timeIntervalSince1970))"
+            // 匹配优先级：id（协议 v2）→ 指纹（旧协议文件无 id 时，识别上轮已导入的条目）
+            let existing = existingByID[fresh.id] ?? existingByFingerprint[fingerprint]
+
+            if let existing {
+                // 已存在：逐属性更新（保留对象 id → 通知/小组件/操作记录引用不失效；records 保留）
+                apply(fresh, to: existing)
+                // 阶段2: 状态随同步保留（makeReminder 已映射合法值；未知回落 pending）
+                upserted.append(existing)
+            } else {
+                // 新条目
+                context.insert(fresh)
+                upserted.append(fresh)
+            }
         }
+
         // 保存失败必须让调用方知道：否则版本号已对齐、本地又是旧数据，后续永远无法恢复
         do {
             try context.save()
         } catch {
-            print("[WebDAV] 覆盖本地保存失败: \(error)")
+            print("[WebDAV] 合并保存失败: \(error)")
             return false
         }
 
-        // 远程覆盖本地后必须重排通知，否则新导入的提醒「存在但永不提醒」
+        // 合并后必须重排通知，否则提醒「存在但永不提醒」
         Task {
-            for reminder in inserted where reminder.isEnabled {
+            for reminder in upserted where reminder.isEnabled {
                 await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
             }
         }
@@ -348,6 +373,57 @@ enum WebDavSync {
             WidgetCenter.shared.reloadAllTimelines()
         }
         return true
+    }
+
+    /// 把 fresh（makeReminder 产物，id 与 existing 相同）的持久化属性复制到 existing。
+    /// 不拷贝：id（必须相同）、retryStage/lastRetryAt/createdAt/records（协议无此字段，保留本地值）。
+    private static func apply(_ fresh: Reminder, to existing: Reminder) {
+        existing.title = fresh.title
+        existing.note = fresh.note
+        existing.kind = fresh.kind
+        existing.cycle = fresh.cycle
+        existing.customDays = fresh.customDays
+        existing.dateType = fresh.dateType
+        existing.targetMonth = fresh.targetMonth
+        existing.targetDay = fresh.targetDay
+        existing.advanceDays = fresh.advanceDays
+        existing.reminderHour = fresh.reminderHour
+        existing.reminderMinute = fresh.reminderMinute
+        existing.holidayID = fresh.holidayID
+        existing.rulePeriod = fresh.rulePeriod
+        existing.ruleWeek = fresh.ruleWeek
+        existing.ruleWeekday = fresh.ruleWeekday
+        existing.firstTriggerAt = fresh.firstTriggerAt
+        existing.nextTriggerAt = fresh.nextTriggerAt
+        existing.status = fresh.status
+        existing.priority = fresh.priority
+        existing.isEnabled = fresh.isEnabled
+        existing.updatedAt = Date()
+    }
+
+    /// 阶段2: 合并前把当前本地全量导出为 JSON 快照（可恢复；保留最近 5 份）
+    private static func snapshotLocal(_ reminders: [Reminder]) {
+        let fm = FileManager.default
+        guard let dir = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("webdav_snapshots", isDirectory: true) else { return }
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let stamp = DateFormatter()
+        stamp.dateFormat = "yyyyMMdd_HHmmss"
+        stamp.locale = Locale(identifier: "en_US_POSIX")
+        let file = dir.appendingPathComponent("before_\(stamp.string(from: Date())).json")
+        let json = BackupHelper.exportJSON(reminders)
+        try? json.write(to: file, atomically: true, encoding: .utf8)
+
+        // 只保留最近 5 份
+        let entries = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?
+            .filter { $0.lastPathComponent.hasPrefix("before_") }
+            .sorted { $0.lastPathComponent > $1.lastPathComponent } ?? []
+        if entries.count > 5 {
+            for old in entries.dropFirst(5) {
+                try? fm.removeItem(at: old)
+            }
+        }
     }
 
     // MARK: - WebDAV 请求
