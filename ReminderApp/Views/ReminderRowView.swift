@@ -6,13 +6,15 @@ struct ReminderRowView: View {
 
     var body: some View {
         HStack(spacing: 13) {
-            // v1.9.8 设计图风格：彩色圆角方块图标容器（44pt / 圆角 14），内放「提醒类型 emoji」（对齐 Android reminderEmoji）
+            // v2.1.0: 彩色圆角方块图标容器（44pt / 圆角 14），内放「提醒类型 SF Symbol」
+            // （替代原 emoji——深浅色一致、与系统风格统一；对齐 Android 侧 Material 图标替换）
             ZStack {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(kindBadgeColor.opacity(0.15))
                     .frame(width: 44, height: 44)
-                Text(reminder.typeEmoji)
+                Image(systemName: reminder.typeSymbol)
                     .font(.system(size: 20))
+                    .foregroundStyle(kindBadgeColor)
             }
             .accessibilityLabel(Localized("提醒类型"))
 
@@ -50,7 +52,7 @@ struct ReminderRowView: View {
                     if reminder.retryStage > 0 && !isDone {
                         Text(Localized("第%d次重试", reminder.retryStage))
                             .font(.caption2)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(ThemeTokens.statusSnoozed)
                     }
                 }
 
@@ -111,7 +113,7 @@ struct ReminderRowView: View {
         switch reminder.status {
         case .pending:   return ThemeTokens.statusWaiting
         case .active:    return ThemeTokens.statusReminding
-        case .snoozed:   return .orange
+        case .snoozed:   return ThemeTokens.statusSnoozed
         case .confirmed: return ThemeTokens.statusCompleted
         case .overdue:   return ThemeTokens.statusOverdue
         }

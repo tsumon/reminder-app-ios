@@ -803,7 +803,7 @@ struct ReminderListView: View {
         } label: {
             Label("完成".localized, systemImage: "checkmark")
         }
-        .tint(.green)
+        .tint(ThemeTokens.statusCompleted)
 
         if reminder.status == .overdue {
             Button {
@@ -823,7 +823,7 @@ struct ReminderListView: View {
         } label: {
             Label("重开".localized, systemImage: "arrow.uturn.backward")
         }
-        .tint(.orange)
+        .tint(ThemeTokens.statusSnoozed)
     }
 
     /// 左滑 → 删除

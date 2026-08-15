@@ -33,7 +33,7 @@ final class ReminderEngine: ObservableObject {
             }
             switch item.action {
             case .confirm: confirmReminder(reminder)
-            case .snooze:  snoozeReminder(reminder)
+            case .snooze:  snoozeReminder(reminder, afterMinutes: 15)
             case .dismiss: escalateRetry(reminder)
             }
             print("[ReminderEngine] 已排空通知动作: \(item.action.rawValue) \(reminder.title)")
@@ -487,13 +487,33 @@ final class ReminderEngine: ObservableObject {
 
     // MARK: - 稍后提醒
 
-    func snoozeReminder(_ reminder: Reminder) {
-        guard let context = modelContext else { return }
-
+    /// 稍后 N 分钟（v2.1.0: 支持任意分钟数，原固定 15 分钟）
+    func snoozeReminder(_ reminder: Reminder, afterMinutes minutes: Int) {
         let now = Date()
-        let snoozeAt = Calendar.current.date(byAdding: .minute, value: 15, to: now) ?? now
+        let snoozeAt = Calendar.current.date(byAdding: .minute, value: minutes, to: now) ?? now
+        snoozeTo(reminder, at: snoozeAt, note: "推迟\(minutes)分钟")
+    }
 
-        let record = ReminderRecord(type: .snooze, note: "推迟15分钟")
+    /// 稍后到明天提醒时刻（reminderHour:reminderMinute；已过则顺延一天）
+    func snoozeReminderTomorrow(_ reminder: Reminder) {
+        let cal = Calendar.current
+        let now = Date()
+        var comps = cal.dateComponents([.year, .month, .day], from: now)
+        comps.hour = reminder.reminderHour
+        comps.minute = reminder.reminderMinute
+        comps.second = 0
+        var snoozeAt = cal.date(from: comps) ?? now
+        if snoozeAt <= now {
+            snoozeAt = cal.date(byAdding: .day, value: 1, to: snoozeAt) ?? snoozeAt
+        }
+        snoozeTo(reminder, at: snoozeAt, note: "推迟到明天")
+    }
+
+    private func snoozeTo(_ reminder: Reminder, at snoozeAt: Date, note: String) {
+        guard let context = modelContext else { return }
+        let now = Date()
+
+        let record = ReminderRecord(type: .snooze, note: note)
         reminder.records.append(record)
 
         reminder.nextTriggerAt = snoozeAt
@@ -504,12 +524,12 @@ final class ReminderEngine: ObservableObject {
         SyncStore.touchLocalChange()
 
         // P1-2: 走完整排期（含重试链）。稍后不改 retryStage，
-        // 15 分钟后那次通知仍然是「第 retryStage+1 次触发」，后续重试链接着往下走。
+        // 到点那次通知仍然是「第 retryStage+1 次触发」，后续重试链接着往下走。
         Task {
             await self.scheduleAllNotifications(for: reminder)
         }
 
-        print("[ReminderEngine] 已推迟: \(reminder.title)")
+        print("[ReminderEngine] 已推迟: \(reminder.title) → \(snoozeAt)")
     }
 
     // MARK: - 递增重试

@@ -170,7 +170,7 @@ struct AIChatView: View {
         VStack(spacing: 16) {
             Image(systemName: "sparkles")
                 .font(.system(size: 48))
-                .foregroundStyle(.purple)
+                .foregroundStyle(ThemeTokens.brandPrimary)
                 .padding(.top, 40)
             Text("跟我说你想提醒什么".localized)
                 .font(.title3.weight(.semibold))
@@ -222,7 +222,7 @@ struct AIChatView: View {
                         .foregroundStyle(
                             inputText.trimmingCharacters(in: .whitespaces).isEmpty || isLoading
                                 ? .gray
-                                : .purple
+                                : ThemeTokens.brandPrimary
                         )
                 }
                 .disabled(inputText.trimmingCharacters(in: .whitespaces).isEmpty || isLoading)
@@ -600,7 +600,7 @@ struct AIChatView: View {
         guard let match = await MainActor.run(body: { reminders.first(where: { $0.title.lowercased().contains(keyword) }) })
         else { return Localized("未找到包含「%@」的提醒", keyword) }
 
-        await MainActor.run { ReminderEngine.shared.snoozeReminder(match) }
+        await MainActor.run { ReminderEngine.shared.snoozeReminder(match, afterMinutes: 15) }
         return Localized("已推迟「%@」，15 分钟后再次提醒。", match.title)
     }
 
@@ -789,7 +789,7 @@ struct ChatBubble: View {
                         )
                     )
                     .shadow(color: ThemeTokens.brandPrimary.opacity(0.25), radius: 6, y: 3)
-                avatar(systemName: "person.circle.fill", color: .blue)
+                avatar(systemName: "person.circle.fill", color: ThemeTokens.brandPrimary)
             }
         }
         .padding(.vertical, 2)

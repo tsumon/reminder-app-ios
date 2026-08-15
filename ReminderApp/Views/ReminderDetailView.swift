@@ -15,6 +15,9 @@ struct ReminderDetailView: View {
     @State private var checkInText: String?
     // v2.0.21 G3: 每次打卡自增，作为自动消失计时器的 id（换值即取消上一条的计时，防提前清空）
     @State private var checkInToken = 0
+    // v2.1.0: 自定义稍后
+    @State private var showCustomSnooze = false
+    @State private var customSnoozeMinutes = "15"
 
     var body: some View {
         ScrollView {
@@ -70,6 +73,18 @@ struct ReminderDetailView: View {
             Button("好".localized, role: .cancel) {}
         } message: {
             Text(deleteErrorMessage ?? "")
+        }
+        // v2.1.0: 自定义稍后分钟数
+        .alert("自定义稍后".localized, isPresented: $showCustomSnooze) {
+            TextField("分钟数".localized, text: $customSnoozeMinutes)
+                .keyboardType(.numberPad)
+            Button("取消".localized, role: .cancel) {}
+            Button("确定".localized) {
+                let minutes = Int(customSnoozeMinutes) ?? 15
+                ReminderEngine.shared.snoozeReminder(reminder, afterMinutes: max(1, minutes))
+            }
+        } message: {
+            Text("多少分钟后再次提醒？".localized)
         }
         .onAppear {
             ReminderEngine.shared.configure(with: modelContext)
@@ -152,16 +167,28 @@ struct ReminderDetailView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(.green)
+                    .tint(ThemeTokens.statusCompleted)
 
-                    Button {
-                        ReminderEngine.shared.snoozeReminder(reminder)
+                    // v2.1.0: 统一稍后选项（15 分钟 / 1 小时 / 明天 / 自定义分钟）
+                    Menu {
+                        Button("15 分钟".localized) {
+                            ReminderEngine.shared.snoozeReminder(reminder, afterMinutes: 15)
+                        }
+                        Button("1 小时".localized) {
+                            ReminderEngine.shared.snoozeReminder(reminder, afterMinutes: 60)
+                        }
+                        Button("明天".localized) {
+                            ReminderEngine.shared.snoozeReminderTomorrow(reminder)
+                        }
+                        Button("自定义…".localized) {
+                            showCustomSnooze = true
+                        }
                     } label: {
                         Label("稍后提醒".localized, systemImage: "clock.arrow.circlepath")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
-                    .tint(.orange)
+                    .tint(ThemeTokens.statusSnoozed)
                 }
 
                 // 已逾期：给一个明确的「补打今天」入口——按今天完成、推进周期、计入统计
@@ -208,7 +235,7 @@ struct ReminderDetailView: View {
             if let note = holidayAdjustNote {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "calendar.badge.exclamationmark")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(ThemeTokens.statusSnoozed)
                         .frame(width: 22)
                     Text(note)
                         .font(.subheadline)
@@ -216,7 +243,7 @@ struct ReminderDetailView: View {
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.orange.opacity(0.12))
+                .background(ThemeTokens.statusSnoozed.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
 
@@ -317,7 +344,7 @@ struct ReminderDetailView: View {
             ForEach(reminder.records.sorted(by: { $0.performedAt > $1.performedAt }).prefix(20), id: \.id) { record in
                 HStack {
                     Image(systemName: record.type == ReminderRecordType.confirm.rawValue ? "checkmark.circle" : record.type == ReminderRecordType.snooze.rawValue ? "clock" : "bell")
-                        .foregroundStyle(record.type == ReminderRecordType.confirm.rawValue ? .green : record.type == ReminderRecordType.snooze.rawValue ? .orange : .blue)
+                        .foregroundStyle(record.type == ReminderRecordType.confirm.rawValue ? ThemeTokens.statusCompleted : record.type == ReminderRecordType.snooze.rawValue ? ThemeTokens.statusSnoozed : ThemeTokens.statusWaiting)
                         .frame(width: 24)
 
                     Text(record.type == ReminderRecordType.confirm.rawValue ? "确认完成" : record.type == ReminderRecordType.snooze.rawValue ? "稍后提醒" : "系统提醒")
@@ -371,7 +398,7 @@ struct ReminderDetailView: View {
         switch reminder.status {
         case .pending:   return ThemeTokens.statusWaiting
         case .active:    return ThemeTokens.statusReminding
-        case .snoozed:   return .orange
+        case .snoozed:   return ThemeTokens.statusSnoozed
         case .confirmed: return ThemeTokens.statusCompleted
         case .overdue:   return ThemeTokens.statusOverdue
         }

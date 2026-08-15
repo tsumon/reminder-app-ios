@@ -19,7 +19,7 @@ struct StatsView: View {
                 completionCard(summary)
                 HStack(spacing: 12) {
                     streakCard(title: "当前连续", value: summary.currentStreak, icon: "flame.fill", color: .orange)
-                    streakCard(title: "最长连续", value: summary.longestStreak, icon: "trophy.fill", color: .purple)
+                    streakCard(title: "最长连续", value: summary.longestStreak, icon: "trophy.fill", color: ThemeTokens.brandPrimary)
                 }
                 forgetHoursCard(summary)
                 heatmapCard(summary)
@@ -70,7 +70,7 @@ struct StatsView: View {
                 Circle()
                     .trim(from: 0, to: s.completionRate.map { max(0.02, min($0, 1)) } ?? 0)
                     .stroke(
-                        LinearGradient(colors: [.purple, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        LinearGradient(colors: [ThemeTokens.brandGradientStart, ThemeTokens.brandPrimary], startPoint: .topLeading, endPoint: .bottomTrailing),
                         style: StrokeStyle(lineWidth: 12, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))

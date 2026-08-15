@@ -150,7 +150,7 @@ struct ReminderApp: App {
             let descriptor = FetchDescriptor<Reminder>(predicate: #Predicate { $0.id == uuid })
             guard let reminder = try? context.fetch(descriptor).first else { continue }
             // .task 继承 MainActor 上下文，snoozeReminder（引擎方法）可直接调用
-            reminderEngine.snoozeReminder(reminder)
+            reminderEngine.snoozeReminder(reminder, afterMinutes: 15)
             print("[WidgetSync] 小组件稍后已落库: \(reminder.title)")
         }
 

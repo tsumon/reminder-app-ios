@@ -30,6 +30,13 @@ struct Provider: TimelineProvider {
 
 // MARK: - View
 
+/// v2.1.0: 小组件品牌色（与 App ThemeTokens 一致；widget target 独立，不共享 App 代码）
+private extension Color {
+    static let widgetBrand = Color(red: 0x67 / 255.0, green: 0x50 / 255.0, blue: 0xA4 / 255.0)
+    static let widgetReminding = Color(red: 0xE7 / 255.0, green: 0x4C / 255.0, blue: 0x3C / 255.0)
+    static let widgetSnoozed = Color(red: 0xF3 / 255.0, green: 0x9C / 255.0, blue: 0x12 / 255.0)
+}
+
 struct ReminderWidgetEntryView: View {
     @Environment(\.widgetFamily) private var family
     var entry: ReminderEntry
@@ -51,14 +58,14 @@ struct ReminderWidgetEntryView: View {
             HStack(spacing: 6) {
                 Image(systemName: "bell.badge.fill")
                     .font(.subheadline)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.widgetReminding)
                 Text("未处理提醒".localized)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text("\(entry.data.unhandledCount)")
                     .font(.title2.weight(.bold))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.widgetReminding)
             }
 
             Divider()
@@ -67,7 +74,7 @@ struct ReminderWidgetEntryView: View {
             HStack(spacing: 4) {
                 Image(systemName: "moon.stars.fill")
                     .font(.caption2)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.widgetSnoozed)
                 Text(lunarText)
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
@@ -108,10 +115,10 @@ struct ReminderWidgetEntryView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "bell.badge.fill")
                             .font(.title3)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Color.widgetReminding)
                         Text("\(entry.data.unhandledCount)")
                             .font(.system(size: 42, weight: .bold, design: .rounded))
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Color.widgetReminding)
                     }
                 }
                 Spacer()
@@ -119,14 +126,14 @@ struct ReminderWidgetEntryView: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(lunarText)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Color.widgetSnoozed)
                     Text(ganzhiText)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(Color.widgetSnoozed.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
 
             Divider()
@@ -144,7 +151,7 @@ struct ReminderWidgetEntryView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "timer")
                         .font(.subheadline)
-                        .foregroundStyle(.purple)
+                        .foregroundStyle(Color.widgetBrand)
                     Text(countdownText(from: entry.date, to: time))
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
@@ -178,7 +185,7 @@ struct ReminderWidgetEntryView: View {
                 // 已在小组件上标记推迟，等 App 启动同步落库（v2.0.16）
                 Label("已推迟 15 分钟，打开 App 生效".localized, systemImage: "clock.fill")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.widgetSnoozed)
             } else {
                 HStack(spacing: 8) {
                     Button(intent: CompleteReminderIntent(reminderID: id)) {
@@ -195,8 +202,8 @@ struct ReminderWidgetEntryView: View {
                             .font(.caption.weight(.semibold))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(.orange.opacity(0.15), in: Capsule())
-                            .foregroundStyle(.orange)
+                            .background(Color.widgetSnoozed.opacity(0.15), in: Capsule())
+                            .foregroundStyle(Color.widgetSnoozed)
                     }
                 }
             }

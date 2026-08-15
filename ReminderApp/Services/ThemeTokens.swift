@@ -22,6 +22,8 @@ enum ThemeTokens {
     static let statusCompleted = Color(red: 0x27 / 255.0, green: 0xAE / 255.0, blue: 0x60 / 255.0)
     /// v1.9.8: 逾期（递增重试到上限，比提醒中更深一档的红色，与 Android StatusOverdue 一致）
     static let statusOverdue = Color(red: 0xC0 / 255.0, green: 0x39 / 255.0, blue: 0x2B / 255.0)
+    /// v2.1.0: 稍后/已推迟（原各 View 硬编码 .orange，统一令牌，与 Android StatusSnoozed #F39C12 一致）
+    static let statusSnoozed = Color(red: 0xF3 / 255.0, green: 0x9C / 255.0, blue: 0x12 / 255.0)
 
     // MARK: 节假日「休/班」
 
@@ -30,20 +32,25 @@ enum ThemeTokens {
     /// 班（调休上班）橙
     static let holidayWork = Color(red: 0xEF / 255.0, green: 0x6C / 255.0, blue: 0x00 / 255.0)
 
-    // MARK: 热力图色阶（统计页，与 Android 一致）
+    // MARK: 热力图色阶（统计页，与 Android 一致；v2.1.0 由冷蓝统一为品牌紫系）
 
     static let heatmap0 = Color.gray.opacity(0.12)
-    static let heatmap1 = Color(red: 0x2B / 255.0, green: 0x66 / 255.0, blue: 0xC4 / 255.0).opacity(0.25)
-    static let heatmap2 = Color(red: 0x2B / 255.0, green: 0x66 / 255.0, blue: 0xC4 / 255.0).opacity(0.55)
-    static let heatmap3 = Color(red: 0x2B / 255.0, green: 0x66 / 255.0, blue: 0xC4 / 255.0)
+    static let heatmap1 = brandPrimary.opacity(0.25)
+    static let heatmap2 = brandPrimary.opacity(0.55)
+    static let heatmap3 = brandPrimary
 
     // MARK: 圆角
 
     static let cardRadius: CGFloat = 16
     static let cellRadius: CGFloat = 6
+    /// v2.1.0: 圆角梯度（替换各 View 硬编码 10/12/20/24）
+    static let radiusSmall: CGFloat = 10
+    static let radiusMedium: CGFloat = 12
+    static let radiusLarge: CGFloat = 20
+    static let radiusXLarge: CGFloat = 24
 
-    // MARK: 字号（pt）
+    // MARK: 字号（pt，与 Android FontTiny 9sp / FontMicro 8sp 对齐）
 
-    static let fontTiny: CGFloat = 8
+    static let fontTiny: CGFloat = 9
     static let fontMicro: CGFloat = 8
 }

@@ -260,6 +260,33 @@ final class Reminder {
     }
 
     /// 提醒类型的展示用 emoji（对齐 Android reminderEmoji：容器里放类型 emoji，而非状态 SF Symbol）
+    /// 提醒类型的展示图标（v2.1.0: SF Symbols，替代 typeEmoji——深浅色一致、与系统风格统一）
+    var typeSymbol: String {
+        switch kind {
+        case .date:
+            switch dateType {
+            case .holiday:       return "party.popper.fill"
+            case .lunarBirthday: return "moon.stars.fill"
+            case .solarBirthday: return "birthday.cake.fill"
+            case .none:          return "calendar"
+            }
+        case .rule:
+            return "calendar.badge.clock"
+        case .cycle:
+            break
+        }
+        switch cycle {
+        case .once:      return "alarm.fill"
+        case .daily:     return "arrow.triangle.2.circlepath"
+        case .weekly:    return "calendar"
+        case .biweekly:  return "calendar.badge.plus"
+        case .monthly:   return "calendar.circle"
+        case .quarterly: return "chart.bar.fill"
+        case .yearly:    return "target"
+        case .custom:    return "hourglass"
+        }
+    }
+
     var typeEmoji: String {
         switch kind {
         case .date:
