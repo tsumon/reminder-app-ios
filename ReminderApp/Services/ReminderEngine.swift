@@ -54,6 +54,22 @@ final class ReminderEngine: ObservableObject {
         }
     }
 
+    /// v2.1.1: 未来 N 次触发时间预览（详情页展示，验证周期计算是否正确）。
+    /// 已完成/已逾期/已停用 → 空；once → 仅当前一次。
+    func futureTriggers(for reminder: Reminder, count: Int = 10) -> [Date] {
+        guard reminder.status != .confirmed, reminder.status != .overdue, reminder.isEnabled else { return [] }
+        if reminder.cycle == .once { return [reminder.nextTriggerAt] }
+        var dates: [Date] = []
+        var cursor = reminder.nextTriggerAt
+        for _ in 0..<count {
+            dates.append(cursor)
+            let next = calculateNextTrigger(after: cursor, reminder: reminder)
+            if next <= cursor { break } // 防死循环
+            cursor = next
+        }
+        return dates
+    }
+
     // MARK: - 判断提醒是否在指定日期触发（日历标记 / 点击某天查看任务）
 
     /// 判断提醒在指定公历日期（year/month/day，month 1-based）是否触发
@@ -591,6 +607,9 @@ final class ReminderEngine: ObservableObject {
         // 幽灵通知防御（对齐 Android Worker）：已完成 / 已逾期不再排任何通知
         guard reminder.status != .confirmed, reminder.status != .overdue else { return }
 
+        // v2.1.1: 勿扰时段——触发时间落在静默窗口内时顺延到窗口结束（仅影响排期，不动数据）
+        let trigger = QuietHoursStore.adjust(reminder.nextTriggerAt, for: reminder.id)
+
         if reminder.kind == .date {
             // 日期类：安排提前预告通知 + D-day 通知
             await scheduleAdvanceNotifications(reminder: reminder)
@@ -598,18 +617,18 @@ final class ReminderEngine: ObservableObject {
 
         // D-day 通知（带确认/稍后按钮）；角标用真实未确认数量
         let count = unconfirmedCount()
-        try? await NotificationManager.shared.addDdayNotification(for: reminder, badgeCount: count)
+        try? await NotificationManager.shared.addDdayNotification(for: reminder, at: trigger, badgeCount: count)
 
         // P1-2: 预排递增重试链。iOS 无 WorkManager，只能提前把后续重试交给系统持有。
         // 给「近 31 天内到期」的月内周期（周/双周/月）预排；季/年等超长周期数量稀少、
         // 且正是最需要到点重试的类型，豁免窗口直接预排（与 Android WorkManager 对齐）；
         // 其余远期提醒会在用户回前台、进入窗口后由 ensureRetryChains() 补排。
-        let needsRetryChain = reminder.nextTriggerAt.timeIntervalSinceNow <= Self.retryChainWindow
+        let needsRetryChain = trigger.timeIntervalSinceNow <= Self.retryChainWindow
             || reminder.cycle == .quarterly || reminder.cycle == .yearly
         if needsRetryChain {
             await NotificationManager.shared.addRetryNotifications(
                 for: reminder,
-                anchor: reminder.nextTriggerAt,
+                anchor: trigger,
                 currentStage: reminder.retryStage,
                 badgeCount: count
             )

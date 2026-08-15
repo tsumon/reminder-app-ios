@@ -97,9 +97,10 @@ final class NotificationManager: NSObject, ObservableObject {
     }
 
     /// 真正添加 D-day 通知（不含移除逻辑，供 scheduleAllNotifications 在统一移除后调用）
-    func addDdayNotification(for reminder: Reminder, badgeCount: Int = 1) async throws {
+    /// 排 D-day 通知；at 缺省用 reminder.nextTriggerAt（v2.1.1: 勿扰时段顺延后的触发时间）
+    func addDdayNotification(for reminder: Reminder, at triggerDate: Date? = nil, badgeCount: Int = 1) async throws {
         // 计算触发时间
-        let triggerDate = reminder.nextTriggerAt
+        let triggerDate = triggerDate ?? reminder.nextTriggerAt
         // v2.0.22: 触发时间已过去时直接跳过——UNCalendarNotificationTrigger
         // 对过去时间的处理行为不定，且会与「启动遗漏检查」双重弹通知
         guard triggerDate > Date() else {

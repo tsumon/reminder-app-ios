@@ -26,9 +26,11 @@ struct ReminderApp: App {
     @Environment(\.scenePhase) private var scenePhase
     // v2.0.4: 手动语言切换 —— 变化时通过 .id() 强制整棵视图树重建，新语言生效
     @AppStorage(AppLanguageManager.key) private var appLanguage = AppLanguage.system.rawValue
+    // v2.1.1: 手动主题（0=跟随系统 1=浅色 2=深色）
+    @AppStorage(ThemeStore.key) private var themeMode = 0
 
-    /// SwiftData 容器
-    var sharedModelContainer: ModelContainer = {
+    /// SwiftData 容器（v2.1.1: 提升为 static，供 AppIntents/快捷指令访问同一 store）
+    static let sharedModelContainer: ModelContainer = {
         // Schema(versionedSchema:) 显式走 v1 版本化 schema（ReminderSchemaV1.schema 属性不存在，
         // 必须经 Schema 构造器；ModelConfiguration(for:) 亦可，此处用最显式写法）
         let config = ModelConfiguration(schema: Schema(versionedSchema: ReminderSchemaV1.self), isStoredInMemoryOnly: false)
@@ -49,10 +51,12 @@ struct ReminderApp: App {
         WindowGroup {
             // v1.9.8: 底部导航 Tab（首页/日历/统计/设置），对齐 README 设计图
             // v2.0.4: .id(appLanguage) —— 语言切换后整树重建刷新文案
+            // v2.1.1: .preferredColorScheme —— 手动主题（0=跟随系统）
             MainTabView()
                 .id(appLanguage)
+                .preferredColorScheme(themeMode == 1 ? .light : themeMode == 2 ? .dark : nil)
                 .onAppear {
-                    reminderEngine.configure(with: sharedModelContainer.mainContext)
+                    reminderEngine.configure(with: Self.sharedModelContainer.mainContext)
                     // v1.8.7 任务⑥: 崩溃监控 + 埋点（启动最先安装）
                     TelemetryService.install()
                 }
@@ -68,7 +72,7 @@ struct ReminderApp: App {
                             reminderEngine.drainPendingNotificationActions()
                             // P1-2: 后台期间系统按预排时间发过的重试通知，回前台补齐库内阶段
                             let descriptor = FetchDescriptor<Reminder>()
-                            if let reminders = try? sharedModelContainer.mainContext.fetch(descriptor) {
+                            if let reminders = try? Self.sharedModelContainer.mainContext.fetch(descriptor) {
                             await reminderEngine.checkMissedReminders(reminders: reminders)
                         }
                         await reminderEngine.ensureRetryChains()
@@ -83,7 +87,7 @@ struct ReminderApp: App {
                     _ = await notificationManager.requestAuthorization()
                     _ = await VoiceRecognizer.shared.requestAuthorization()
                     let descriptor = FetchDescriptor<Reminder>()
-                    if let reminders = try? sharedModelContainer.mainContext.fetch(descriptor) {
+                    if let reminders = try? Self.sharedModelContainer.mainContext.fetch(descriptor) {
                         await reminderEngine.checkMissedReminders(reminders: reminders)
                     }
                     // P1-2: 为进入 31 天窗口（及季/年周期）的提醒补排递增重试链（固定标识符，重复调用只覆盖）
@@ -109,13 +113,13 @@ struct ReminderApp: App {
                     #endif
                 }
         }
-        .modelContainer(sharedModelContainer)
+        .modelContainer(Self.sharedModelContainer)
     }
 
     /// 批次2 功能3: 统计周报 —— 计算「本周至今」统计并覆盖安排每周日 20:00 通知
     private func refreshWeeklyReport() async {
         let descriptor = FetchDescriptor<ReminderRecord>()
-        let records = (try? sharedModelContainer.mainContext.fetch(descriptor)) ?? []
+        let records = (try? Self.sharedModelContainer.mainContext.fetch(descriptor)) ?? []
         await WeeklyReportService.schedule(records: records)
     }
 
@@ -124,7 +128,7 @@ struct ReminderApp: App {
     private func syncWidgetCompletedReminders() async {        let ids = WidgetSnapshot.completedReminderIDs()
         guard !ids.isEmpty else { return }
 
-        let context = sharedModelContainer.mainContext
+        let context = Self.sharedModelContainer.mainContext
         for id in ids {
             guard let uuid = UUID(uuidString: id) else { continue }
             let descriptor = FetchDescriptor<Reminder>(predicate: #Predicate { $0.id == uuid })
@@ -144,7 +148,7 @@ struct ReminderApp: App {
         let ids = WidgetSnapshot.snoozedReminderIDs()
         guard !ids.isEmpty else { return }
 
-        let context = sharedModelContainer.mainContext
+        let context = Self.sharedModelContainer.mainContext
         for id in ids {
             guard let uuid = UUID(uuidString: id) else { continue }
             let descriptor = FetchDescriptor<Reminder>(predicate: #Predicate { $0.id == uuid })
@@ -161,7 +165,7 @@ struct ReminderApp: App {
 #if DEBUG
     /// v1.9.8: 模拟器截图验证用演示数据（仅 Debug 构建，首次启动插入，模拟 README 设计图示例）
     private func seedDemoDataIfNeeded() {
-        let context = sharedModelContainer.mainContext
+        let context = Self.sharedModelContainer.mainContext
         let count = (try? context.fetchCount(FetchDescriptor<Reminder>())) ?? 0
         guard count == 0 else { return }
         let now = Date()

@@ -34,6 +34,9 @@ struct ReminderListView: View {
 
     // 搜索
     @State private var searchText = ""
+    // v2.1.1: 批量管理（多选完成/删除）
+    @State private var editMode: EditMode = .inactive
+    @State private var selectedIDs = Set<Reminder.ID>()
 
     // 导入/导出
     @State private var showExportExporter = false
@@ -82,6 +85,8 @@ struct ReminderListView: View {
                     listView
                 }
             }
+            // v2.1.1: 批量管理编辑模式（EditButton / 多选）
+            .environment(\.editMode, $editMode)
             .navigationTitle("提醒事项".localized)
             // v1.9.8.1: iPad 大屏下大标题区+玻璃背景形成大块空白，改 inline 更紧凑
             .navigationBarTitleDisplayMode(.inline)
@@ -96,6 +101,33 @@ struct ReminderListView: View {
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(ThemeTokens.brandPrimary)
                     }
+                }
+                // v2.1.1: 批量管理（多选完成/删除）
+                ToolbarItemGroup(placement: .bottomBar) {
+                    if editMode.isEditing {
+                        Button {
+                            selectedIDs = Set(reminders.map(\.id))
+                        } label: {
+                            Label("全选".localized, systemImage: "checkmark.circle")
+                        }
+                        Spacer()
+                        Button {
+                            batchComplete()
+                        } label: {
+                            Label("完成".localized, systemImage: "checkmark")
+                        }
+                        .disabled(selectedIDs.isEmpty)
+                        Spacer()
+                        Button(role: .destructive) {
+                            batchDelete()
+                        } label: {
+                            Label("删除".localized, systemImage: "trash")
+                        }
+                        .disabled(selectedIDs.isEmpty)
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    EditButton()
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
@@ -194,6 +226,8 @@ struct ReminderListView: View {
                 if let info = await UpdateService.checkLatest(), info.isNewer {
                     updateInfo = info
                 }
+                // v2.1.1: 本地自动备份（当日已备份则跳过）
+                LocalBackupService.backupOnLaunch(reminders: reminders)
             }
             .onChange(of: reminders) { _, newValue in
                 saveWidgetSnapshot(newValue)
@@ -635,7 +669,7 @@ struct ReminderListView: View {
     // MARK: - 提醒列表
 
     private var listView: some View {
-        List {
+        List(selection: $selectedIDs) {
             // 智能清单筛选条
             Section {
                 smartListBar
@@ -906,6 +940,29 @@ struct ReminderListView: View {
             return
         }
         SyncStore.touchLocalChange()
+    }
+
+    // MARK: - 批量管理（v2.1.1）
+
+    private func batchComplete() {
+        let targets = reminders.filter { selectedIDs.contains($0.id) && $0.status != .confirmed }
+        for reminder in targets {
+            ReminderEngine.shared.confirmReminder(reminder)
+        }
+        finishBatch()
+    }
+
+    private func batchDelete() {
+        let targets = reminders.filter { selectedIDs.contains($0.id) }
+        for reminder in targets {
+            deleteReminder(reminder)
+        }
+        finishBatch()
+    }
+
+    private func finishBatch() {
+        selectedIDs.removeAll()
+        editMode = .inactive
     }
 }
 

@@ -12,6 +12,8 @@ struct SettingsView: View {
     @State private var isError = false
     // v2.0.4: 手动语言切换（与 App 根视图共享同一 UserDefaults key，切换即全局重建）
     @AppStorage(AppLanguageManager.key) private var appLanguage = AppLanguage.system.rawValue
+    // v2.1.1: 手动主题（0=跟随系统 1=浅色 2=深色；与 App 根视图共享 ThemeStore.key）
+    @AppStorage(ThemeStore.key) private var themeMode = 0
 
     private var appVersion: String {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -30,12 +32,34 @@ struct SettingsView: View {
                         }
                     }
                 }
+                // MARK: 外观（v2.1.1：手动主题，自签环境常用）
+                Section("外观".localized) {
+                    Picker("主题".localized, selection: $themeMode) {
+                        Text("跟随系统".localized).tag(0)
+                        Text("浅色".localized).tag(1)
+                        Text("深色".localized).tag(2)
+                    }
+                }
                 // MARK: 同步
                 Section("同步".localized) {
                     NavigationLink {
                         SyncSettingsView()
                     } label: {
                         Label("WebDAV 同步".localized, systemImage: "arrow.triangle.2.circlepath")
+                    }
+                }
+                // MARK: 诊断（v2.1.1：提醒可靠性诊断）
+                Section("维护".localized) {
+                    NavigationLink {
+                        DiagnosticsView()
+                    } label: {
+                        Label("提醒诊断".localized, systemImage: "stethoscope")
+                    }
+                    // v2.1.1: 本地备份（自签无 iCloud 的本地兜底）
+                    NavigationLink {
+                        LocalBackupsView()
+                    } label: {
+                        Label("本地备份".localized, systemImage: "externaldrive")
                     }
                 }
                 // MARK: AI

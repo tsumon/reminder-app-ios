@@ -18,6 +18,10 @@ struct ReminderDetailView: View {
     // v2.1.0: 自定义稍后
     @State private var showCustomSnooze = false
     @State private var customSnoozeMinutes = "15"
+    // v2.1.1: 勿扰时段
+    @State private var quietHoursEnabled = false
+    @State private var quietStart = Calendar.current.date(bySettingHour: 22, minute: 0, second: 0, of: Date()) ?? Date()
+    @State private var quietEnd = Calendar.current.date(bySettingHour: 8, minute: 0, second: 0, of: Date()) ?? Date()
 
     var body: some View {
         ScrollView {
@@ -36,6 +40,12 @@ struct ReminderDetailView: View {
                 // MARK: 信息卡片
                 infoCard
                     .padding(.horizontal)
+
+                // MARK: 未来触发预览（v2.1.1：验证周期计算是否正确）
+                if !futureTriggers.isEmpty {
+                    futureTriggersCard
+                        .padding(.horizontal)
+                }
 
                 // MARK: 操作记录
                 if !reminder.records.isEmpty {
@@ -89,6 +99,15 @@ struct ReminderDetailView: View {
         .onAppear {
             ReminderEngine.shared.configure(with: modelContext)
             appeared = true
+            // v2.1.1: 从 QuietHoursStore 恢复勿扰时段
+            if let start = QuietHoursStore.startMinute(for: reminder.id),
+               let end = QuietHoursStore.endMinute(for: reminder.id) {
+                quietHoursEnabled = true
+                quietStart = Calendar.current.date(
+                    bySettingHour: start / 60, minute: start % 60, second: 0, of: Date()) ?? quietStart
+                quietEnd = Calendar.current.date(
+                    bySettingHour: end / 60, minute: end % 60, second: 0, of: Date()) ?? quietEnd
+            }
         }
         // 批次2 功能2: 打卡成功卡片（顶部浮层，不拦截点击）
         .overlay {
@@ -153,7 +172,75 @@ struct ReminderDetailView: View {
         return t
     }
 
+    // MARK: - 未来触发预览
+
+    private var futureTriggers: [Date] {
+        ReminderEngine.shared.futureTriggers(for: reminder, count: 10)
+    }
+
+    private var futureTriggersCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar.badge.clock")
+                    .foregroundStyle(ThemeTokens.brandPrimary)
+                Text("未来触发".localized)
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(Localized("%d 次预览", futureTriggers.count))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(Array(futureTriggers.enumerated()), id: \.offset) { index, date in
+                HStack(spacing: 8) {
+                    Text("\(index + 1)")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 20, height: 20)
+                        .background(ThemeTokens.brandPrimary.opacity(0.85))
+                        .clipShape(Circle())
+                    Text(futureDateFormatter.string(from: date))
+                        .font(.subheadline)
+                    Spacer()
+                    Text(relativeFuture(date))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.systemGray6))
+        .clipShape(RoundedRectangle(cornerRadius: ThemeTokens.radiusMedium, style: .continuous))
+    }
+
+    private var futureDateFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        f.locale = Locale(identifier: "zh_CN")
+        return f
+    }
+
+    private func relativeFuture(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
     // MARK: - 操作按钮
+
+    /// v2.1.1: 勿扰时段起止变化时持久化并重排
+    private func persistQuietHours() {
+        let start = Calendar.current.component(.hour, from: quietStart) * 60
+            + Calendar.current.component(.minute, from: quietStart)
+        let end = Calendar.current.component(.hour, from: quietEnd) * 60
+            + Calendar.current.component(.minute, from: quietEnd)
+        QuietHoursStore.set(start: start, end: end, for: reminder.id)
+        if reminder.isEnabled {
+            Task {
+                await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
+            }
+        }
+    }
 
     @ViewBuilder
     private var actionButtons: some View {
@@ -325,6 +412,49 @@ struct ReminderDetailView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            // v2.1.1: 勿扰时段——每日静默窗口内不弹通知（顺延到窗口结束）
+            Toggle(isOn: Binding(
+                get: { quietHoursEnabled },
+                set: { newValue in
+                    quietHoursEnabled = newValue
+                    if newValue {
+                        let start = Calendar.current.component(.hour, from: quietStart) * 60
+                            + Calendar.current.component(.minute, from: quietStart)
+                        let end = Calendar.current.component(.hour, from: quietEnd) * 60
+                            + Calendar.current.component(.minute, from: quietEnd)
+                        QuietHoursStore.set(start: start, end: end, for: reminder.id)
+                    } else {
+                        QuietHoursStore.set(start: nil, end: nil, for: reminder.id)
+                    }
+                    if reminder.isEnabled {
+                        Task {
+                            await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
+                        }
+                    }
+                }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("勿扰时段".localized)
+                        .font(.subheadline)
+                    Text("该时段内到点的提醒顺延到时段结束".localized)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if quietHoursEnabled {
+                HStack {
+                    DatePicker("开始".localized, selection: $quietStart, displayedComponents: .hourAndMinute)
+                        .labelsHidden()
+                        .onChange(of: quietStart) { _, _ in persistQuietHours() }
+                    Text("—".localized)
+                    DatePicker("结束".localized, selection: $quietEnd, displayedComponents: .hourAndMinute)
+                        .labelsHidden()
+                        .onChange(of: quietEnd) { _, _ in persistQuietHours() }
+                }
+                .padding(.leading, 4)
             }
         }
         .padding()
