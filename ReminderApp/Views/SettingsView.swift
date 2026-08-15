@@ -161,7 +161,7 @@ struct SettingsView: View {
         Task {
             guard let ipa = info.ipaURL else { return }
             do {
-                let url = try await UpdateService.downloadIpa(from: ipa, version: info.latestVersion)
+                let url = try await UpdateService.downloadIpa(info: info)
                 resultMsg = Localized("已下载：%@。打开「文件」App → 我的 iPhone → 循环提醒 → 用 AltStore/爱思等自签工具安装。", url.lastPathComponent)
             } catch {
                 isError = true

@@ -9,12 +9,20 @@ struct ReminderRowView: View {
             // v2.1.0: 彩色圆角方块图标容器（44pt / 圆角 14），内放「提醒类型 SF Symbol」
             // （替代原 emoji——深浅色一致、与系统风格统一；对齐 Android 侧 Material 图标替换）
             ZStack {
+                // v2.2.1: 彩色渐变底（同色系由深到浅），emoji 更有层次
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(kindBadgeColor.opacity(0.15))
+                    .fill(
+                        LinearGradient(
+                            colors: [kindBadgeColor.opacity(0.32), kindBadgeColor.opacity(0.12)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
                     .frame(width: 44, height: 44)
-                Image(systemName: reminder.typeSymbol)
+                // v2.2.1: 恢复 emoji 主图标（v2.1.0 换 SF Symbols 后视觉存在感骤降，
+                // 用户反馈「图标没了」；emoji 彩色表情在浅底容器里辨识度更高）
+                Text(reminder.typeEmoji)
                     .font(.system(size: 20))
-                    .foregroundStyle(kindBadgeColor)
             }
             .accessibilityLabel(Localized("提醒类型"))
 

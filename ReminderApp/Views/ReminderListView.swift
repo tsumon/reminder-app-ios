@@ -87,6 +87,16 @@ struct ReminderListView: View {
             }
             // v2.1.1: 批量管理编辑模式（EditButton / 多选）
             .environment(\.editMode, $editMode)
+            // v2.2.1: 页面级柔和品牌渐变背景（浅色下紫灰淡入，深色自动回落）
+            .background(
+                LinearGradient(
+                    colors: [ThemeTokens.brandPrimary.opacity(0.06), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+            )
+            .scrollContentBackground(.hidden)
             .navigationTitle("提醒事项".localized)
             // v1.9.8.1: iPad 大屏下大标题区+玻璃背景形成大块空白，改 inline 更紧凑
             .navigationBarTitleDisplayMode(.inline)
@@ -296,7 +306,7 @@ struct ReminderListView: View {
                         downloading = true
                         Task {
                             do {
-                                downloadedIpaURL = try await UpdateService.downloadIpa(from: ipa, version: info.latestVersion)
+                                downloadedIpaURL = try await UpdateService.downloadIpa(info: info)
                             } catch {
                                 downloadError = error.localizedDescription
                             }
@@ -1034,39 +1044,81 @@ struct OverviewCard: View {
     let nextReminder: Reminder?
 
     var body: some View {
-        // 液态玻璃版：品牌渐变玻璃 + 顶部高光 + 大圆角柔和阴影
-        HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Image(systemName: "bell.badge.fill")
-                        .font(.title3)
-                        .symbolEffect(.bounce, value: unhandledCount)
-                    Text(Localized("待处理 %d 项", unhandledCount))
+        // v2.2.1 设计语言：日期大标题 + 农历徽章 + 待办强调 + 光斑装饰
+        ZStack(alignment: .topTrailing) {
+            // 装饰光斑（右上角柔光圆）
+            Circle()
+                .fill(.white.opacity(0.14))
+                .frame(width: 130, height: 130)
+                .offset(x: 45, y: -55)
+                .blur(radius: 6)
+                .allowsHitTesting(false)
+
+            VStack(alignment: .leading, spacing: 12) {
+                // 日期大标题 + 农历
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(dateTitle)
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                    Text(weekdayTitle)
                         .font(.headline)
+                        .opacity(0.85)
+                    Spacer()
+                    if let lunar = lunarToday {
+                        HStack(spacing: 4) {
+                            Image(systemName: "moon.stars.fill")
+                                .font(.caption)
+                            Text(lunar)
+                                .font(.caption.weight(.medium))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(.white.opacity(0.18))
+                        .clipShape(Capsule())
+                    }
                 }
-                if let r = nextReminder {
-                    Text("\(r.title) · \(r.nextTriggerAt.formatted(date: .numeric, time: .shortened))")
-                        .font(.subheadline)
-                        .lineLimit(1)
-                        .opacity(0.9)
-                } else {
-                    Text("暂无即将到来的提醒".localized)
-                        .font(.subheadline)
-                        .opacity(0.9)
+
+                Divider().overlay(.white.opacity(0.25))
+
+                // 待处理 + 下次提醒
+                HStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "bell.badge.fill")
+                                .font(.title3)
+                                .symbolEffect(.bounce, value: unhandledCount)
+                            Text(Localized("待处理 %d 项", unhandledCount))
+                                .font(.headline)
+                        }
+                        if let r = nextReminder {
+                            Label {
+                                Text("\(r.title) · \(r.nextTriggerAt.formatted(date: .numeric, time: .shortened))")
+                                    .lineLimit(1)
+                            } icon: {
+                                Image(systemName: "clock")
+                            }
+                            .font(.subheadline)
+                            .opacity(0.9)
+                        } else {
+                            Label("暂无即将到来的提醒".localized, systemImage: "checkmark.circle")
+                                .font(.subheadline)
+                                .opacity(0.9)
+                        }
+                    }
+                    Spacer()
+                    // 大数字强调（滴答清单式数据）
+                    Text("\(unhandledCount)")
+                        .font(.system(size: 44, weight: .bold, design: .rounded))
+                        .opacity(0.95)
+                        .padding(.trailing, 4)
                 }
             }
-            Spacer()
-            // 大数字装饰（滴答清单式数据强调）
-            Text("\(unhandledCount)")
-                .font(.system(size: 42, weight: .bold, design: .rounded))
-                .opacity(0.9)
+            .padding(18)
         }
         .foregroundStyle(.white)
-        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             LinearGradient(
-                colors: [ThemeTokens.brandPrimary, ThemeTokens.brandPrimaryDark],
+                colors: [ThemeTokens.brandGradientStart, ThemeTokens.brandPrimary, ThemeTokens.brandPrimaryDark],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -1090,5 +1142,34 @@ struct OverviewCard: View {
         .listRowInsets(EdgeInsets())
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
+    }
+
+    /// 今天日期标题（如「8月16日」）
+    private var dateTitle: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "M月d日"
+        return f.string(from: Date())
+    }
+
+    /// 今天周几（如「周六」）
+    private var weekdayTitle: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "EEEE"
+        return f.string(from: Date())
+    }
+
+    /// 今天农历（如「六月廿三」）
+    private var lunarToday: String? {
+        let lunar = LunarCalendar.solarToLunar(Date())
+        guard lunar.month > 0 else { return nil }
+        let monthNames = ["", "正", "二", "三", "四", "五", "六", "七", "八", "九", "十", "冬", "腊"]
+        let dayNames = ["", "初一", "初二", "初三", "初四", "初五", "初六", "初七", "初八", "初九", "初十",
+                        "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十",
+                        "廿一", "廿二", "廿三", "廿四", "廿五", "廿六", "廿七", "廿八", "廿九", "三十"]
+        let month = lunar.isLeapMonth ? "闰" + monthNames[lunar.month] : monthNames[lunar.month]
+        let day = dayNames.indices.contains(lunar.day) ? dayNames[lunar.day] : "\(lunar.day)日"
+        return "\(month)月\(day)"
     }
 }

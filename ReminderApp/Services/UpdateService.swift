@@ -12,6 +12,8 @@ struct AppUpdateInfo {
     let ipaURL: URL?
     /// 是否比当前版本新
     let isNewer: Bool
+    /// v2.2.1: release tag（带版本资产 URL 用）
+    let tag: String
 }
 
 enum UpdateService {
@@ -20,8 +22,14 @@ enum UpdateService {
     static let repoURL = URL(string: "https://github.com/\(repoName)")!
     /// 检查源：releases.atom（HTML 域名走 CDN，无匿名 API 限流；api.github.com 常被限流 403）
     static let atomURL = URL(string: "https://github.com/\(repoName)/releases.atom")!
-    /// 下载路径：latest/download 固定名（无需版本号/API，永远指向最新 Release 的该资产）
+    /// 下载路径候选1：latest/download 固定名（v2.2.1 起发布统一用固定资产名 ReminderApp.ipa）
     static let ipaAssetURL = URL(string: "https://github.com/\(repoName)/releases/latest/download/ReminderApp.ipa")!
+    /// 下载路径候选2：带版本号精确 URL（兼容历史发布：ReminderApp-2.2.0.ipa 等）
+    static func taggedAssetURL(_ tag: String) -> URL? {
+        URL(string: "https://github.com/\(repoName)/releases/download/v\(tag)/ReminderApp-\(tag).ipa")
+    }
+    /// 国内镜像前缀（GitHub 直连不可达时的兜底，按顺序尝试）
+    static let mirrorPrefixes = ["https://ghfast.top/", "https://gh-proxy.com/", "https://ghproxy.net/"]
     /// 兜底：api.github.com（可能限流，仅当 atom 不可用时尝试）
     static let releaseAPI = URL(string: "https://api.github.com/repos/\(repoName)/releases/latest")!
 
@@ -58,7 +66,8 @@ enum UpdateService {
                 latestVersion: latest,
                 releaseURL: url,
                 ipaURL: ipaAssetURL,
-                isNewer: isNewerVersion(latest, than: currentVersion)
+                isNewer: isNewerVersion(latest, than: currentVersion),
+                tag: latest
             )
         } catch {
             return nil
@@ -81,7 +90,8 @@ enum UpdateService {
                 latestVersion: latest,
                 releaseURL: url,
                 ipaURL: ipaAssetURL,
-                isNewer: isNewerVersion(latest, than: currentVersion)
+                isNewer: isNewerVersion(latest, than: currentVersion),
+                tag: latest
             )
         } catch {
             return nil
@@ -112,19 +122,40 @@ enum UpdateService {
 
     /// 下载 .ipa 到 Documents/循环提醒/（iOS「文件」App 可见）
     /// 自签用户从文件 App 选此 ipa 用 AltStore/爱思等工具签名安装
-    static func downloadIpa(from url: URL, version: String) async throws -> URL {
+    /// v2.2.1: 多候选 URL（固定资产名 → 带版本 tag → 国内镜像兜底）
+    static func downloadIpa(info: AppUpdateInfo) async throws -> URL {
         let dir = try downloadsDirectory()
-        let file = dir.appendingPathComponent("循环提醒-v\(version).ipa")
+        let file = dir.appendingPathComponent("循环提醒-v\(info.latestVersion).ipa")
         // 覆盖旧文件，避免磁盘膨胀
         if FileManager.default.fileExists(atPath: file.path) {
             try FileManager.default.removeItem(at: file)
         }
-        let (tempURL, response) = try await URLSession.shared.download(from: url)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
+
+        var candidates: [URL] = [ipaAssetURL]
+        if let tagged = taggedAssetURL(info.tag) {
+            candidates.append(tagged)
         }
-        try FileManager.default.moveItem(at: tempURL, to: file)
-        return file
+        for prefix in mirrorPrefixes {
+            candidates.append(URL(string: prefix + ipaAssetURL.absoluteString)!)
+            if let tagged = taggedAssetURL(info.tag) {
+                candidates.append(URL(string: prefix + tagged.absoluteString)!)
+            }
+        }
+
+        var lastError: Error = URLError(.badServerResponse)
+        for candidate in candidates {
+            do {
+                let (tempURL, response) = try await URLSession.shared.download(from: candidate)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                    throw URLError(.badServerResponse)
+                }
+                try FileManager.default.moveItem(at: tempURL, to: file)
+                return file
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError
     }
 
     /// iOS 自签用户可见的下载目录（Documents/循环提醒）
