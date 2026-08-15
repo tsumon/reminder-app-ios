@@ -1,26 +1,2 @@
-# Xcode
-*.xcworkspace
-xcuserdata/
-DerivedData/
-*.xcuserstate
-*.xcbkptlist
-build/
-*.mode1v3
-*.mode2v3
-*.pbxuser
-*.perspectivev3
-!default.xcworkspace
-
-# XcodeGen
-ReminderApp.xcodeproj/
-
-# macOS
-.DS_Store
-Thumbs.db
-
-# Swift Package Manager
-.build/
-.swiftpm/
-
-# CocoaPods
-Pods/
+ReminderApp-*.ipa
+app-release-*.apk
