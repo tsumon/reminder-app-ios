@@ -32,7 +32,7 @@ struct Provider: TimelineProvider {
 
 /// v2.1.0: 小组件品牌色（与 App ThemeTokens 一致；widget target 独立，不共享 App 代码）
 private extension Color {
-    static let widgetBrand = Color(red: 0x67 / 255.0, green: 0x50 / 255.0, blue: 0xA4 / 255.0)
+    static let widgetBrand = Color(red: 0x15 / 255.0, green: 0x9A / 255.0, blue: 0x9C / 255.0)
     static let widgetReminding = Color(red: 0xE7 / 255.0, green: 0x4C / 255.0, blue: 0x3C / 255.0)
     static let widgetSnoozed = Color(red: 0xF3 / 255.0, green: 0x9C / 255.0, blue: 0x12 / 255.0)
 }

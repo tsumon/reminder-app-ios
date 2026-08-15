@@ -27,6 +27,8 @@ struct ReminderBackupDocument: FileDocument {
 struct ReminderListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Reminder.nextTriggerAt) private var reminders: [Reminder]
+    // v2.3.0: 今日完成数（hero 完成率环）
+    @Query(sort: \ReminderRecord.performedAt) private var records: [ReminderRecord]
     @State private var showCreateSheet = false
 
     // 智能清单筛选
@@ -692,7 +694,11 @@ struct ReminderListView: View {
             let unhandled = reminders.filter { $0.isEnabled && $0.status != .confirmed }.count
             let next = reminders.filter { $0.isEnabled && $0.nextTriggerAt > Date() }.min { $0.nextTriggerAt < $1.nextTriggerAt }
             Section {
-                OverviewCard(unhandledCount: unhandled, nextReminder: next)
+                OverviewCard(
+                    unhandledCount: unhandled,
+                    nextReminder: next,
+                    todayDone: records.filter { $0.type == ReminderRecordType.confirm.rawValue && Calendar.current.isDateInToday($0.performedAt) }.count
+                )
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
@@ -1042,6 +1048,8 @@ struct DayTasksSheet: View {
 struct OverviewCard: View {
     let unhandledCount: Int
     let nextReminder: Reminder?
+    /// v2.3.0: 今日完成数（完成率环）
+    let todayDone: Int
 
     var body: some View {
         // v2.2.1 设计语言：日期大标题 + 农历徽章 + 待办强调 + 光斑装饰
@@ -1105,11 +1113,8 @@ struct OverviewCard: View {
                         }
                     }
                     Spacer()
-                    // 大数字强调（滴答清单式数据）
-                    Text("\(unhandledCount)")
-                        .font(.system(size: 44, weight: .bold, design: .rounded))
-                        .opacity(0.95)
-                        .padding(.trailing, 4)
+                    // v2.3.0: 今日完成率环（感知强的核心视觉）
+                    completionRing
                 }
             }
             .padding(18)
@@ -1142,6 +1147,30 @@ struct OverviewCard: View {
         .listRowInsets(EdgeInsets())
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
+    }
+
+
+    /// 今日完成率环：完成 / (完成 + 未完成)
+    private var completionRing: some View {
+        let total = todayDone + unhandledCount
+        let progress = total > 0 ? Double(todayDone) / Double(total) : 0
+        return ZStack {
+            Circle()
+                .stroke(.white.opacity(0.22), lineWidth: 6)
+            Circle()
+                .trim(from: 0, to: max(0.02, progress))
+                .stroke(.white, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            VStack(spacing: 0) {
+                Text("\(Int(progress * 100))%")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                Text("今日完成".localized)
+                    .font(.system(size: 9))
+                    .opacity(0.85)
+            }
+        }
+        .frame(width: 62, height: 62)
+        .padding(.trailing, 4)
     }
 
     /// 今天日期标题（如「8月16日」）

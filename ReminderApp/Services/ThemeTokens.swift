@@ -8,15 +8,15 @@ enum ThemeTokens {
 
     // MARK: 品牌主色（双端统一 #6750A4）
 
-    /// 主色：M3 紫 #6750A4
-    static let brandPrimary = Color(red: 0x67 / 255.0, green: 0x50 / 255.0, blue: 0xA4 / 255.0)
+    /// 主色：青碧 Teal #159A9C（v2.3.0 从 M3 紫换肤——清爽高效感，双端统一）
+    static let brandPrimary = Color(red: 0x15 / 255.0, green: 0x9A / 255.0, blue: 0x9C / 255.0)
 
     // MARK: 状态色（与 Android 一致）
 
     /// 品牌深色主色（渐变末端，与 Android BrandPrimaryDark 一致）
-    static let brandPrimaryDark = Color(red: 0x4F / 255.0, green: 0x3B / 255.0, blue: 0x7A / 255.0)
-    /// v1.9.8: 品牌渐变起点（头像/AI 气泡渐变，与 Android 0xFF7C66C2 一致）
-    static let brandGradientStart = Color(red: 0x7C / 255.0, green: 0x66 / 255.0, blue: 0xC2 / 255.0)
+    static let brandPrimaryDark = Color(red: 0x0E / 255.0, green: 0x6E / 255.0, blue: 0x70 / 255.0)
+    /// v2.3.0: 品牌渐变起点（薄荷亮青，对齐 Android 0xFF4DB6AC）
+    static let brandGradientStart = Color(red: 0x4D / 255.0, green: 0xB6 / 255.0, blue: 0xAC / 255.0)
     static let statusReminding = Color(red: 0xE7 / 255.0, green: 0x4C / 255.0, blue: 0x3C / 255.0)
     static let statusWaiting = Color(red: 0x34 / 255.0, green: 0x98 / 255.0, blue: 0xDB / 255.0)
     static let statusCompleted = Color(red: 0x27 / 255.0, green: 0xAE / 255.0, blue: 0x60 / 255.0)
