@@ -66,6 +66,29 @@ struct DiagnosticsView: View {
                 }
             }
 
+            // v2.2.0: 最近 AI 调用（可观测性）
+            Section("最近 AI 调用".localized) {
+                let logs = AILogStore.recent().prefix(5)
+                if logs.isEmpty {
+                    Text("暂无 AI 调用记录".localized)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(Array(logs)) { e in
+                    HStack {
+                        Text(e.time.formatted(date: .omitted, time: .standard))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(e.model)
+                            .font(.caption)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(logSummary(e))
+                            .font(.caption2)
+                            .foregroundStyle(e.ok ? .secondary : ThemeTokens.statusOverdue)
+                    }
+                }
+            }
+
             Section {
                 Button {
                     refresh()
@@ -80,6 +103,12 @@ struct DiagnosticsView: View {
         .navigationTitle("诊断".localized)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: refresh)
+    }
+
+    private func logSummary(_ e: AILogStore.Entry) -> String {
+        if !e.ok { return "失败".localized }
+        let providerTag = e.provider == "fallback" ? " · 降级".localized : ""
+        return Localized("%d 轮 · %dms%@", e.turns, e.durationMs, providerTag)
     }
 
     private func row(_ label: String, _ value: String) -> some View {

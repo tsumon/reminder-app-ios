@@ -1,2 +1,5 @@
 ReminderApp-*.ipa
 app-release-*.apk
+build/
+DerivedData/
+.DS_Store

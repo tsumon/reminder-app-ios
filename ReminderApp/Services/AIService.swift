@@ -1,6 +1,6 @@
 import Foundation
 
-/// OpenAI 兼容 API 调用服务
+/// OpenAI 兼容 API 调用服务（v2.2.0：流式输出 + token 统计 + 备用降级）
 actor AIService {
     static let shared = AIService()
 
@@ -40,15 +40,33 @@ actor AIService {
         let arguments: String   // JSON string
     }
 
+    struct Usage: Codable {
+        let prompt_tokens: Int?
+        let completion_tokens: Int?
+        let total_tokens: Int?
+    }
+
+    /// 一次完整对话的结果（含流式累积文本、工具调用、token 用量、实际使用的 provider）
+    struct ChatResult {
+        let content: String?
+        let toolCalls: [ToolCall]?
+        let usage: Usage?
+        let finishReason: String?
+        let usedFallback: Bool
+    }
+
     struct ChatRequest: Codable {
         let model: String
         let messages: [ChatMessage]
         let tools: [[String: AnyCodable]]?
         let tool_choice: String?
+        let stream: Bool?
+        let stream_options: [String: Bool]?
 
         enum CodingKeys: String, CodingKey {
-            case model, messages, tools
+            case model, messages, tools, stream
             case tool_choice
+            case stream_options
         }
 
         func encode(to encoder: Encoder) throws {
@@ -57,27 +75,100 @@ actor AIService {
             try c.encode(messages, forKey: .messages)
             if let t = tools { try c.encode(t, forKey: .tools) }
             if let tc = tool_choice { try c.encode(tc, forKey: .tool_choice) }
+            if let s = stream { try c.encode(s, forKey: .stream) }
+            if let so = stream_options { try c.encode(so, forKey: .stream_options) }
         }
     }
 
     struct ChatResponse: Codable {
         let choices: [Choice]
+        let usage: Usage?
     }
 
     struct Choice: Codable {
-        let message: ChatMessage
+        let message: ChatMessage?
+        let delta: ChatMessage?
         let finish_reason: String?
     }
 
     // MARK: - Public
 
+    /// 聊天（带工具）：主配置失败且配置了备用时自动降级重试一次。
+    /// stream 模式下只对纯文本回复做增量输出（工具调用轮次保持非流式）。
+    func chatWithFallback(
+        settings: AISettings,
+        messages: [ChatMessage],
+        onStream: ((String) -> Void)? = nil
+    ) async throws -> ChatResult {
+        do {
+            return try await chat(
+                model: settings.model,
+                messages: messages,
+                endpoint: settings.apiEndpoint,
+                apiKey: settings.apiKey,
+                onStream: onStream
+            )
+        } catch {
+            guard settings.hasFallback else { throw error }
+            // 主配置失败 → 备用降级（带一次退避）
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            do {
+                var result = try await chat(
+                    model: settings.fallbackModel,
+                    messages: messages,
+                    endpoint: settings.fallbackEndpoint,
+                    apiKey: settings.fallbackKey,
+                    onStream: onStream
+                )
+                result = ChatResult(
+                    content: result.content,
+                    toolCalls: result.toolCalls,
+                    usage: result.usage,
+                    finishReason: result.finishReason,
+                    usedFallback: true
+                )
+                return result
+            } catch {
+                throw error  // 备用也失败 → 抛主错误还是备用错误？抛备用错误（信息更新）
+            }
+        }
+    }
+
+    /// 纯文本补全（不带 tools）——用于周报 AI 解读；同样支持备用降级
+    func completeWithFallback(
+        settings: AISettings,
+        messages: [ChatMessage]
+    ) async throws -> String {
+        do {
+            return try await complete(
+                model: settings.model,
+                messages: messages,
+                endpoint: settings.apiEndpoint,
+                apiKey: settings.apiKey
+            )
+        } catch {
+            guard settings.hasFallback else { throw error }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            return try await complete(
+                model: settings.fallbackModel,
+                messages: messages,
+                endpoint: settings.fallbackEndpoint,
+                apiKey: settings.fallbackKey
+            )
+        }
+    }
+
     func chat(
         model: String,
         messages: [ChatMessage],
         endpoint: String,
-        apiKey: String
-    ) async throws -> ChatMessage {
-        try await send(model: model, messages: messages, endpoint: endpoint, apiKey: apiKey, useTools: true)
+        apiKey: String,
+        onStream: ((String) -> Void)? = nil
+    ) async throws -> ChatResult {
+        if onStream != nil {
+            return try await streamSend(model: model, messages: messages, endpoint: endpoint, apiKey: apiKey, useTools: true, onStream: onStream!)
+        }
+        return try await send(model: model, messages: messages, endpoint: endpoint, apiKey: apiKey, useTools: true)
     }
 
     /// 纯文本补全（不带 tools）——用于周报 AI 解读这类「只要一段话」的场景，
@@ -88,9 +179,11 @@ actor AIService {
         endpoint: String,
         apiKey: String
     ) async throws -> String {
-        let msg = try await send(model: model, messages: messages, endpoint: endpoint, apiKey: apiKey, useTools: false)
-        return (msg.content ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = try await send(model: model, messages: messages, endpoint: endpoint, apiKey: apiKey, useTools: false)
+        return (result.content ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    // MARK: - 非流式请求
 
     private func send(
         model: String,
@@ -98,21 +191,25 @@ actor AIService {
         endpoint: String,
         apiKey: String,
         useTools: Bool
-    ) async throws -> ChatMessage {
-        // endpoint 来自用户设置自由输入，可能含空格/中文/无 host，强制解包会崩溃
+    ) async throws -> ChatResult {
         guard let url = URL(string: "\(endpoint)/chat/completions") else {
             throw AIError.invalidResponse
         }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        // v2.2.0: 本地模型（Ollama）无 key 时省略 Authorization
+        if !apiKey.isEmpty {
+            req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
 
         let body = ChatRequest(
             model: model,
             messages: messages,
             tools: useTools ? encodeTools() : nil,
-            tool_choice: useTools ? "auto" : nil
+            tool_choice: useTools ? "auto" : nil,
+            stream: nil,
+            stream_options: nil
         )
 
         req.httpBody = try JSONEncoder().encode(body)
@@ -135,7 +232,85 @@ actor AIService {
         guard let choice = result.choices.first else {
             throw AIError.emptyResponse
         }
-        return choice.message
+        return ChatResult(
+            content: choice.message?.content,
+            toolCalls: choice.message?.tool_calls,
+            usage: result.usage,
+            finishReason: choice.finish_reason,
+            usedFallback: false
+        )
+    }
+
+    // MARK: - 流式请求（SSE）
+
+    private func streamSend(
+        model: String,
+        messages: [ChatMessage],
+        endpoint: String,
+        apiKey: String,
+        useTools: Bool,
+        onStream: @escaping (String) -> Void
+    ) async throws -> ChatResult {
+        guard let url = URL(string: "\(endpoint)/chat/completions") else {
+            throw AIError.invalidResponse
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if !apiKey.isEmpty {
+            req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+
+        let body = ChatRequest(
+            model: model,
+            messages: messages,
+            tools: useTools ? encodeTools() : nil,
+            tool_choice: useTools ? "auto" : nil,
+            stream: true,
+            stream_options: ["include_usage": true]
+        )
+        req.httpBody = try JSONEncoder().encode(body)
+
+        let (bytes, response) = try await session.bytes(for: req)
+        guard let httpResp = response as? HTTPURLResponse else {
+            throw AIError.invalidResponse
+        }
+        if httpResp.statusCode == 401 {
+            throw AIError.unauthorized
+        }
+        if httpResp.statusCode != 200 {
+            throw AIError.httpError(httpResp.statusCode, "streaming request failed")
+        }
+
+        var content = ""
+        var finishReason: String?
+        var usage: Usage?
+
+        for try await line in bytes.lines {
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            if payload == "[DONE]" { break }
+            guard let data = payload.data(using: .utf8),
+                  let chunk = try? decoder.decode(ChatResponse.self, from: data) else {
+                continue  // 忽略残缺分片（半包场景）
+            }
+            if let delta = chunk.choices.first?.delta?.content {
+                content += delta
+                onStream(delta)
+            }
+            if let reason = chunk.choices.first?.finish_reason {
+                finishReason = reason
+            }
+            if let u = chunk.usage { usage = u }
+        }
+
+        return ChatResult(
+            content: content.isEmpty ? nil : content,
+            toolCalls: nil,
+            usage: usage,
+            finishReason: finishReason,
+            usedFallback: false
+        )
     }
 
     // MARK: - Private

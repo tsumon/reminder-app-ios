@@ -3,11 +3,20 @@ import SwiftData
 
 // MARK: - Chat 消息模型
 
+/// v2.2.0: AI 工具调用步骤（Agent 可视化：执行中 → 完成/失败）
+struct ToolStep: Identifiable, Equatable {
+    let id = UUID()
+    let name: String
+    let status: String      // running / done / error
+    let summary: String?
+}
+
 struct ChatMessage: Identifiable, Equatable {
     let id = UUID()
     let role: MessageRole
-    let content: String
+    var content: String
     let timestamp: Date
+    var toolSteps: [ToolStep] = []
 
     enum MessageRole: Equatable {
         case user, assistant, system, tool
@@ -290,7 +299,7 @@ struct AIChatView: View {
         }
     }
 
-    // MARK: - Chat Loop（多轮工具调用）
+    // MARK: - Chat Loop（v2.2.0：Agent 多步循环 + 流式输出 + 备用降级 + 调用日志）
 
     private func chatLoop(userText: String) async {
         var conversation: [AIService.ChatMessage] = [
@@ -299,49 +308,111 @@ struct AIChatView: View {
         ]
 
         var maxTurns = 5
+        let startedAt = Date()
+        var usedFallback = false
+        var finalUsage: AIService.Usage?
 
         while maxTurns > 0 {
             maxTurns -= 1
 
             do {
-                let reply = try await AIService.shared.chat(
-                    model: settings.model,
+                // v2.2.0: 流式只在后续轮次启用（首轮大概率是工具调用，保持非流式；
+                // 工具调用后的最终文本轮次流式输出——工程取舍，可面试展开）
+                let streamEnabled = maxTurns < 4
+                let reply = try await AIService.shared.chatWithFallback(
+                    settings: settings,
                     messages: conversation,
-                    endpoint: settings.apiEndpoint,
-                    apiKey: settings.apiKey
+                    onStream: streamEnabled ? { delta in
+                        Task { @MainActor in
+                            if let last = messages.last, last.role == .assistant {
+                                messages[messages.count - 1] = ChatMessage(
+                                    role: .assistant,
+                                    content: last.content + delta,
+                                    timestamp: last.timestamp
+                                )
+                            } else {
+                                messages.append(ChatMessage(role: .assistant, content: delta, timestamp: Date()))
+                            }
+                        }
+                    } : nil
                 )
+                usedFallback = reply.usedFallback
+                finalUsage = reply.usage
 
-                // 有 tool_calls → 执行工具后继续
-                if let toolCalls = reply.tool_calls, !toolCalls.isEmpty {
+                // 有 tool_calls → 执行工具后继续（Agent 步骤可视化）
+                if let toolCalls = reply.toolCalls, !toolCalls.isEmpty {
+                    var steps: [ToolStep] = []
                     for tc in toolCalls {
+                        steps.append(ToolStep(name: tc.function.name, status: "running", summary: nil))
+                        await MainActor.run {
+                            messages.append(ChatMessage(role: .assistant, content: "", timestamp: Date(), toolSteps: steps))
+                        }
                         let result = await executeTool(name: tc.function.name, args: tc.function.arguments)
+                        let isError = result == "参数解析失败" || result.hasPrefix("未知工具")
+                        steps[steps.count - 1] = ToolStep(
+                            name: tc.function.name,
+                            status: isError ? "error" : "done",
+                            summary: String(result.prefix(80))
+                        )
+                        await MainActor.run {
+                            messages.append(ChatMessage(role: .assistant, content: "", timestamp: Date(), toolSteps: steps))
+                        }
                         conversation.append(.init(role: "assistant", tool_calls: [tc]))
                         conversation.append(.init(role: "tool", content: result, tool_call_id: tc.id))
+                    }
+                    // 步骤气泡由最终回复接管
+                    await MainActor.run {
+                        messages.removeAll { !$0.toolSteps.isEmpty }
                     }
                     continue
                 }
 
-                // 纯文本回复
-                if let content = reply.content, !content.isEmpty {
+                // 纯文本回复（流式已增量上屏；非流式兜底）
+                var content = reply.content ?? "好的，已处理。"
+                if reply.finishReason == "length" {
+                    content += "\n\n（响应长度受限，已截断）"
+                }
+                if !content.isEmpty && messages.last?.content != content {
                     await MainActor.run {
-                        messages.append(ChatMessage(role: .assistant, content: content, timestamp: Date()))
+                        if let last = messages.last, last.role == .assistant, !last.content.isEmpty {
+                            messages[messages.count - 1] = ChatMessage(
+                                role: .assistant,
+                                content: content,
+                                timestamp: last.timestamp
+                            )
+                        } else {
+                            messages.append(ChatMessage(role: .assistant, content: content, timestamp: Date()))
+                        }
                         isLoading = false
                     }
-                    return
+                } else {
+                    await MainActor.run { isLoading = false }
                 }
 
-                // 空回复
-                await MainActor.run {
-                    messages.append(ChatMessage(role: .assistant, content: "好的，已处理。", timestamp: Date()))
-                    isLoading = false
-                }
+                AILogStore.add(AILogStore.Entry(
+                    model: usedFallback ? settings.fallbackModel : settings.model,
+                    provider: usedFallback ? "fallback" : "primary",
+                    turns: 5 - maxTurns,
+                    promptTokens: finalUsage?.prompt_tokens,
+                    completionTokens: finalUsage?.completion_tokens,
+                    durationMs: Int(Date().timeIntervalSince(startedAt) * 1000),
+                    ok: true
+                ))
                 return
 
             } catch {
                 await MainActor.run {
-                    errorMessage = "\(error.localizedDescription)"
+                    errorMessage = error.localizedDescription
                     isLoading = false
                 }
+                AILogStore.add(AILogStore.Entry(
+                    model: usedFallback ? settings.fallbackModel : settings.model,
+                    provider: usedFallback ? "fallback" : "primary",
+                    turns: 5 - maxTurns,
+                    durationMs: Int(Date().timeIntervalSince(startedAt) * 1000),
+                    ok: false,
+                    error: error.localizedDescription
+                ))
                 return
             }
         }
@@ -796,11 +867,47 @@ struct ChatBubble: View {
     }
 
     private var bubbleContent: some View {
-        Text(message.content)
-            .font(.body)
-            .foregroundStyle(message.role == .user ? .white : .primary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+        VStack(alignment: .leading, spacing: 8) {
+            // v2.2.0: Agent 工具步骤可视化（执行中 → 完成/失败）
+            if !message.toolSteps.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(message.toolSteps) { step in
+                        HStack(spacing: 8) {
+                            Group {
+                                switch step.status {
+                                case "running":
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                case "error":
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundStyle(ThemeTokens.statusOverdue)
+                                default:
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(ThemeTokens.statusCompleted)
+                                }
+                            }
+                            .frame(width: 16)
+                            Text(step.name)
+                                .font(.caption.weight(.medium))
+                            if step.status == "running" {
+                                Text("执行中…".localized)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.white.opacity(0.35))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                }
+            }
+            Text(message.content)
+                .font(.body)
+                .foregroundStyle(message.role == .user ? .white : .primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+        }
     }
 
     private func avatar(systemName: String, color: Color) -> some View {

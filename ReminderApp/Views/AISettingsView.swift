@@ -9,6 +9,13 @@ struct AISettingsView: View {
     @State private var apiKey: String = ""
     @State private var model: String = ""
     @State private var showKey = false
+    // v2.2.0: 本地模型 + 备用配置
+    @State private var isLocal = false
+    @State private var fallbackEnabled = false
+    @State private var fallbackEndpoint = ""
+    @State private var fallbackKey = ""
+    @State private var fallbackModel = ""
+    @State private var showFallbackKey = false
 
     var body: some View {
         NavigationStack {
@@ -56,6 +63,66 @@ struct AISettingsView: View {
                     Text("API 配置".localized)
                 } footer: {
                     Text("支持任意兼容 OpenAI 格式的 API。填写 /v1 结尾的 base URL。".localized)
+                }
+
+                // v2.2.0: 本地模型（Ollama）——无需 API Key
+                Section {
+                    Toggle("本地模型（Ollama）".localized, isOn: $isLocal)
+                        .tint(ThemeTokens.brandPrimary)
+                    if isLocal {
+                        Text("本地模型无需 API Key，例如 http://localhost:11434/v1".localized)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("本地模型".localized)
+                }
+
+                // v2.2.0: 备用模型（主配置失败自动降级）
+                Section {
+                    Toggle("启用备用模型".localized, isOn: $fallbackEnabled)
+                        .tint(ThemeTokens.brandPrimary)
+                    if fallbackEnabled {
+                        HStack {
+                            Text("接口地址".localized)
+                                .frame(width: 80, alignment: .leading)
+                            TextField("https://api.deepseek.com/v1", text: $fallbackEndpoint)
+                                .keyboardType(.URL)
+                                .autocapitalization(.none)
+                                .disableAutocorrection(true)
+                        }
+                        HStack {
+                            Text("API Key")
+                                .frame(width: 80, alignment: .leading)
+                            HStack {
+                                if showFallbackKey {
+                                    TextField("sk-...", text: $fallbackKey)
+                                        .autocapitalization(.none)
+                                        .disableAutocorrection(true)
+                                } else {
+                                    SecureField("sk-...", text: $fallbackKey)
+                                }
+                                Button {
+                                    showFallbackKey.toggle()
+                                } label: {
+                                    Image(systemName: showFallbackKey ? "eye.slash" : "eye")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        HStack {
+                            Text("模型".localized)
+                                .frame(width: 80, alignment: .leading)
+                            TextField("deepseek-chat", text: $fallbackModel)
+                                .autocapitalization(.none)
+                                .disableAutocorrection(true)
+                        }
+                    }
+                } header: {
+                    Text("备用模型（自动降级）".localized)
+                } footer: {
+                    Text("主模型不可用（网络错误/超时/5xx）时自动切换到备用模型重试一次".localized)
                 }
 
                 // ── 快速模板 ──
@@ -130,6 +197,12 @@ struct AISettingsView: View {
                         settings.apiKey = apiKey
                         settings.model = model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             ? "gpt-4o-mini" : model
+                        // v2.2.0: 保存本地/备用配置
+                        settings.isLocal = isLocal
+                        settings.fallbackEnabled = fallbackEnabled
+                        settings.fallbackEndpoint = fallbackEndpoint
+                        settings.fallbackKey = fallbackKey
+                        settings.fallbackModel = fallbackModel
                         dismiss()
                     }
                     .fontWeight(.semibold)
@@ -139,6 +212,11 @@ struct AISettingsView: View {
                 endpoint = settings.apiEndpoint
                 apiKey = settings.apiKey
                 model = settings.model
+                isLocal = settings.isLocal
+                fallbackEnabled = settings.fallbackEnabled
+                fallbackEndpoint = settings.fallbackEndpoint
+                fallbackKey = settings.fallbackKey
+                fallbackModel = settings.fallbackModel
             }
         }
     }
