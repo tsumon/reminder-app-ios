@@ -2,4 +2,5 @@ ReminderApp-*.ipa
 app-release-*.apk
 build/
 DerivedData/
+*.xcodeproj
 .DS_Store
