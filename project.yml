@@ -38,6 +38,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.reminder.app
         PRODUCT_NAME: "循环提醒"
+        # v2.2.1: 补 App 图标编译设置——缺失导致 Assets.car 无 AppIcon、桌面图标空白
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         INFOPLIST_FILE: ReminderApp/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
