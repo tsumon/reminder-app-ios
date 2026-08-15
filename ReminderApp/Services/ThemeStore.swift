@@ -9,4 +9,12 @@ enum ThemeStore {
         get { UserDefaults.standard.integer(forKey: key) }
         set { UserDefaults.standard.set(newValue, forKey: key) }
     }
+
+    /// v2.4.0: 主题色板索引（0=青碧默认；与 ThemeTokens.palettes 对齐）
+    static let colorKey = "theme_color_index"
+
+    static var colorIndex: Int {
+        get { UserDefaults.standard.integer(forKey: colorKey) }
+        set { UserDefaults.standard.set(newValue, forKey: colorKey) }
+    }
 }

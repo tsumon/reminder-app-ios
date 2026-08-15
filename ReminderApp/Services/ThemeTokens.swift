@@ -6,17 +6,56 @@ import SwiftUI
 /// 主色统一为 Material Design 3 紫色 #6750A4。
 enum ThemeTokens {
 
-    // MARK: 品牌主色（双端统一 #6750A4）
+    // MARK: 品牌主色（v2.4.0: 可切换色板，默认青碧 Teal）
 
-    /// 主色：青碧 Teal #159A9C（v2.3.0 从 M3 紫换肤——清爽高效感，双端统一）
-    static let brandPrimary = Color(red: 0x15 / 255.0, green: 0x9A / 255.0, blue: 0x9C / 255.0)
+    /// v2.4.0: 主题色板（与 Android Tokens.Palettes 一一对应）
+    struct BrandPalette {
+        let primary: Color
+        let primaryDark: Color
+        let gradientStart: Color
+    }
+
+    static let palettes: [BrandPalette] = [
+        // 青碧（默认）
+        BrandPalette(primary: Color(red: 0x15/255.0, green: 0x9A/255.0, blue: 0x9C/255.0),
+                     primaryDark: Color(red: 0x0E/255.0, green: 0x6E/255.0, blue: 0x70/255.0),
+                     gradientStart: Color(red: 0x4D/255.0, green: 0xB6/255.0, blue: 0xAC/255.0)),
+        // 活力蓝
+        BrandPalette(primary: Color(red: 0x3B/255.0, green: 0x82/255.0, blue: 0xF6/255.0),
+                     primaryDark: Color(red: 0x1E/255.0, green: 0x5B/255.0, blue: 0xC4/255.0),
+                     gradientStart: Color(red: 0x7F/255.0, green: 0xB5/255.0, blue: 0xFF/255.0)),
+        // 玫粉
+        BrandPalette(primary: Color(red: 0xE0/255.0, green: 0x45/255.0, blue: 0x7B/255.0),
+                     primaryDark: Color(red: 0xB0/255.0, green: 0x2E/255.0, blue: 0x5C/255.0),
+                     gradientStart: Color(red: 0xF5/255.0, green: 0x8F/255.0, blue: 0xB0/255.0)),
+        // 暖橙
+        BrandPalette(primary: Color(red: 0xF0/255.0, green: 0x7B/255.0, blue: 0x2F/255.0),
+                     primaryDark: Color(red: 0xC0/255.0, green: 0x5A/255.0, blue: 0x16/255.0),
+                     gradientStart: Color(red: 0xF7/255.0, green: 0xB2/255.0, blue: 0x7D/255.0)),
+        // 森林绿
+        BrandPalette(primary: Color(red: 0x2E/255.0, green: 0x9E/255.0, blue: 0x5B/255.0),
+                     primaryDark: Color(red: 0x1D/255.0, green: 0x7A/255.0, blue: 0x42/255.0),
+                     gradientStart: Color(red: 0x74/255.0, green: 0xC9/255.0, blue: 0x9B/255.0)),
+        // 深空蓝紫
+        BrandPalette(primary: Color(red: 0x6C/255.0, green: 0x5C/255.0, blue: 0xE7/255.0),
+                     primaryDark: Color(red: 0x4A/255.0, green: 0x3F/255.0, blue: 0xB8/255.0),
+                     gradientStart: Color(red: 0xA6/255.0, green: 0x9C/255.0, blue: 0xF5/255.0))
+    ]
+
+    /// 当前色板（设置页选择；UserDefaults 持久化）
+    static var palette: BrandPalette {
+        let i = UserDefaults.standard.integer(forKey: "theme_color_index")
+        return palettes.indices.contains(i) ? palettes[i] : palettes[0]
+    }
+
+    /// 主色
+    static var brandPrimary: Color { palette.primary }
+    /// 品牌深色主色（渐变末端）
+    static var brandPrimaryDark: Color { palette.primaryDark }
+    /// 品牌渐变起点
+    static var brandGradientStart: Color { palette.gradientStart }
 
     // MARK: 状态色（与 Android 一致）
-
-    /// 品牌深色主色（渐变末端，与 Android BrandPrimaryDark 一致）
-    static let brandPrimaryDark = Color(red: 0x0E / 255.0, green: 0x6E / 255.0, blue: 0x70 / 255.0)
-    /// v2.3.0: 品牌渐变起点（薄荷亮青，对齐 Android 0xFF4DB6AC）
-    static let brandGradientStart = Color(red: 0x4D / 255.0, green: 0xB6 / 255.0, blue: 0xAC / 255.0)
     static let statusReminding = Color(red: 0xE7 / 255.0, green: 0x4C / 255.0, blue: 0x3C / 255.0)
     static let statusWaiting = Color(red: 0x34 / 255.0, green: 0x98 / 255.0, blue: 0xDB / 255.0)
     static let statusCompleted = Color(red: 0x27 / 255.0, green: 0xAE / 255.0, blue: 0x60 / 255.0)

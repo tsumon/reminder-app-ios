@@ -28,6 +28,8 @@ struct ReminderApp: App {
     @AppStorage(AppLanguageManager.key) private var appLanguage = AppLanguage.system.rawValue
     // v2.1.1: 手动主题（0=跟随系统 1=浅色 2=深色）
     @AppStorage(ThemeStore.key) private var themeMode = 0
+    // v2.4.0: 主题色板索引（切换后整树重建，全局换肤即时生效）
+    @AppStorage(ThemeStore.colorKey) private var themeColor = 0
 
     /// SwiftData 容器（v2.1.1: 提升为 static，供 AppIntents/快捷指令访问同一 store）
     static let sharedModelContainer: ModelContainer = {
@@ -50,10 +52,10 @@ struct ReminderApp: App {
     var body: some Scene {
         WindowGroup {
             // v1.9.8: 底部导航 Tab（首页/日历/统计/设置），对齐 README 设计图
-            // v2.0.4: .id(appLanguage) —— 语言切换后整树重建刷新文案
+            // v2.0.4: .id("\(appLanguage)-\(themeColor)") —— 语言切换后整树重建刷新文案
             // v2.1.1: .preferredColorScheme —— 手动主题（0=跟随系统）
             MainTabView()
-                .id(appLanguage)
+                .id("\(appLanguage)-\(themeColor)")
                 .preferredColorScheme(themeMode == 1 ? .light : themeMode == 2 ? .dark : nil)
                 .onAppear {
                     reminderEngine.configure(with: Self.sharedModelContainer.mainContext)

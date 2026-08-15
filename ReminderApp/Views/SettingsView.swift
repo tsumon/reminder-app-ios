@@ -14,6 +14,8 @@ struct SettingsView: View {
     @AppStorage(AppLanguageManager.key) private var appLanguage = AppLanguage.system.rawValue
     // v2.1.1: 手动主题（0=跟随系统 1=浅色 2=深色；与 App 根视图共享 ThemeStore.key）
     @AppStorage(ThemeStore.key) private var themeMode = 0
+    // v2.4.0: 主题色板索引（切换后根视图 .id() 重建即时生效）
+    @AppStorage(ThemeStore.colorKey) private var themeColor = 0
 
     private var appVersion: String {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -32,12 +34,41 @@ struct SettingsView: View {
                         }
                     }
                 }
-                // MARK: 外观（v2.1.1：手动主题，自签环境常用）
+                // MARK: 外观（v2.1.1：手动主题；v2.4.0：主题色板）
                 Section("外观".localized) {
                     Picker("主题".localized, selection: $themeMode) {
                         Text("跟随系统".localized).tag(0)
                         Text("浅色".localized).tag(1)
                         Text("深色".localized).tag(2)
+                    }
+                    // v2.4.0: 主题色板（6 色圆点，点击即全局换肤）
+                    HStack(spacing: 10) {
+                        Text("主题色".localized)
+                            .font(.subheadline)
+                        Spacer()
+                        ForEach(Array(ThemeTokens.palettes.enumerated()), id: \.offset) { index, palette in
+                            Button {
+                                themeColor = index
+                            } label: {
+                                ZStack {
+                                    Circle()
+                                        .fill(palette.primary)
+                                        .frame(width: 26, height: 26)
+                                        .overlay(
+                                            Circle().strokeBorder(
+                                                themeColor == index ? Color.primary : Color.clear,
+                                                lineWidth: 2
+                                            )
+                                        )
+                                    if themeColor == index {
+                                        Image(systemName: "checkmark")
+                                            .font(.caption2.weight(.bold))
+                                            .foregroundStyle(.white)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
                 // MARK: 同步

@@ -704,6 +704,22 @@ struct ReminderListView: View {
                     .listRowSeparator(.hidden)
             }
 
+            // v2.4.0: 今日安排时间线（今天要触发的提醒按时间排列，布局重设计核心）
+            let todayReminders = reminders.filter {
+                matchSmartList($0) && $0.isEnabled && $0.status != .confirmed &&
+                Calendar.current.isDateInToday($0.nextTriggerAt)
+            }.sorted { $0.nextTriggerAt < $1.nextTriggerAt }
+            if !todayReminders.isEmpty {
+                Section {
+                    TodayTimelineView(reminders: todayReminders)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                } header: {
+                    sectionHeader(title: "今日安排", color: ThemeTokens.brandPrimary, count: todayReminders.count)
+                }
+            }
+
             // v1.9.8: 日历卡片移到「日历」Tab（CalendarPageView），首页只保留列表
 
             // 应用智能清单筛选后的全集（叠加搜索）
@@ -1200,5 +1216,101 @@ struct OverviewCard: View {
         let month = lunar.isLeapMonth ? "闰" + monthNames[lunar.month] : monthNames[lunar.month]
         let day = dayNames.indices.contains(lunar.day) ? dayNames[lunar.day] : "\(lunar.day)日"
         return "\(month)月\(day)"
+    }
+}
+
+// MARK: - 今日安排时间线（v2.4.0 布局重设计）
+
+/// 今天要触发的提醒按时间排列：左侧时间 + 竖线圆点 + 右侧卡片
+struct TodayTimelineView: View {
+    let reminders: [Reminder]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(reminders.enumerated()), id: \.offset) { index, reminder in
+                HStack(alignment: .top, spacing: 12) {
+                    // 左侧时间 + 时间线
+                    VStack(spacing: 0) {
+                        Text(timeText(reminder.nextTriggerAt))
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(ThemeTokens.brandPrimary)
+                            .frame(width: 44, alignment: .trailing)
+                        if index < reminders.count - 1 {
+                            Rectangle()
+                                .fill(ThemeTokens.brandPrimary.opacity(0.25))
+                                .frame(width: 2)
+                                .frame(maxHeight: .infinity)
+                                .padding(.vertical, 2)
+                        }
+                    }
+                    .frame(width: 46)
+
+                    // 圆点
+                    Circle()
+                        .fill(ThemeTokens.brandPrimary)
+                        .frame(width: 9, height: 9)
+                        .overlay(
+                            Circle().strokeBorder(.white.opacity(0.6), lineWidth: 1.5)
+                        )
+                        .padding(.top, 4)
+
+                    // 右侧卡片
+                    HStack(spacing: 10) {
+                        Text(reminder.typeEmoji)
+                            .font(.system(size: 18))
+                            .frame(width: 34, height: 34)
+                            .background(
+                                LinearGradient(
+                                    colors: [ThemeTokens.brandPrimary.opacity(0.3), ThemeTokens.brandPrimary.opacity(0.1)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(reminder.title)
+                                .font(.subheadline.weight(.medium))
+                                .lineLimit(1)
+                            Text(reminder.status == .overdue ? "已逾期".localized : reminder.status.rawValue.localized)
+                                .font(.caption2)
+                                .foregroundStyle(reminder.status == .overdue ? ThemeTokens.statusOverdue : ThemeTokens.statusWaiting)
+                        }
+                        Spacer()
+                        // 倒计时
+                        Text(countdownText(from: Date(), to: reminder.nextTriggerAt))
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(.white.opacity(0.3), lineWidth: 0.8)
+                    )
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func timeText(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "HH:mm"
+        return f.string(from: date)
+    }
+
+    private func countdownText(from now: Date, to target: Date) -> String {
+        let seconds = Int(target.timeIntervalSince(now))
+        guard seconds > 0 else { return "已到点".localized }
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+        if hours > 0 { return Localized("%d 小时 %d 分", hours, minutes) }
+        if minutes > 0 { return Localized("%d 分钟后", minutes) }
+        return Localized("%d 秒后", seconds)
     }
 }
