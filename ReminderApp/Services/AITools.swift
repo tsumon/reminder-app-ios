@@ -104,6 +104,7 @@ struct AITools {
                         "note": ["type": "string", "description": "新的备注（可选）"],
                         "cycle": ["type": "string", "enum": ["daily","weekly","biweekly","monthly","quarterly","yearly","custom","once"]],
                         "custom_days": ["type": "integer"],
+                        "weekday":  ["type": "integer", "description": "修改为每周/每两周提醒时必须填：目标星期 1=周一…7=周日"],
                         "rule_period": ["type": "string", "enum": ["monthly","quarterly","yearly"]],
                         "rule_week": ["type": "integer"],
                         "rule_weekday": ["type": "integer"],
@@ -160,7 +161,7 @@ struct AITools {
 
     // MARK: - 系统提示词
 
-    /// v2.4.1: 当前日期上下文（模型不知道"今天"是几号，必须注入才能算对"下周日"）
+    /// v2.4.9: 改为 computed var——static let 只求值一次，常驻后台时日期上下文会冻结
     private static var todayContext: String {
         let cal = Calendar.current
         let weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
@@ -174,7 +175,9 @@ struct AITools {
         )
     }
 
-    static let systemPrompt = todayContext + """
+    /// v2.4.9: 规则常量提为独立属性，拼接动态日期上下文——避免每次访问 systemPrompt
+    /// 都重新拼接大段字符串（虽无性能影响，但逻辑更清晰）
+    private static let systemRules: String = """
 
     你是一个循环提醒助手，帮用户管理重复提醒事项。
 
@@ -215,4 +218,6 @@ struct AITools {
 
     **回复风格：** 简洁友好，执行完告知创建了哪些提醒（例如"已创建 5 条生日提醒"）。
     """
+
+    static var systemPrompt: String { todayContext + systemRules }
 }

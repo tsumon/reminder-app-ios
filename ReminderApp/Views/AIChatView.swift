@@ -539,6 +539,11 @@ struct AIChatView: View {
                 return (nil, "规则提醒参数不合法：频率应为每月/每季度/每年，第几周 1-5，星期几 1=周一...7=周日。")
             }
         }
+        // v2.4.9: weekly/biweekly 必须传 weekday——漏传时锚点落在任意星期，
+        // 后续从锚点反推存入 store 的「意图星期」也是错的，错位检测永远判自洽
+        if (cycle == "weekly" || cycle == "biweekly"), weekdayParam == nil {
+            return (nil, "每周/每两周提醒需要指定星期几（weekday: 1=周一…7=周日）。请补充后重试。")
+        }
 
         let now = Date()
         // 首次锚点（优先级）：
@@ -691,9 +696,14 @@ struct AIChatView: View {
         await MainActor.run {
             for r in items { modelContext.insert(r) }
             try? modelContext.save()
-            // I1: 批量导入按提醒类型重算 nextTriggerAt（日期类按目标月日、规则类按第N周周X，
-            // 避免 buildReminder 的泛型锚点导致错日触发——对齐 handleCreate 单条路径）
+            // v2.4.9: 补写意图星期（对齐 handleCreate 路径）——
+            // 批量建的 weekly/biweekly 提醒若不在 store 中，
+            // 后续锚点漂移（同步覆盖/时区变化）无法被错位检测兜住
             for r in items {
+                if r.cycle == .weekly || r.cycle == .biweekly {
+                    let anchorDow = ((Calendar.current.component(.weekday, from: r.firstTriggerAt) + 5) % 7) + 1
+                    WeeklyWeekdayStore.set(anchorDow, for: r.id)
+                }
                 r.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(after: Date(), reminder: r)
             }
             try? modelContext.save()
@@ -771,6 +781,17 @@ struct AIChatView: View {
         //     已为 custom 且只改标题/时间（未传 cycle）放行 → 仅当 cycleRaw=="custom" 才拦截
         if cycleRaw == "custom", (customDaysRaw ?? 0) < 1 {
             return "自定义周期需要指定间隔天数（如：每3天），custom_days 至少为 1。"
+        }
+        // v2.4.9: 显式改为 weekly/biweekly 时必须带 weekday——
+        // 否则锚点落在任意星期、从锚点反推的意图星期也是错的，错位检测永远判自洽。
+        // 放在闭包前校验：此时尚未改任何字段，直接返回错误让模型补参。
+        let weekdayParam = (args["weekday"] as? Int)
+            ?? (args["weekday"] as? Double).map(Int.init)
+            ?? (args["weekday"] as? String).flatMap(Int.init)
+        if cycleRaw == "weekly" || cycleRaw == "biweekly" {
+            guard let wd = weekdayParam, (1...7).contains(wd) else {
+                return "修改为每周/每两周提醒时需要指定星期几（weekday: 1=周一…7=周日）。请补充后重试。"
+            }
         }
 
         let updatedTitle = await MainActor.run {
@@ -850,6 +871,26 @@ struct AIChatView: View {
                 if let newAnchor = Calendar.current.date(from: anchorComps) {
                     match.firstTriggerAt = newAnchor
                 }
+            }
+
+            // v2.4.9: cycle 生效为 weekly/biweekly 时对齐星期锚点（weekday 有效性已在闭包前校验）
+            if match.kind == .cycle, (match.cycle == .weekly || match.cycle == .biweekly) {
+                if let wd = weekdayParam {
+                    let cal = Calendar.current
+                    let anchor = Calendar.current.date(bySettingHour: match.reminderHour, minute: match.reminderMinute, second: 0, of: Date()) ?? Date()
+                    let cur = ((cal.component(.weekday, from: anchor) + 5) % 7) + 1
+                    var diff = (wd - cur + 7) % 7
+                    if diff == 0 { diff = 7 }
+                    if let newAnchor = cal.date(byAdding: .day, value: diff, to: anchor) {
+                        match.firstTriggerAt = newAnchor
+                    }
+                    WeeklyWeekdayStore.set(wd, for: match.id)
+                } else if cycleRaw != nil {
+                    // 保持 weekly 但本次没传 weekday（只改时间/标题）→ 意图不变，沿用 store 旧值
+                }
+            } else if cycleRaw != nil && match.cycle != .weekly && match.cycle != .biweekly {
+                // 切离 weekly/biweekly → 清除意图记录
+                WeeklyWeekdayStore.set(nil, for: match.id)
             }
 
             // C1: AI 修改已逾期提醒时，必须重新激活状态——否则下方 scheduleAllNotifications 的

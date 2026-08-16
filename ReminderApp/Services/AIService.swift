@@ -40,6 +40,35 @@ actor AIService {
         let arguments: String   // JSON string
     }
 
+    // v2.4.9: SSE tool_calls 分片解码器——分片可能只含部分字段（首片有 id/name，后续片只有 arguments），
+    // 用 Optional 字段避免 decode 失败
+    struct StreamDelta: Codable {
+        let content: String?
+        let tool_calls: [StreamToolCallFragment]?
+    }
+
+    struct StreamToolCallFragment: Codable {
+        let index: Int?
+        let id: String?
+        let type: String?
+        let function: StreamFunctionFragment?
+
+        struct StreamFunctionFragment: Codable {
+            let name: String?
+            let arguments: String?
+        }
+    }
+
+    struct StreamChoice: Codable {
+        let delta: StreamDelta?
+        let finish_reason: String?
+    }
+
+    struct StreamChunkResponse: Codable {
+        let choices: [StreamChoice]?
+        let usage: Usage?
+    }
+
     struct Usage: Codable {
         let prompt_tokens: Int?
         let completion_tokens: Int?
@@ -285,28 +314,55 @@ actor AIService {
         var content = ""
         var finishReason: String?
         var usage: Usage?
+        // v2.4.9: 累积 SSE tool_calls 分片（OpenAI 协议：
+        // 首个分片带 id/name，后续分片只有 function.arguments 增量）
+        var toolCallAccumulator: [Int: (id: String, name: String, arguments: String)] = [:]
 
         for try await line in bytes.lines {
             guard line.hasPrefix("data:") else { continue }
             let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
             if payload == "[DONE]" { break }
-            guard let data = payload.data(using: .utf8),
-                  let chunk = try? decoder.decode(ChatResponse.self, from: data) else {
-                continue  // 忽略残缺分片（半包场景）
+            guard let data = payload.data(using: .utf8) else { continue }
+            // 优先用 StreamChunkResponse 解码（Optional 字段兼容分片）；
+            // 回退到 ChatResponse（兼容不含 tool_calls 的纯文本流）
+            if let chunk = try? decoder.decode(StreamChunkResponse.self, from: data) {
+                if let choice = chunk.choices?.first {
+                    if let delta = choice.delta?.content {
+                        content += delta
+                        onStream(delta)
+                    }
+                    if let fragments = choice.delta?.tool_calls {
+                        for frag in fragments {
+                            guard let idx = frag.index else { continue }
+                            var entry = toolCallAccumulator[idx] ?? (id: "", name: "", arguments: "")
+                            if let id = frag.id { entry.id = id }
+                            if let name = frag.function?.name { entry.name = name }
+                            if let args = frag.function?.arguments { entry.arguments += args }
+                            toolCallAccumulator[idx] = entry
+                        }
+                    }
+                    if let reason = choice.finish_reason { finishReason = reason }
+                }
+                if let u = chunk.usage { usage = u }
+            } else if let chunk = try? decoder.decode(ChatResponse.self, from: data) {
+                if let delta = chunk.choices.first?.delta?.content {
+                    content += delta
+                    onStream(delta)
+                }
+                if let reason = chunk.choices.first?.finish_reason { finishReason = reason }
+                if let u = chunk.usage { usage = u }
             }
-            if let delta = chunk.choices.first?.delta?.content {
-                content += delta
-                onStream(delta)
-            }
-            if let reason = chunk.choices.first?.finish_reason {
-                finishReason = reason
-            }
-            if let u = chunk.usage { usage = u }
+        }
+
+        // 组装累积的 tool_calls
+        let assembledToolCalls: [ToolCall]? = toolCallAccumulator.isEmpty ? nil : toolCallAccumulator.keys.sorted().compactMap { idx in
+            guard let entry = toolCallAccumulator[idx], !entry.id.isEmpty, !entry.name.isEmpty else { return nil }
+            return ToolCall(id: entry.id, type: "function", function: FunctionCall(name: entry.name, arguments: entry.arguments))
         }
 
         return ChatResult(
             content: content.isEmpty ? nil : content,
-            toolCalls: nil,
+            toolCalls: assembledToolCalls,
             usage: usage,
             finishReason: finishReason,
             usedFallback: false

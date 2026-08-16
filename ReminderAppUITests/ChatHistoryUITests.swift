@@ -14,7 +14,7 @@ final class ChatHistoryUITests: XCTestCase {
     }
 
     private func openAIPage(_ app: XCUIApplication) {
-        // 首页工具栏 AI 入口（v2.4.6 移到 trailing，带显式 accessibilityLabel）
+        // 首页左上角 AI 入口（v2.4.9 移回 leading，带显式 accessibilityIdentifier）
         let sparkles = app.buttons["ai-entry"]
         XCTAssertTrue(sparkles.waitForExistence(timeout: 8), "AI 入口未找到")
         sparkles.tap()

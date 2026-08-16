@@ -105,12 +105,11 @@ struct ReminderListView: View {
             // v1.9.8.1: iPad 大屏下大标题区+玻璃背景形成大块空白，改 inline 更紧凑
             .navigationBarTitleDisplayMode(.inline)
             .glassNavigationBar()
-            .searchable(text: $searchText, prompt: "搜索标题或备注")
+            // v2.4.9: 弃用 .searchable，改为列表内自定义搜索框——
+            // iOS 26 上 .searchable 的搜索栏占 leading 位，会把 AI 入口顶掉；
+            // AI 入口按用户要求固定左上（navigationBarLeading），搜索栏必须让位。
             .toolbar {
-                // v2.4.6 fix: AI 入口从 navigationBarLeading 移到 trailing——
-                // iOS 26 上 .searchable 的搜索栏默认占 leading 位，把自定义
-                // leading item 顶掉（AI 入口直接消失，模拟器 iOS 26.5 实测复现）
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .navigationBarLeading) {
                     NavigationLink {
                         AIChatView()
                     } label: {
@@ -710,6 +709,37 @@ struct ReminderListView: View {
 
     private var listView: some View {
         List(selection: $selectedIDs) {
+            // v2.4.9: 自定义搜索框（替代 .searchable，后者在 iOS 26 占用
+            // 导航栏 leading 位导致 AI 入口被顶掉）
+            Section {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("搜索标题或备注".localized, text: $searchText)
+                        .autocorrectionDisabled()
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("清空搜索".localized)
+                    }
+                }
+                .font(.subheadline)
+                .padding(.vertical, 9)
+                .padding(.horizontal, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(.tertiarySystemFill))
+                )
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
             // 智能清单筛选条
             Section {
                 smartListBar
