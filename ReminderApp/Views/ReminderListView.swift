@@ -107,7 +107,10 @@ struct ReminderListView: View {
             .glassNavigationBar()
             .searchable(text: $searchText, prompt: "搜索标题或备注")
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                // v2.4.6 fix: AI 入口从 navigationBarLeading 移到 trailing——
+                // iOS 26 上 .searchable 的搜索栏默认占 leading 位，把自定义
+                // leading item 顶掉（AI 入口直接消失，模拟器 iOS 26.5 实测复现）
+                ToolbarItem(placement: .navigationBarTrailing) {
                     NavigationLink {
                         AIChatView()
                     } label: {
@@ -115,6 +118,8 @@ struct ReminderListView: View {
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(ThemeTokens.brandPrimary)
                     }
+                    .accessibilityLabel("AI")
+                    .accessibilityIdentifier("ai-entry")
                 }
                 // v2.1.1: 批量管理（多选完成/删除）
                 ToolbarItemGroup(placement: .bottomBar) {

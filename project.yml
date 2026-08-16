@@ -36,6 +36,7 @@ targets:
         embed: true
     settings:
       base:
+        SDKROOT: "iphoneos"
         PRODUCT_BUNDLE_IDENTIFIER: com.reminder.app
         PRODUCT_NAME: "循环提醒"
         # v2.2.1: 补 App 图标编译设置——缺失导致 Assets.car 无 AppIcon、桌面图标空白
@@ -54,6 +55,23 @@ targets:
     scheme:
       testTargets:
         - LunarCalendarCheck
+        - ReminderAppUITests
+
+  # v2.4.6: UI 自动化回归（模拟器真实全链路：tap/type/重启断言）
+  ReminderAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: ReminderAppUITests
+    dependencies:
+      - target: ReminderApp
+    settings:
+      base:
+        SDKROOT: "iphoneos"
+        TEST_TARGET_NAME: ReminderApp
+        PRODUCT_NAME: ReminderAppUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.reminder.app.uitests
+        GENERATE_INFOPLIST_FILE: "YES"
 
   # 纯逻辑回归检查：macOS 命令行工具（无需 iOS 模拟器/host app），
   # 直接编译产品代码并断言事实，CI 里 build + run。
@@ -69,6 +87,20 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.reminder.lunarchk
         PRODUCT_NAME: "LunarCalendarCheck"
+        GENERATE_INFOPLIST_FILE: "YES"
+
+  # v2.4.6: AI 对话历史持久化回归检查（macOS 命令行工具）。
+  # 背景：用户反馈 v2.4.6 后 iOS 历史仍失效——往返/截断/容错断言锁定存储层。
+  ChatHistoryCheck:
+    type: tool
+    platform: macOS
+    sources:
+      - path: ReminderApp/Services/ChatHistoryStore.swift
+      - path: ReminderAppTests/ChatHistoryCheckMain.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.reminder.chathistchk
+        PRODUCT_NAME: "ChatHistoryCheck"
         GENERATE_INFOPLIST_FILE: "YES"
 
   # 阶段2: 跨端备份/同步协议回归检查（macOS 命令行工具，CI 里 build + run）。
@@ -114,6 +146,7 @@ targets:
           - group.com.reminder.app
     settings:
       base:
+        SDKROOT: "iphoneos"
         PRODUCT_BUNDLE_IDENTIFIER: com.reminder.app.widget
         PRODUCT_NAME: "ReminderWidget"
         INFOPLIST_FILE: ReminderWidget/Info.plist
@@ -125,7 +158,7 @@ targets:
       path: ReminderWidget/Info.plist
       properties:
         CFBundleDisplayName: 循环提醒小组件
-        CFBundleShortVersionString: "2.4.3"
-        CFBundleVersion: "54"
+        CFBundleShortVersionString: "2.4.6"
+        CFBundleVersion: "55"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension

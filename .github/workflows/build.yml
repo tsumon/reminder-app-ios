@@ -45,6 +45,21 @@ jobs:
           echo "Running: $BIN"
           "$BIN"
 
+      - name: Run chat history persistence check
+        # v2.4.6: AI 对话历史 save→load 往返/截断/容错回归
+        run: |
+          xcodebuild build \
+            -project ReminderApp.xcodeproj \
+            -scheme ChatHistoryCheck \
+            -destination 'platform=macOS' \
+            -derivedDataPath ./DerivedDataTests \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO
+          BIN=$(find ./DerivedDataTests/Build/Products -name 'ChatHistoryCheck' -type f | head -1)
+          echo "Running: $BIN"
+          "$BIN"
+
       - name: Download iOS Simulator runtime
         # actool (AssetCatalogSimulatorAgent) 需要 iOS 模拟器运行时才能编译 Assets.xcassets，
         # macOS runner 默认未安装，会导致 archive 阶段 "No simulator runtime version ... available" 失败。
