@@ -129,7 +129,7 @@ struct AITools {
                     "properties": [
                         "items": [
                             "type": "array",
-                            "description": "逐条待办，每条解析为一条提醒",
+                            "description": "逐条待办，每条解析为一条提醒。一行同时含新历+旧历生日时必须拆成两条 item（solar_birthday 与 lunar_birthday 各一条，title 加（公历）/（农历）后缀），不许只取其一",
                             "items": [
                                 "type": "object",
                                 "properties": [
@@ -192,7 +192,7 @@ struct AITools {
     - "每年""周年" → kind=date, date_type=solar_birthday
     - "春节/中秋/端午/清明/国庆/元旦" → kind=date, date_type=holiday, holiday_name=名称
 
-    **批量创建（关键）：** 若用户一次给出多个生日（例如"老公生日:新历9月5号 / 婆婆生日:农历7月初五 / 老娘生日:新历1月14号，旧历12月18 / 啊姨生日:新历7月14号，旧历6月15"），必须为每一个人分别调用一次 create_reminder（一次只创建一条），title 用"XX生日"。优先取"新历/公历"日期；若只给了"旧历/农历"，则使用 lunar_birthday 与对应月日。不要合并、也不要漏掉任何一个人。
+    **批量创建（关键）：** 若用户一次给出多个生日，必须为**每个人、每个日期**分别调用一次 create_reminder（一次只创建一条）。v2.4.8 fix：同一人同时给出"新历/公历"和"旧历/农历"两个日期时，**必须创建两条**——一条 date_type=solar_birthday（title 后缀"（公历）"），一条 date_type=lunar_birthday（title 后缀"（农历）"），不可只取其一。只给了一个历法的日期时建对应一条。注意"旧历，12月18"这类用逗号代替冒号的写法也要解析。示例"老娘生日:新历1月14号，旧历12月18"→ 两条：〔老娘生日（公历）, solar 1/14〕+〔老娘生日（农历）, lunar 12/18〕。不要漏掉任何一个人或任何一个日期。
 
     **批量整理（关键）：** 若用户粘贴了一段包含多条待办的文字（聊天记录 / 便签 / 需求文档 / 多行清单），→ 调用 import_tasks，把每段解析为一条提醒（尽量补全 title / 周期 / 时间），批量预览确认后再创建。不要逐条调用 create_reminder。
 
