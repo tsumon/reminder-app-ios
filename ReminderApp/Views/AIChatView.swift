@@ -66,10 +66,13 @@ struct AIChatView: View {
                 .onChange(of: messages) { _, newValue in
                     ChatHistoryStore.save(newValue)
                 }
-                // v2.4.2: 查看历史 → 滚到底部
+                // v2.4.7 fix: 「查看历史」改滚到顶部（最早的记录）——
+                // 原实现滚到底部，用户本来就在底部，点了毫无反应；
+                // 历史多时更早的消息被 LazyVStack 虚拟化在视口外，
+                // 用户以为历史丢了（数据实际都在；Android v2.4.4 修过同样问题）
                 .onChange(of: historyScrollTrigger) { _ in
-                    if let last = messages.last?.id {
-                        withAnimation { proxy.scrollTo(last, anchor: .bottom) }
+                    if let first = messages.first?.id {
+                        withAnimation { proxy.scrollTo(first, anchor: .top) }
                     }
                 }
                 .onChange(of: isLoading) { _ in
