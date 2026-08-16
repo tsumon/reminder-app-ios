@@ -512,8 +512,21 @@ struct AIChatView: View {
         }
 
         let now = Date()
-        // 首次锚点：下一个到达 reminderHour:reminderMinute 的时刻（cycle 用作周期锚点）
+        // 首次锚点：
+        // 1) AI 明确给了 trigger_date（如「下周日」算出的具体日期）→ 用它 + reminderHour/Minute。
+        //    v2.4.1 修复：原实现丢弃 trigger_date，永远取「下一个 9:00（已过就明天）」，
+        //    周日下午创建「每周日」→ 锚点落在周一，之后每周一响。
+        // 2) 无 trigger_date → 下一个到达 reminderHour:reminderMinute 的时刻（今天已过则明天）。
         var anchor = Calendar.current.date(bySettingHour: reminderHour, minute: reminderMinute, second: 0, of: now) ?? now
+        if let dateStr = args["trigger_date"] as? String {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.dateFormat = "yyyy-MM-dd"
+            if let d = f.date(from: dateStr.trimmingCharacters(in: .whitespaces)),
+               d > now {
+                anchor = Calendar.current.date(bySettingHour: reminderHour, minute: reminderMinute, second: 0, of: d) ?? d
+            }
+        }
         if anchor <= now { anchor = Calendar.current.date(byAdding: .day, value: 1, to: anchor) ?? anchor }
 
         var holidayID: String? = nil
