@@ -39,6 +39,8 @@ struct ReminderListView: View {
     // v2.1.1: 批量管理（多选完成/删除）
     @State private var editMode: EditMode = .inactive
     @State private var selectedIDs = Set<Reminder.ID>()
+    // v2.4.2: 锚点星期修正
+    @State private var anchorMismatches: [Reminder] = []
 
     // 导入/导出
     @State private var showExportExporter = false
@@ -234,6 +236,11 @@ struct ReminderListView: View {
                 }
             }
             .task {
+                // v2.4.2: 锚点星期修正——weekly 意图星期与锚点不符时提示一键修正
+                let mismatches = WeeklyWeekdayStore.anchorMismatches(reminders: reminders)
+                if !mismatches.isEmpty {
+                    anchorMismatches = mismatches
+                }
                 // v1.8.7 在线升级: 启动后台检查 GitHub 最新版本
                 if let info = await UpdateService.checkLatest(), info.isNewer {
                     updateInfo = info
@@ -287,6 +294,22 @@ struct ReminderListView: View {
                 Text((syncMessage ?? "").localized)
             }
             // v2.0.22: 删除保存失败提示
+            // v2.4.2: 锚点星期修正提示
+            .alert("提醒日错位".localized, isPresented: Binding(
+                get: { !anchorMismatches.isEmpty },
+                set: { if !$0 { anchorMismatches = [] } }
+            )) {
+                Button("修正为设定星期".localized) { fixAnchorMismatches() }
+                Button("忽略".localized, role: .cancel) { anchorMismatches = [] }
+            } message: {
+                let names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+                let lines = anchorMismatches.prefix(5).map { r -> String in
+                    let intended = WeeklyWeekdayStore.get(for: r.id) ?? 1
+                    let actual = ((Calendar.current.component(.weekday, from: r.firstTriggerAt) + 5) % 7) + 1
+                    return "\(r.title)：设定\(names[intended - 1])，实际\(names[actual - 1])"
+                }
+                return Text("以下每周提醒的触发日与设定不符：\n" + lines.joined(separator: "\n"))
+            }
             .alert("删除失败".localized, isPresented: Binding(
                 get: { deleteError != nil },
                 set: { if !$0 { deleteError = nil } }
@@ -972,6 +995,32 @@ struct ReminderListView: View {
             return
         }
         SyncStore.touchLocalChange()
+    }
+
+    /// v2.4.2: 修正锚点到设定星期（保留原时分，重排通知）
+    private func fixAnchorMismatches() {
+        let cal = Calendar.current
+        for r in anchorMismatches {
+            guard let intended = WeeklyWeekdayStore.get(for: r.id) else { continue }
+            let hour = cal.component(.hour, from: r.firstTriggerAt)
+            let minute = cal.component(.minute, from: r.firstTriggerAt)
+            var target = cal.date(bySettingHour: hour, minute: minute, second: 0, of: Date()) ?? Date()
+            let cur = ((cal.component(.weekday, from: target) + 5) % 7) + 1
+            var diff = (intended - cur + 7) % 7
+            if diff == 0 && target <= Date() { diff = 7 }
+            target = cal.date(byAdding: .day, value: diff, to: target) ?? target
+            r.firstTriggerAt = target
+            r.nextTriggerAt = target
+            r.updatedAt = Date()
+        }
+        try? modelContext.save()
+        SyncStore.touchLocalChange()
+        Task {
+            for r in anchorMismatches where r.isEnabled {
+                await ReminderEngine.shared.scheduleAllNotifications(for: r)
+            }
+        }
+        anchorMismatches = []
     }
 
     // MARK: - 批量管理（v2.1.1）

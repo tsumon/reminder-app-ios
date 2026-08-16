@@ -19,6 +19,7 @@ struct AITools {
                         "kind":          ["type": "string", "enum": ["cycle", "date", "rule"], "description": "周期提醒 / 日期提醒 / 规则提醒(第N周周X)"],
                         "cycle":         ["type": "string", "enum": ["daily","weekly","biweekly","monthly","quarterly","yearly"], "description": "周期类型，kind=cycle时必须"],
                         "custom_days":   ["type": "integer", "description": "自定义天数，cycle=custom时使用"],
+"weekday":  ["type": "integer", "description": "【每周/每两周提醒必须填】用户指定的星期：1=周一…7=周日。例：「每周日打针」→ cycle=weekly, weekday=7；「每周三开会」→ weekday=3"],
                         "rule_period":   ["type": "string", "enum": ["monthly","quarterly","yearly"], "description": "规则频率，kind=rule时必须，如每季度/每年"],
                         "rule_week":     ["type": "integer", "description": "第几周 1-5，kind=rule时必须"],
                         "rule_weekday":  ["type": "integer", "description": "周几 1=周一...7=周日，kind=rule时必须"],

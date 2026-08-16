@@ -3,6 +3,57 @@ import SwiftData
 
 // MARK: - Chat 消息模型
 
+/// v2.4.2: AI 对话历史持久化（UserDefaults JSON，保留最近 200 条）
+enum ChatHistoryStore {
+    private static let key = "ai_chat_history"
+    private static let maxCount = 200
+
+    struct Entry: Codable {
+        var role: String
+        var content: String
+        var time: Date
+    }
+
+    static func save(_ messages: [ChatMessage]) {
+        let entries = messages.filter { !$0.content.isEmpty }.suffix(maxCount).map {
+            Entry(role: roleKey($0.role), content: $0.content, time: $0.timestamp)
+        }
+        if let data = try? JSONEncoder().encode(Array(entries)) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    static func load() -> [ChatMessage] {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let entries = try? JSONDecoder().decode([Entry].self, from: data) else { return [] }
+        return entries.map {
+            ChatMessage(role: roleFrom($0.role), content: $0.content, timestamp: $0.time)
+        }
+    }
+
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
+    private static func roleKey(_ r: ChatMessage.MessageRole) -> String {
+        switch r {
+        case .user: return "user"
+        case .assistant: return "assistant"
+        case .system: return "system"
+        case .tool: return "tool"
+        }
+    }
+
+    private static func roleFrom(_ k: String) -> ChatMessage.MessageRole {
+        switch k {
+        case "user": return .user
+        case "assistant": return .assistant
+        case "system": return .system
+        default: return .tool
+        }
+    }
+}
+
 /// v2.2.0: AI 工具调用步骤（Agent 可视化：执行中 → 完成/失败）
 struct ToolStep: Identifiable, Equatable {
     let id = UUID()
@@ -30,7 +81,10 @@ struct AIChatView: View {
     @StateObject private var settings = AISettings.shared
     @StateObject private var voice = VoiceRecognizer.shared
 
-    @State private var messages: [ChatMessage] = []
+    // v2.4.2: 进入恢复历史对话
+    @State private var messages: [ChatMessage] = ChatHistoryStore.load()
+    // v2.4.2: 查看历史 → 滚动到底部触发器
+    @State private var historyScrollTrigger = 0
     @State private var inputText = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -78,6 +132,12 @@ struct AIChatView: View {
                         withAnimation { proxy.scrollTo(last, anchor: .bottom) }
                     }
                 }
+                // v2.4.2: 查看历史 → 滚到底部
+                .onChange(of: historyScrollTrigger) { _ in
+                    if let last = messages.last?.id {
+                        withAnimation { proxy.scrollTo(last, anchor: .bottom) }
+                    }
+                }
                 .onChange(of: isLoading) { _ in
                     if let last = messages.last?.id {
                         withAnimation { proxy.scrollTo(last, anchor: .bottom) }
@@ -93,6 +153,28 @@ struct AIChatView: View {
         .navigationTitle("AI 助手".localized)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // v2.4.2: 历史记录下拉（查看/清空）
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button {
+                        historyScrollTrigger += 1
+                    } label: {
+                        Label(String(format: "查看历史（%d 条）".localized, messages.count), systemImage: "clock.arrow.circlepath")
+                    }
+                    .disabled(messages.isEmpty)
+                    Button(role: .destructive) {
+                        messages = []
+                        ChatHistoryStore.clear()
+                    } label: {
+                        Label("清空历史".localized, systemImage: "trash")
+                    }
+                    .disabled(messages.isEmpty)
+                } label: {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(ThemeTokens.brandPrimary)
+                }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 NavigationLink {
                     AISettingsView()
@@ -489,6 +571,12 @@ struct AIChatView: View {
             ?? (args["rule_weekday"] as? Double).map(Int.init)
             ?? (args["rule_weekday"] as? String).flatMap(Int.init)
 
+        // v2.4.2: 每周意图星期（1=周一..7=周日）——模型对「每周日」这类周期描述
+        // 往往不传 trigger_date，必须靠 weekday 对齐锚点（根治每周错位）
+        let weekdayParam = (args["weekday"] as? Int)
+            ?? (args["weekday"] as? Double).map(Int.init)
+            ?? (args["weekday"] as? String).flatMap(Int.init)
+
         // 日期类提醒必须带合法月日，否则引擎算不出正确触发时间。
         // 与其创建一个会误触发的提醒，不如让用户补一句。
         if kind == "date" {
@@ -512,22 +600,30 @@ struct AIChatView: View {
         }
 
         let now = Date()
-        // 首次锚点：
-        // 1) AI 明确给了 trigger_date（如「下周日」算出的具体日期）→ 用它 + reminderHour/Minute。
-        //    v2.4.1 修复：原实现丢弃 trigger_date，永远取「下一个 9:00（已过就明天）」，
-        //    周日下午创建「每周日」→ 锚点落在周一，之后每周一响。
-        // 2) 无 trigger_date → 下一个到达 reminderHour:reminderMinute 的时刻（今天已过则明天）。
+        // 首次锚点（优先级）：
+        // 1) weekly/biweekly 且 AI 传了 weekday → 对齐到下一个该星期的 reminderHour:Minute
+        //    （今天就是且未过 → 今天）。v2.4.2 根治：模型对周期描述常不传 trigger_date。
+        // 2) AI 明确给了 trigger_date → 用它 + reminderHour/Minute（v2.4.1）。
+        // 3) 默认 → 下一个到达 reminderHour:reminderMinute 的时刻（今天已过则明天）。
         var anchor = Calendar.current.date(bySettingHour: reminderHour, minute: reminderMinute, second: 0, of: now) ?? now
-        if let dateStr = args["trigger_date"] as? String {
-            let f = DateFormatter()
-            f.locale = Locale(identifier: "en_US_POSIX")
-            f.dateFormat = "yyyy-MM-dd"
-            if let d = f.date(from: dateStr.trimmingCharacters(in: .whitespaces)),
-               d > now {
-                anchor = Calendar.current.date(bySettingHour: reminderHour, minute: reminderMinute, second: 0, of: d) ?? d
+        if (cycle == "weekly" || cycle == "biweekly"), let wd = weekdayParam, (1...7).contains(wd) {
+            let cal = Calendar.current
+            let cur = ((cal.component(.weekday, from: anchor) + 5) % 7) + 1  // 1=周一..7=周日
+            var diff = (wd - cur + 7) % 7
+            if diff == 0 && anchor <= now { diff = 7 }
+            anchor = cal.date(byAdding: .day, value: diff, to: anchor) ?? anchor
+        } else {
+            if let dateStr = args["trigger_date"] as? String {
+                let f = DateFormatter()
+                f.locale = Locale(identifier: "en_US_POSIX")
+                f.dateFormat = "yyyy-MM-dd"
+                if let d = f.date(from: dateStr.trimmingCharacters(in: .whitespaces)),
+                   d > now {
+                    anchor = Calendar.current.date(bySettingHour: reminderHour, minute: reminderMinute, second: 0, of: d) ?? d
+                }
             }
+            if anchor <= now { anchor = Calendar.current.date(byAdding: .day, value: 1, to: anchor) ?? anchor }
         }
-        if anchor <= now { anchor = Calendar.current.date(byAdding: .day, value: 1, to: anchor) ?? anchor }
 
         var holidayID: String? = nil
         if let hn = holidayName {
@@ -593,6 +689,14 @@ struct AIChatView: View {
         await MainActor.run {
             modelContext.insert(reminder)
             try? modelContext.save()
+            // v2.4.2: 存意图星期（锚点错位检测/修正用）——weekly/biweekly 存锚点星期
+            // （buildReminder 内 weekdayParam 对齐过锚点，此处从锚点反推即为意图星期）
+            if reminder.cycle == .weekly || reminder.cycle == .biweekly {
+                let anchorDow = ((Calendar.current.component(.weekday, from: reminder.firstTriggerAt) + 5) % 7) + 1
+                WeeklyWeekdayStore.set(anchorDow, for: reminder.id)
+            } else {
+                WeeklyWeekdayStore.set(nil, for: reminder.id)
+            }
             // 用引擎重算 nextTriggerAt（日期/规则类按目标月日计算，避免落到 +1 分钟）
             reminder.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(after: Date(), reminder: reminder)
             try? modelContext.save()
