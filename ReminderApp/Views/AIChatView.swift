@@ -132,6 +132,10 @@ struct AIChatView: View {
                         withAnimation { proxy.scrollTo(last, anchor: .bottom) }
                     }
                 }
+                // v2.4.3: 消息变化即持久化（v2.4.2 只 load 没 save——历史永远空的根因）
+                .onChange(of: messages) { _, newValue in
+                    ChatHistoryStore.save(newValue)
+                }
                 // v2.4.2: 查看历史 → 滚到底部
                 .onChange(of: historyScrollTrigger) { _ in
                     if let last = messages.last?.id {
@@ -184,7 +188,9 @@ struct AIChatView: View {
             }
         }
         .onAppear {
-            if !settings.isConfigured {
+            // v2.4.3 fix: 加 messages.isEmpty 守卫——否则每次进入都追加一条欢迎语，
+            // 且被 onChange 持久化后越积越多；有历史记录时也不再打断
+            if !settings.isConfigured && messages.isEmpty {
                 let guide = "👋 你好！请先在右上角设置中配置 API Key（支持 DeepSeek / 通义千问 / 豆包等，均有免费额度）。\n\n我能帮你：\n• 创建提醒「每天提醒我喝水」\n• 查看列表「有什么提醒」\n• 确认完成「确认喝水」\n• 修改提醒「把交房租改成每月5号」\n• 推迟/删除提醒"
                 messages.append(ChatMessage(
                     role: .assistant,
