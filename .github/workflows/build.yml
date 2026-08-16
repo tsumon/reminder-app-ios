@@ -83,7 +83,7 @@ jobs:
           xcodebuild archive \
             -project ReminderApp.xcodeproj \
             -scheme ReminderApp \
-            -destination "generic/platform=iOS" \
+            -sdk iphoneos \
             -configuration Release \
             -archivePath "$PWD/build/ReminderApp.xcarchive" \
             CODE_SIGN_IDENTITY="" \
