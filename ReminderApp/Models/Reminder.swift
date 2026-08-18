@@ -150,7 +150,9 @@ final class Reminder {
     var lastRetryAt: Date?
     var isEnabled: Bool
     /// v2.4.10: 避开节假日/周末——true 时触发日期落在周六日或法定节假日，顺延到下一个工作日
-    var holidayAware: Bool
+    /// v2.4.12 fix: 声明带默认值——SwiftData 轻量迁移要求新增属性有默认值，
+    /// 否则旧版（2.4.9 及更早）数据升级时迁移失败，启动即闪退
+    var holidayAware: Bool = false
     var createdAt: Date
     var updatedAt: Date
 
