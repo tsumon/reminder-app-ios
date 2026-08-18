@@ -49,6 +49,10 @@ struct CreateReminderView: View {
 
     @State private var holidayAware = false
 
+    // MARK: - v2.4.11 新历+旧历并存（拆两条）
+
+    @State private var dualBirthdayDetected = false
+
     // MARK: - 功能8 智能频率建议
 
     @State private var suggestionText: String? = nil
@@ -239,6 +243,7 @@ struct CreateReminderView: View {
             kind = .cycle; cycle = .daily; cycleText = "每天"
         case "weekly":
             kind = .cycle; cycle = .weekly; cycleText = "每周"
+            // v2.4.11: 对齐 AI——「每周日」的首次触发日期已被 parser 对齐到周日（无需单独星期字段）
         case "monthly":
             kind = .cycle; cycle = .monthly; cycleText = "每月"
         default:
@@ -246,7 +251,20 @@ struct CreateReminderView: View {
         }
         showCustomDaysField = (cycle == .custom)
 
-        nlHint = "「\(p.title)」· \(cycleText) · \(p.label)"
+        // v2.4.11: 对齐 AI——事务类自动开启「避开节假日/周末」
+        holidayAware = p.holidayAware
+        // v2.4.11: 新历+旧历并存 → 提示将拆两条创建
+        let solarRe = try? NSRegularExpression(pattern: "\\d{1,2}\\s*月\\s*\\d{1,2}\\s*[号日]")
+        let lunarRe = try? NSRegularExpression(pattern: "(?:农历|旧历|阴历)\\s*\\d{1,2}\\s*月\\s*\\d{1,2}")
+        let range = NSRange(nlText.startIndex..<nlText.endIndex, in: nlText)
+        let hasSolar = solarRe?.firstMatch(in: nlText, range: range) != nil
+        let hasLunar = lunarRe?.firstMatch(in: nlText, range: range) != nil
+        dualBirthdayDetected = hasSolar && hasLunar
+
+        var hint = "「\(p.title)」· \(cycleText) · \(p.label)"
+        if dualBirthdayDetected { hint += " · 检测到新旧历两个生日，将创建两条" }
+        if p.holidayAware { hint += " · 已开启避开节假日/周末" }
+        nlHint = hint
     }
 
     // MARK: - 周期 Section

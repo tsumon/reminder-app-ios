@@ -709,6 +709,40 @@ struct ReminderListView: View {
 
     private var listView: some View {
         List(selection: $selectedIDs) {
+            // v2.4.11: 遗漏补办——已触发未确认/已逾期的提醒，一键补确认或推到明天
+            let missed = reminders.filter {
+                $0.isEnabled && ($0.status == .active || $0.status == .overdue)
+            }.sorted { $0.nextTriggerAt < $1.nextTriggerAt }
+            if !missed.isEmpty {
+                Section {
+                    ForEach(missed.prefix(5)) { r in
+                        HStack(spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(r.title).font(.subheadline.weight(.medium))
+                                Text("错过: \(r.nextTriggerAt, style: .date) \(r.nextTriggerAt, style: .time)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("补确认".localized) {
+                                ReminderEngine.shared.confirmReminder(r, source: "遗漏补办")
+                            }
+                            .font(.caption.weight(.semibold))
+                            Button("明天".localized) {
+                                ReminderEngine.shared.snoozeReminderTomorrow(r)
+                            }
+                            .font(.caption.weight(.semibold))
+                        }
+                    }
+                } header: {
+                    Label(Localized("你错过了 %d 条提醒", missed.count), systemImage: "bell.badge")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+            }
+
             // v2.4.9: 自定义搜索框（替代 .searchable，后者在 iOS 26 占用
             // 导航栏 leading 位导致 AI 入口被顶掉）
             Section {

@@ -112,6 +112,24 @@ struct AIChatView: View {
                         .foregroundStyle(ThemeTokens.brandPrimary)
                 }
             }
+            // v2.4.11: 本周洞察（触发 AI 周报）
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    guard settings.isConfigured else {
+                        errorMessage = "请先在右上角设置中配置 API Key"
+                        return
+                    }
+                    let text = "给我一份本周提醒总结和洞察"
+                    inputText = ""
+                    messages.append(ChatMessage(role: .user, content: text, timestamp: Date()))
+                    isLoading = true
+                    Task { await chatLoop(userText: text) }
+                } label: {
+                    Image(systemName: "chart.bar.fill")
+                }
+                .accessibilityLabel("本周洞察")
+                .accessibilityIdentifier("weekly-insight")
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 NavigationLink {
                     AISettingsView()
@@ -469,6 +487,8 @@ struct AIChatView: View {
             return await handleUpdate(args: args)
         case "import_tasks":
             return await handleImportTasks(args: args)
+        case "get_stats_context":
+            return await handleStatsContext()
         default:
             return Localized("未知工具: %@", name)
         }
@@ -727,6 +747,44 @@ struct AIChatView: View {
         }
         if list.isEmpty { return "当前没有提醒。" }
         return Localized("当前共有 %d 个提醒：\n%@", list.count, list.joined(separator: "\n"))
+    }
+
+    /// v2.4.11: 本周统计上下文（AI 周报数据源）——只读，无副作用
+    private func handleStatsContext() async -> String {
+        let allRecords = reminders.flatMap(\.records)
+        let summary = StatsService.summarize(records: allRecords)
+
+        let cal = Calendar.current
+        let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) ?? Date()
+        let weekConfirm = allRecords.filter { $0.type == ReminderRecordType.confirm.rawValue && $0.performedAt >= weekStart }.count
+        let weekMissed = Set(allRecords.filter { $0.type == ReminderRecordType.trigger.rawValue && $0.performedAt >= weekStart }
+            .map { cal.startOfDay(for: $0.performedAt) }).count
+        let rate: String? = weekConfirm + weekMissed > 0
+            ? "\(Int(Double(weekConfirm) / Double(weekConfirm + weekMissed) * 100))%" : nil
+
+        let forget = summary.forgetHours.prefix(3)
+            .map { "\($0.hour)点(\($0.count)次)" }.joined(separator: "、")
+
+        // 各提醒本周确认次数
+        var byReminder: [String: Int] = [:]
+        for r in reminders {
+            let n = r.records.filter { $0.type == ReminderRecordType.confirm.rawValue && $0.performedAt >= weekStart }.count
+            if n > 0 { byReminder[r.title] = n }
+        }
+
+        let aiLogs = AILogStore.recent().filter { $0.time >= weekStart }
+        let aiOk = aiLogs.filter(\.ok).count
+        let aiFail = aiLogs.count - aiOk
+
+        let df = DateFormatter(); df.locale = Locale(identifier: "zh_CN"); df.dateFormat = "M月d日"
+        var parts = ["本周统计（\(df.string(from: weekStart)) 起 7 天）：确认 \(weekConfirm) 次，错过 \(weekMissed) 天，完成率 \(rate ?? "暂无数据")。"]
+        parts.append("当前连续 \(summary.currentStreak) 天，最长连续 \(summary.longestStreak) 天。")
+        if !forget.isEmpty { parts.append("最常忘记的时段：\(forget)。") }
+        if !byReminder.isEmpty {
+            parts.append("本周各提醒确认次数：" + byReminder.map { "\($0.key)×\($0.value)" }.joined(separator: "、") + "。")
+        }
+        parts.append("本周 AI 调用 \(aiLogs.count) 次（成功 \(aiOk)，失败 \(aiFail)）。")
+        return parts.joined(separator: " ")
     }
 
     private func handleConfirm(args: [String: Any]) async -> String {

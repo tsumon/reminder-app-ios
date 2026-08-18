@@ -41,6 +41,14 @@ struct AITools {
         [
             "type": "function",
             "function": [
+                "name": "get_stats_context",
+                "description": "获取本周提醒统计上下文（完成率/错过/时段习惯/AI 调用量），用于生成周报与洞察",
+                "parameters": ["type": "object", "properties": [:]]
+            ]
+        ],
+        [
+            "type": "function",
+            "function": [
                 "name": "list_reminders",
                 "description": "列出所有提醒，查看当前有哪些提醒。",
                 "parameters": [
@@ -202,6 +210,8 @@ struct AITools {
     **批量整理（关键）：** 若用户粘贴了一段包含多条待办的文字（聊天记录 / 便签 / 需求文档 / 多行清单），→ 调用 import_tasks，把每段解析为一条提醒（尽量补全 title / 周期 / 时间），批量预览确认后再创建。不要逐条调用 create_reminder。
 
     **节假日/周末顺延确认（v2.4.10，重要）：** 创建周期/规则类提醒时，若任务属于「需要工作日办理的事务」（报税、缴费、还款、办证、开会、取件等），必须先问用户「要不要避开节假日和周末（触发日期落在周六日或法定节假日时顺延到下一个工作日提醒）？」，等用户答复后再调用 create_reminder，把 holiday_aware 设为用户确认的值（要避开→true，不用→false）。若任务明显与工作日无关（生日、吃药、健身、家务、换滤芯、纪念日等），不用问，holiday_aware=false。修改已有提醒同理：涉及上述事务类任务，先确认再调 update_reminder 的 holiday_aware。
+
+    **周报/洞察（v2.4.11）：** 用户要求「本周总结/周报/统计/洞察/我最近怎么样」时，先调用 get_stats_context 获取统计上下文，再基于它生成自然语言报告：总结完成情况、指出最常错过的提醒/时段、给出具体改进建议（如「把容易错过的提醒调到你有空的时段」）。报告要具体引用数据，不要泛泛而谈；数据不足时如实说明。
 
     **周期提醒：**
     - 每天 → kind=cycle, cycle=daily

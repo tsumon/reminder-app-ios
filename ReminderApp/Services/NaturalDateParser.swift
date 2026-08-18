@@ -24,6 +24,9 @@ struct NaturalDateParser {
         let targetDay: Int?
         let title: String
         let label: String
+        /// v2.4.11: 手动创建对齐 AI——周几（1=周一..7=周日，weekly 用）与避开节假日/周末
+        let weekday: Int?
+        let holidayAware: Bool
     }
 
     // MARK: - 正则工具
@@ -65,6 +68,7 @@ struct NaturalDateParser {
         var hour = 9
         var minute = 0
         var repeatMode = "once"
+        var weekday: Int? = nil
         var dateType: DateReminderType?
         var targetMonth: Int?
         var targetDay: Int?
@@ -146,6 +150,7 @@ struct NaturalDateParser {
             }
             base = cal.date(byAdding: .day, value: diff, to: base) ?? base
             if repeatMode == "once" { repeatMode = "weekly" }
+            weekday = target
         }
 
         // 每月X号
@@ -217,6 +222,18 @@ struct NaturalDateParser {
         fmt.locale = Locale(identifier: "zh_CN")
         fmt.dateFormat = "yyyy-MM-dd HH:mm"
 
+        // v2.4.11: 避开节假日/周末——显式关键词优先，其次事务类关键词自动开启
+        let holidayAware: Bool
+        if text.contains("避开节假日") || text.contains("顺延") || text.contains("工作日") {
+            holidayAware = true
+        } else if text.contains("报税") || text.contains("缴费") || text.contains("还款")
+            || text.contains("办证") || text.contains("开会") || text.contains("取件")
+            || text.contains("办事") || text.contains("银行") || text.contains("上班") {
+            holidayAware = true
+        } else {
+            holidayAware = false
+        }
+
         return ParsedSchedule(
             nextTriggerAt: next,
             repeatMode: repeatMode,
@@ -224,7 +241,9 @@ struct NaturalDateParser {
             targetMonth: targetMonth,
             targetDay: targetDay,
             title: title,
-            label: fmt.string(from: next)
+            label: fmt.string(from: next),
+            weekday: weekday,
+            holidayAware: holidayAware
         )
     }
 
