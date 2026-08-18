@@ -44,14 +44,38 @@ final class ReminderEngine: ObservableObject {
 
     /// 计算下一次「正式提醒」（D-day）的触发时间
     func calculateNextTrigger(after confirmedDate: Date, reminder: Reminder) -> Date {
+        let raw: Date
         switch reminder.kind {
         case .cycle:
-            return calculateNextCycleTrigger(after: confirmedDate, reminder: reminder)
+            raw = calculateNextCycleTrigger(after: confirmedDate, reminder: reminder)
         case .date:
-            return calculateNextDateTrigger(from: confirmedDate, reminder: reminder)
+            raw = calculateNextDateTrigger(from: confirmedDate, reminder: reminder)
         case .rule:
-            return calculateNextRuleTrigger(from: confirmedDate, reminder: reminder)
+            raw = calculateNextRuleTrigger(from: confirmedDate, reminder: reminder)
         }
+        // v2.4.10: 避开节假日/周末——触发日落在周六日或法定节假日 → 顺延到下一个工作日
+        guard reminder.holidayAware else { return raw }
+        return deferToWorkday(raw)
+    }
+
+    /// v2.4.10: 顺延到下一个工作日（跳过周六日与法定节假日，保留时分）
+    private func deferToWorkday(_ date: Date) -> Date {
+        let calendar = Calendar.current
+        var cursor = date
+        var guardCount = 0
+        while guardCount < 30 {
+            let comps = calendar.dateComponents([.weekday, .year, .month, .day], from: cursor)
+            let isWeekend = comps.weekday == 1 || comps.weekday == 7 // 1=周日 7=周六
+            let isHoliday = HolidayRemoteService.status(
+                year: comps.year ?? 0,
+                month: comps.month ?? 0,
+                day: comps.day ?? 0
+            )?.isHoliday == true
+            if !isWeekend && !isHoliday { return cursor }
+            cursor = calendar.date(byAdding: .day, value: 1, to: cursor) ?? cursor.addingTimeInterval(86400)
+            guardCount += 1
+        }
+        return cursor
     }
 
     /// v2.1.1: 未来 N 次触发时间预览（详情页展示，验证周期计算是否正确）。

@@ -59,6 +59,9 @@ struct BackupProtocolCheck {
         // 4. isCritical camelCase
         check("v2 第一条 isCritical == true", items[0].isCritical == true)
         check("v2 第二条 isCritical == false", items[1].isCritical == false)
+        // v2.4.10: 避开节假日/周末（导出字段 + 导入解析）
+        check("v2 第一条 holidayAware == true", items[0].holidayAware == true)
+        check("v2 第二条 holidayAware == false", items[1].holidayAware == false)
 
         // 5. makeReminder：id / holidayID 正确落到模型
         let r0 = BackupHelper.makeReminder(from: items[0])
@@ -97,6 +100,7 @@ struct BackupProtocolCheck {
         check("导出包含跨端 syncId", exported.lowercased().contains("8f14e45f-ceea-4b5f-8d1a-9c3f2b7e5d01"))
         check("导出包含 holidayId", exported.contains("\"holidayId\" : \"zhongqiu\""))
         check("导出包含 isCritical", exported.contains("\"isCritical\" : false"))
+        check("导出包含 holidayAware", exported.contains("\"holidayAware\" : false"))
 
         // 8. 导出-导入往返：id 稳定
         let roundtrip = BackupHelper.importJSON(exported) ?? []

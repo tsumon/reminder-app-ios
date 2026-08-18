@@ -45,6 +45,10 @@ struct CreateReminderView: View {
 
     @State private var isCritical = false
 
+    // MARK: - v2.4.10 避开节假日/周末（报税等工作日事务自动顺延）
+
+    @State private var holidayAware = false
+
     // MARK: - 功能8 智能频率建议
 
     @State private var suggestionText: String? = nil
@@ -108,6 +112,16 @@ struct CreateReminderView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("关键提醒".localized)
                             Text("重要事项，错过会重复提醒直到确认".localized)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    // v2.4.10: 避开节假日/周末（报税、缴费等工作日事务）
+                    Toggle(isOn: $holidayAware) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("避开节假日/周末".localized)
+                            Text("触发日期落在周六日或法定节假日时，顺延到下一个工作日提醒（换滤芯、生日等无需开启）".localized)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -505,7 +519,8 @@ struct CreateReminderView: View {
                     customDays: days,
                     firstTriggerAt: finalTrigger,
                     nextTriggerAt: finalTrigger,
-                    priority: priority
+                    priority: priority,
+                    holidayAware: holidayAware
                 )
             } else {
                 reminder = Reminder(
@@ -516,7 +531,8 @@ struct CreateReminderView: View {
                     customDays: 0,
                     firstTriggerAt: finalTrigger,
                     nextTriggerAt: finalTrigger,
-                    priority: priority
+                    priority: priority,
+                    holidayAware: holidayAware
                 )
             }
 
@@ -552,7 +568,8 @@ struct CreateReminderView: View {
                 ruleWeekday: ruleWeekday,
                 firstTriggerAt: firstTrigger,
                 nextTriggerAt: firstTrigger,
-                priority: priority
+                priority: priority,
+                holidayAware: holidayAware
             )
 
         case .date:
@@ -626,7 +643,8 @@ struct CreateReminderView: View {
                 holidayID: dateType == .holiday ? selectedHolidayID : nil,
                 firstTriggerAt: nextDate,
                 nextTriggerAt: nextDate,
-                priority: priority
+                priority: priority,
+                holidayAware: holidayAware
             )
         }
 

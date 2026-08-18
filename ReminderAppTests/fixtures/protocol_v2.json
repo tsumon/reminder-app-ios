@@ -33,7 +33,8 @@
       "createdAt": 1755254000000,
       "holidayAdjustNote": null,
       "isCritical": true,
-      "is_critical": true
+      "is_critical": true,
+      "holidayAware": true
     },
     {
       "id": 2,
@@ -64,7 +65,8 @@
       "createdAt": 1755254000000,
       "holidayAdjustNote": "因中秋节放假，已前移至假期前最近工作日",
       "isCritical": false,
-      "is_critical": false
+      "is_critical": false,
+      "holidayAware": false
     },
     {
       "id": 3,

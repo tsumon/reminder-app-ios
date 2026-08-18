@@ -61,6 +61,8 @@ enum BackupHelper {
         /// H1: 关键提醒标记（iOS 存 UserDefaults CriticalStore，不动 schema；
         /// Optional 兼容旧文件缺 isCritical 键——旧协议是 is_critical snake_case，读取为 nil → false）
         var isCritical: Bool? = nil
+        /// v2.4.10: 避开节假日/周末（缺省 false，旧备份兼容）
+        var holidayAware: Bool? = nil
     }
 
     struct BackupRoot: Codable {
@@ -117,7 +119,9 @@ enum BackupHelper {
                 status: statusCode(r.status),
                 isActive: r.isEnabled,
                 // H1: 关键提醒标记纳入导出（读 CriticalStore）
-                isCritical: ReminderEngine.CriticalStore.isCritical(r.id)
+                isCritical: ReminderEngine.CriticalStore.isCritical(r.id),
+                // v2.4.10: 避开节假日/周末
+                holidayAware: r.holidayAware
             )
         }
         let root = BackupRoot(
@@ -348,7 +352,8 @@ enum BackupHelper {
             nextTriggerAt: Date(timeIntervalSince1970: item.nextTriggerAt / 1000),
             status: status,
             priority: priority,
-            isEnabled: item.isActive
+            isEnabled: item.isActive,
+            holidayAware: item.holidayAware ?? false
         )
         // H1: 导入时写回关键标记到 CriticalStore（保持 UserDefaults 方案，不动 schema）
         ReminderEngine.CriticalStore.setCritical(item.isCritical ?? false, for: reminder.id)

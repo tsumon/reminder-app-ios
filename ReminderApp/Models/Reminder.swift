@@ -149,6 +149,8 @@ final class Reminder {
     var retryStage: Int
     var lastRetryAt: Date?
     var isEnabled: Bool
+    /// v2.4.10: 避开节假日/周末——true 时触发日期落在周六日或法定节假日，顺延到下一个工作日
+    var holidayAware: Bool
     var createdAt: Date
     var updatedAt: Date
 
@@ -180,6 +182,7 @@ final class Reminder {
         priority: ReminderPriority = .normal,
         retryStage: Int = 0,
         isEnabled: Bool = true,
+        holidayAware: Bool = false,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -205,6 +208,7 @@ final class Reminder {
         self.priority = priority
         self.retryStage = retryStage
         self.isEnabled = isEnabled
+        self.holidayAware = holidayAware
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

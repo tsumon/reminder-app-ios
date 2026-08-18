@@ -30,6 +30,7 @@ struct AITools {
                         "advance_days":  ["type": "integer", "description": "提前几天预告，默认3"],
                         "reminder_hour": ["type": "integer", "description": "提醒时间-小时 0-23，默认9"],
                         "reminder_minute": ["type": "integer", "description": "提醒时间-分钟 0-59，默认0"],
+                            "holiday_aware": ["type": "boolean", "description": "避开节假日/周末：true=触发日期落在周六日或法定节假日时顺延到下一个工作日（报税/缴费/还款等工作日事务）；false=不避开（换滤芯/生日/吃药等）。拿不准时先问用户再填"],
                         "trigger_date":  ["type": "string", "description": "首次触发日期 yyyy-MM-dd，不填则取最近合理的未来时间"],
                         "trigger_time":  ["type": "string", "description": "首次触发时间 HH:mm，默认09:00"]
                     ],
@@ -114,7 +115,8 @@ struct AITools {
                         "holiday_name": ["type": "string"],
                         "advance_days": ["type": "integer"],
                         "reminder_hour": ["type": "integer"],
-                        "reminder_minute": ["type": "integer"]
+                        "reminder_minute": ["type": "integer"],
+                        "holiday_aware": ["type": "boolean", "description": "避开节假日/周末（true/false），修改已有提醒时开关该功能"]
                     ],
                     "required": ["title_keyword"]
                 ]
@@ -198,6 +200,8 @@ struct AITools {
     **批量创建（关键）：** 若用户一次给出多个生日，必须为**每个人、每个日期**分别调用一次 create_reminder（一次只创建一条）。v2.4.8 fix：同一人同时给出"新历/公历"和"旧历/农历"两个日期时，**必须创建两条**——一条 date_type=solar_birthday（title 后缀"（公历）"），一条 date_type=lunar_birthday（title 后缀"（农历）"），不可只取其一。只给了一个历法的日期时建对应一条。注意"旧历，12月18"这类用逗号代替冒号的写法也要解析。示例"老娘生日:新历1月14号，旧历12月18"→ 两条：〔老娘生日（公历）, solar 1/14〕+〔老娘生日（农历）, lunar 12/18〕。不要漏掉任何一个人或任何一个日期。
 
     **批量整理（关键）：** 若用户粘贴了一段包含多条待办的文字（聊天记录 / 便签 / 需求文档 / 多行清单），→ 调用 import_tasks，把每段解析为一条提醒（尽量补全 title / 周期 / 时间），批量预览确认后再创建。不要逐条调用 create_reminder。
+
+    **节假日/周末顺延确认（v2.4.10，重要）：** 创建周期/规则类提醒时，若任务属于「需要工作日办理的事务」（报税、缴费、还款、办证、开会、取件等），必须先问用户「要不要避开节假日和周末（触发日期落在周六日或法定节假日时顺延到下一个工作日提醒）？」，等用户答复后再调用 create_reminder，把 holiday_aware 设为用户确认的值（要避开→true，不用→false）。若任务明显与工作日无关（生日、吃药、健身、家务、换滤芯、纪念日等），不用问，holiday_aware=false。修改已有提醒同理：涉及上述事务类任务，先确认再调 update_reminder 的 holiday_aware。
 
     **周期提醒：**
     - 每天 → kind=cycle, cycle=daily

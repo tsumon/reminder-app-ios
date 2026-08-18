@@ -503,6 +503,12 @@ struct AIChatView: View {
         let reminderHour = args["reminder_hour"] as? Int ?? 9
         let reminderMinute = args["reminder_minute"] as? Int ?? 0
         let holidayName = args["holiday_name"] as? String
+        // v2.4.10: 避开节假日/周末（模型可能输出字符串 "true"/"false"）
+        let holidayAware: Bool = {
+            if let b = args["holiday_aware"] as? Bool { return b }
+            if let str = args["holiday_aware"] as? String { return str.lowercased() == "true" }
+            return false
+        }()
         // v1.9.0 fix: 规则提醒（第N周周X）参数
         let rulePeriodRaw = args["rule_period"] as? String
         let ruleWeekRaw = (args["rule_week"] as? Int)
@@ -624,7 +630,8 @@ struct AIChatView: View {
             ruleWeek: ruleWeekRaw.flatMap { RuleWeek(rawValue: $0) } ?? .w1,
             ruleWeekday: ruleWeekdayRaw.flatMap { RuleWeekday(rawValue: $0) } ?? .mon,
             firstTriggerAt: anchor,
-            nextTriggerAt: anchor
+            nextTriggerAt: anchor,
+            holidayAware: holidayAware
         )
         return (reminder, nil)
     }
@@ -850,6 +857,12 @@ struct AIChatView: View {
             // 提前 / 时分
             if let ah = (args["advance_days"] as? Int) ?? (args["advance_days"] as? Double).map(Int.init) {
                 match.advanceDays = ah
+            }
+            // v2.4.10: 修改提醒时支持切换「避开节假日/周末」
+            if let ha = args["holiday_aware"] as? Bool {
+                match.holidayAware = ha
+            } else if let haStr = args["holiday_aware"] as? String {
+                match.holidayAware = (haStr.lowercased() == "true")
             }
             let hasHour = (args["reminder_hour"] as? Int) != nil || (args["reminder_hour"] as? Double) != nil
             let hasMinute = (args["reminder_minute"] as? Int) != nil || (args["reminder_minute"] as? Double) != nil
