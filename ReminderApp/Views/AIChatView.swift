@@ -34,8 +34,10 @@ struct AIChatView: View {
                         }
 
                         ForEach(messages) { msg in
-                            ChatBubble(message: msg)
-                                .id(msg.id)
+                            ChatBubble(message: msg) { option in
+                                sendOption(option, from: msg)
+                            }
+                            .id(msg.id)
                         }
 
                         if isLoading {
@@ -106,11 +108,13 @@ struct AIChatView: View {
                         Label("清空历史".localized, systemImage: "trash")
                     }
                     .disabled(messages.isEmpty)
+                    .accessibilityIdentifier("clear-history")
                 } label: {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(ThemeTokens.brandPrimary)
                 }
+                .accessibilityIdentifier("history-menu")
             }
             // v2.4.11: 本周洞察（触发 AI 周报）
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -340,13 +344,36 @@ struct AIChatView: View {
         }
     }
 
+    // 点击 ask_user 选项按钮——原气泡按钮置空防重复点，选项作为用户消息发送，
+    // 带历史走正常 chatLoop（模型看到自己问过、用户选了什么，继续创建）
+    private func sendOption(_ option: String, from message: ChatMessage) {
+        guard !isLoading else { return }
+        if let idx = messages.firstIndex(where: { $0.id == message.id }) {
+            messages[idx].options = nil
+        }
+        messages.append(ChatMessage(role: .user, content: option, timestamp: Date()))
+        isLoading = true
+        Task {
+            await chatLoop(userText: option)
+        }
+    }
+
     // MARK: - Chat Loop（v2.2.0：Agent 多步循环 + 流式输出 + 备用降级 + 调用日志）
 
     private func chatLoop(userText: String) async {
         var conversation: [AIService.ChatMessage] = [
-            .init(role: "system", content: AITools.systemPrompt),
-            .init(role: "user", content: userText)
+            .init(role: "system", content: AITools.systemPrompt)
         ]
+        // 携带最近 20 条历史（对齐 Android v1.9.6）——历法确认等多轮上下文
+        // 依赖历史（ask_user 问过、用户答过）。最后一条是刚上屏的 userText，
+        // 剔除避免重复；空步骤气泡不带语义，一并过滤
+        let history = messages
+            .filter { !$0.content.isEmpty && $0.toolSteps.isEmpty }
+            .dropLast()
+            .suffix(20)
+            .map { AIService.ChatMessage(role: $0.role == .user ? "user" : "assistant", content: $0.content) }
+        conversation.append(contentsOf: history)
+        conversation.append(.init(role: "user", content: userText))
 
         var maxTurns = 5
         let startedAt = Date()
@@ -384,6 +411,39 @@ struct AIChatView: View {
                 if let toolCalls = reply.toolCalls, !toolCalls.isEmpty {
                     var steps: [ToolStep] = []
                     for tc in toolCalls {
+                        // ask_user：澄清问题渲染为选项按钮，中断本轮 Agent 循环；
+                        // 用户点选后作为 user 消息带着历史重新进入 chatLoop
+                        if tc.function.name == "ask_user" {
+                            var question = "请补充信息"
+                            var options: [String] = []
+                            if let data = tc.function.arguments.data(using: .utf8),
+                               let args = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                                if let q = args["question"] as? String, !q.isEmpty { question = q }
+                                if let opts = args["options"] as? [String] {
+                                    options = opts.filter { !$0.isEmpty }
+                                }
+                            }
+                            await MainActor.run {
+                                messages.removeAll { !$0.toolSteps.isEmpty }
+                                messages.append(ChatMessage(
+                                    role: .assistant,
+                                    content: question,
+                                    timestamp: Date(),
+                                    options: options.isEmpty ? nil : options
+                                ))
+                                isLoading = false
+                            }
+                            AILogStore.add(AILogStore.Entry(
+                                model: usedFallback ? settings.fallbackModel : settings.model,
+                                provider: usedFallback ? "fallback" : "primary",
+                                turns: 5 - maxTurns,
+                                promptTokens: finalUsage?.prompt_tokens,
+                                completionTokens: finalUsage?.completion_tokens,
+                                durationMs: Int(Date().timeIntervalSince(startedAt) * 1000),
+                                ok: true
+                            ))
+                            return
+                        }
                         steps.append(ToolStep(name: tc.function.name, status: "running", summary: nil))
                         await MainActor.run {
                             messages.append(ChatMessage(role: .assistant, content: "", timestamp: Date(), toolSteps: steps))
@@ -553,6 +613,10 @@ struct AIChatView: View {
                 }
             } else if !(1...12).contains(targetMonth) || !(1...31).contains(targetDay) {
                 return (nil, "需要具体的公历/农历月日才能创建日期提醒（例如：农历八月十五、公历5月1日）。请补充月日，我再为你创建。")
+            } else if dateType == "lunar_birthday" && targetDay > 30 {
+                // 农历没有 31 日——大概率是模型把公历习惯带进了农历或历法判断错了，
+                // 拦下让它回头和用户确认历法，而不是创建一条永远不会触发的提醒
+                return (nil, "农历日期没有 31 日，日期或历法可能有误。请与用户确认是新历还是农历后再创建。")
             }
         }
         // v1.9.0 fix: 规则提醒必须带全 频率/第几周/周几
@@ -566,8 +630,9 @@ struct AIChatView: View {
             }
         }
         // v2.4.9: weekly/biweekly 必须传 weekday——漏传时锚点落在任意星期，
-        // 后续从锚点反推存入 store 的「意图星期」也是错的，错位检测永远判自洽
-        if (cycle == "weekly" || cycle == "biweekly"), weekdayParam == nil {
+        // 后续从锚点反推的意图星期也是错的，错位检测永远判自洽。
+        // 仅限 kind=cycle：日期/规则类不传 cycle，缺省 "weekly" 会误拦（mock 端到端实测抓到）
+        if kind == "cycle", (cycle == "weekly" || cycle == "biweekly"), weekdayParam == nil {
             return (nil, "每周/每两周提醒需要指定星期几（weekday: 1=周一…7=周日）。请补充后重试。")
         }
 
@@ -661,7 +726,8 @@ struct AIChatView: View {
         guard let reminder else { return err ?? "创建失败" }
         await MainActor.run {
             modelContext.insert(reminder)
-            try? modelContext.save()
+            // 诊断：try? 会吞掉 save 失败——「返回已创建但没落盘」的幽灵提醒无从排查
+            do { try modelContext.save() } catch { NSLog("[AIChat] create save#1 failed: \(error)") }
             // v2.4.2: 存意图星期（锚点错位检测/修正用）——weekly/biweekly 存锚点星期
             // （buildReminder 内 weekdayParam 对齐过锚点，此处从锚点反推即为意图星期）
             if reminder.cycle == .weekly || reminder.cycle == .biweekly {
@@ -672,7 +738,7 @@ struct AIChatView: View {
             }
             // 用引擎重算 nextTriggerAt（日期/规则类按目标月日计算，避免落到 +1 分钟）
             reminder.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(after: Date(), reminder: reminder)
-            try? modelContext.save()
+            do { try modelContext.save() } catch { NSLog("[AIChat] create save#2 failed: \(error)") }
             // v1.9.6 fix: 漏 touchLocalChange → AI 新建的提醒永远不同步 / 被远程旧数据覆盖
             SyncStore.touchLocalChange()
         }
@@ -995,6 +1061,7 @@ struct AIChatView: View {
 
 struct ChatBubble: View {
     let message: ChatMessage
+    var onOption: ((String) -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .top) {
@@ -1077,6 +1144,28 @@ struct ChatBubble: View {
                 .foregroundStyle(message.role == .user ? .white : .primary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
+
+            // ask_user 快捷回复按钮（历法澄清等）
+            if let opts = message.options, !opts.isEmpty, let onOption {
+                HStack(spacing: 8) {
+                    ForEach(opts, id: \.self) { opt in
+                        Button {
+                            onOption(opt)
+                        } label: {
+                            Text(opt)
+                                .font(.subheadline.weight(.medium))
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(ThemeTokens.brandPrimary.opacity(0.12))
+                                .foregroundStyle(ThemeTokens.brandPrimary)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 6)
+                .padding(.bottom, 8)
+            }
         }
     }
 

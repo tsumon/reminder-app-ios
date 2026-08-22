@@ -11,11 +11,13 @@ enum ChatHistoryStore {
         var role: String
         var content: String
         var time: Date
+        // 快捷回复选项（ask_user 气泡重进后按钮仍在）；旧记录缺 key → nil
+        var options: [String]? = nil
     }
 
     static func save(_ messages: [ChatMessage]) {
         let entries = messages.filter { !$0.content.isEmpty }.suffix(maxCount).map {
-            Entry(role: roleKey($0.role), content: $0.content, time: $0.timestamp)
+            Entry(role: roleKey($0.role), content: $0.content, time: $0.timestamp, options: $0.options)
         }
         if let data = try? JSONEncoder().encode(Array(entries)) {
             UserDefaults.standard.set(data, forKey: key)
@@ -26,7 +28,7 @@ enum ChatHistoryStore {
         guard let data = UserDefaults.standard.data(forKey: key),
               let entries = try? JSONDecoder().decode([Entry].self, from: data) else { return [] }
         return entries.map {
-            ChatMessage(role: roleFrom($0.role), content: $0.content, timestamp: $0.time)
+            ChatMessage(role: roleFrom($0.role), content: $0.content, timestamp: $0.time, options: $0.options)
         }
     }
 
@@ -67,6 +69,8 @@ struct ChatMessage: Identifiable, Equatable {
     var content: String
     let timestamp: Date
     var toolSteps: [ToolStep] = []
+    // ask_user 澄清气泡的快捷回复选项（点击后置 nil，防重复点）
+    var options: [String]? = nil
 
     enum MessageRole: Equatable {
         case user, assistant, system, tool

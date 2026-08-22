@@ -41,6 +41,21 @@ struct AITools {
         [
             "type": "function",
             "function": [
+                "name": "ask_user",
+                "description": "向用户提出澄清问题，客户端会把 options 渲染成按钮，用户点选后作为回答回传。历法不明（如「2.10」没说新历还是农历）等猜错代价高的场景必须先调用此工具问清，不得猜测。",
+                "parameters": [
+                    "type": "object",
+                    "properties": [
+                        "question": ["type": "string", "description": "要问用户的问题，如：爸爸生日 2.10 是新历还是农历？"],
+                        "options": ["type": "array", "items": ["type": "string"], "description": "选项按钮文字，2-4 个，如 [\"新历\",\"农历\"]"]
+                    ],
+                    "required": ["question", "options"]
+                ]
+            ]
+        ],
+        [
+            "type": "function",
+            "function": [
                 "name": "get_stats_context",
                 "description": "获取本周提醒统计上下文（完成率/错过/时段习惯/AI 调用量），用于生成周报与洞察",
                 "parameters": ["type": "object", "properties": [:]]
@@ -202,8 +217,18 @@ struct AITools {
     **生日 / 日期提醒（重要）：**
     - "X生日:新历/公历 M月D号" → kind=date, date_type=solar_birthday, target_month=M, target_day=D
     - "X生日:旧历/农历/阴历 M月初D / M月D号" → kind=date, date_type=lunar_birthday, target_month=M, target_day=D
-    - "每年""周年" → kind=date, date_type=solar_birthday
     - "春节/中秋/端午/清明/国庆/元旦" → kind=date, date_type=holiday, holiday_name=名称
+    - "每年""周年"只说明重复频率，历法仍按下面的信号规则判断
+
+    **日期格式归一化：** "2.10"、"2-10"、"2/10"、"211"、"1225" 等纯数字日期按「先月后日」解析（210→2月10日，211→2月11日，1225→12月25日）；无法唯一拆分时（如 111）用 ask_user 问清。
+
+    **历法判断（重要——不得猜测）：** 新历/农历只能依据信号判断，没有信号就必须问：
+    - 农历信号：「农历/阴历/旧历」字样、「初X」（初一~初十）、「正月/腊月/冬月/闰X月」、「三十」（大年三十）→ date_type=lunar_birthday
+    - 公历信号：「公历/新历/阳历」字样 → date_type=solar_birthday
+    - 两种信号都没有（如「爸爸生日 2.10」「妈妈生日 211」）→ 不要调用 create_reminder，先调用 ask_user（question 带上要确认的日期，options=["新历","农历"]），等用户点选后再按答案创建
+    - 同一会话中用户已确认过历法的，之后未标注历法的日期默认沿用该历法，并在回复中说明（如"已按农历创建，若是新历告诉我"）
+
+    **向用户提问（ask_user）：** 信息不明且猜错代价高时（历法不明等），调用 ask_user 而不是在文本里反问或擅自猜测——客户端会把 options 渲染成按钮，用户点选后你会收到答案，再继续执行。
 
     **批量创建（关键）：** 若用户一次给出多个生日，必须为**每个人、每个日期**分别调用一次 create_reminder（一次只创建一条）。v2.4.8 fix：同一人同时给出"新历/公历"和"旧历/农历"两个日期时，**必须创建两条**——一条 date_type=solar_birthday（title 后缀"（公历）"），一条 date_type=lunar_birthday（title 后缀"（农历）"），不可只取其一。只给了一个历法的日期时建对应一条。注意"旧历，12月18"这类用逗号代替冒号的写法也要解析。示例"老娘生日:新历1月14号，旧历12月18"→ 两条：〔老娘生日（公历）, solar 1/14〕+〔老娘生日（农历）, lunar 12/18〕。不要漏掉任何一个人或任何一个日期。
 

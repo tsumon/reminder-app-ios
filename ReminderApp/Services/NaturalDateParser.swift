@@ -191,6 +191,18 @@ struct NaturalDateParser {
             if let d = cal.date(from: c) { base = d }
         }
 
+        // 公历数字简写 2.10 / 2-10 / 2/10。紧凑无分隔格式（211）歧义太大
+        // （2/11 还是 21/1 无从判断），不在此处理——AI 入口会反问确认
+        if repeatMode != "lunar", let g = firstMatch("(?<![0-9.])([0-9]{1,2})[.\\-/]([0-9]{1,2})(?![0-9.\\-/])", in: text) {
+            let tm = clamp(Int(g[1]) ?? 1, 1, 12)
+            let td = clamp(Int(g[2]) ?? 1, 1, 31)
+            targetMonth = tm; targetDay = td
+            repeatMode = "yearly"; dateType = .solarBirthday
+            var c = cal.dateComponents([.year], from: base)
+            c.month = tm; c.day = td; c.hour = hour; c.minute = minute; c.second = 0
+            if let d = cal.date(from: c) { base = d }
+        }
+
         // 农历 X月X
         if let g = firstMatch("(?:农历|旧历|阴历)\\s*([0-9]{1,2})\\s*月\\s*([0-9]{1,2})", in: text) {
             let lm = clamp(Int(g[1]) ?? 1, 1, 12)
@@ -258,6 +270,7 @@ struct NaturalDateParser {
         t = replacing("(每)?(下|上)?(周|星期|礼拜)[一二三四五六日天1-7]", in: t)
         t = replacing("每月\\s*[0-9]{1,2}\\s*[号日]", in: t)
         t = replacing("[0-9]{1,2}\\s*月\\s*[0-9]{1,2}\\s*[号日]", in: t)
+        t = replacing("(?<![0-9.])[0-9]{1,2}[.\\-/][0-9]{1,2}(?![0-9.\\-/])", in: t)
         t = replacing("(农历|旧历|阴历)\\s*[0-9]{1,2}\\s*月\\s*[0-9]{1,2}", in: t)
         t = replacing("(早上|上午|中午|下午|晚上|凌晨|傍晚)", in: t)
         t = replacing("[0-9]{1,3}\\s*(天|周|小时|分钟)\\s*[后以後]", in: t)
