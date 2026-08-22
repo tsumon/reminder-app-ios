@@ -850,28 +850,41 @@ struct ReminderListView: View {
                 }
             }
 
-            // 等待中
+            // 等待中（v2.4.14: 同一人公历+农历生日合并显示一行——底层仍两条独立提醒）
             let pendingReminders = filtered.filter { $0.status == .pending }
             if !pendingReminders.isEmpty {
+                let display = pairBirthdayRows(pendingReminders)
                 Section {
-                    ForEach(pendingReminders) { reminder in
-                        NavigationLink {
-                            ReminderDetailView(reminder: reminder)
-                        } label: {
-                            ReminderRowView(reminder: reminder)
-                                .listRowInsets(EdgeInsets())
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                        }
-                        .swipeActions(edge: .leading) {
-                            completeSwipe(for: reminder)
-                        }
-                        .swipeActions(edge: .trailing) {
-                            deleteSwipe(for: reminder)
+                    ForEach(display) { item in
+                        switch item {
+                        case .pair(let solar, let lunar):
+                            NavigationLink {
+                                ReminderDetailView(reminder: item.nearest)
+                            } label: {
+                                MergedBirthdayRow(solar: solar, lunar: lunar)
+                                    .listRowInsets(EdgeInsets())
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                            }
+                        case .single(let reminder):
+                            NavigationLink {
+                                ReminderDetailView(reminder: reminder)
+                            } label: {
+                                ReminderRowView(reminder: reminder)
+                                    .listRowInsets(EdgeInsets())
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                            }
+                            .swipeActions(edge: .leading) {
+                                completeSwipe(for: reminder)
+                            }
+                            .swipeActions(edge: .trailing) {
+                                deleteSwipe(for: reminder)
+                            }
                         }
                     }
                 } header: {
-                    sectionHeader(title: "等待中", color: ThemeTokens.statusWaiting, count: pendingReminders.count)
+                    sectionHeader(title: "等待中", color: ThemeTokens.statusWaiting, count: display.count)
                 }
             }
 
@@ -1431,4 +1444,63 @@ struct TodayTimelineView: View {
         if minutes > 0 { return Localized("%d 分钟后", minutes) }
         return Localized("%d 秒后", seconds)
     }
+}
+
+// MARK: - 等待中同人生日合并（v2.4.14）
+
+/// 等待中列表的显示条目：同一人的公历+农历生日对合成一行，其余单条。
+/// 底层仍是两条独立提醒（各自触发/完成/删除），仅显示层合并。
+private enum PendingRow: Identifiable {
+    case pair(solar: Reminder, lunar: Reminder)
+    case single(Reminder)
+
+    var id: UUID {
+        switch self {
+        case .pair(let s, _): return s.id
+        case .single(let r): return r.id
+        }
+    }
+
+    var sortTime: Date {
+        switch self {
+        case .pair(let s, let l): return min(s.nextTriggerAt, l.nextTriggerAt)
+        case .single(let r): return r.nextTriggerAt
+        }
+    }
+
+    /// pair 中下次先到的提醒（合并行的详情入口）
+    var nearest: Reminder {
+        switch self {
+        case .pair(let s, let l): return s.nextTriggerAt <= l.nextTriggerAt ? s : l
+        case .single(let r): return r
+        }
+    }
+}
+
+/// 配对规则：kind=date、标题分别以「（公历）/（农历）」结尾且去后缀后同名。
+/// 没配上对的（只有单历法）按普通单条显示。
+private func pairBirthdayRows(_ items: [Reminder]) -> [PendingRow] {
+    var solar: [String: Reminder] = [:]
+    var lunar: [String: Reminder] = [:]
+    var rest: [Reminder] = []
+    for r in items {
+        if r.kind == .date, r.dateType == .solarBirthday, r.title.hasSuffix("（公历）") {
+            solar[String(r.title.dropLast(4))] = r
+        } else if r.kind == .date, r.dateType == .lunarBirthday, r.title.hasSuffix("（农历）") {
+            lunar[String(r.title.dropLast(4))] = r
+        } else {
+            rest.append(r)
+        }
+    }
+    var rows: [PendingRow] = []
+    for (base, s) in solar {
+        if let l = lunar.removeValue(forKey: base) {
+            rows.append(.pair(solar: s, lunar: l))
+        } else {
+            rest.append(s)
+        }
+    }
+    rest.append(contentsOf: lunar.values)
+    rows.append(contentsOf: rest.map(PendingRow.single))
+    return rows.sorted { $0.sortTime < $1.sortTime }
 }

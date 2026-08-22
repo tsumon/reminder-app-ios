@@ -138,6 +138,102 @@ extension String {
     var isNotEmpty: Bool { !isEmpty }
 }
 
+/// v2.4.14: 同一人公历+农历生日合并行——「爸爸生日（公历）」+「爸爸生日（农历）」
+/// 拆两条存储（各自独立触发），列表层合成一行显示。点击进入「下次先到」那条的详情。
+struct MergedBirthdayRow: View {
+    let solar: Reminder
+    let lunar: Reminder
+
+    private var baseTitle: String { String(solar.title.dropLast("（公历）".count)) }
+    private var nearest: Reminder { solar.nextTriggerAt <= lunar.nextTriggerAt ? solar : lunar }
+
+    var body: some View {
+        HStack(spacing: 13) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [.pink.opacity(0.32), .purple.opacity(0.24)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 44, height: 44)
+                Text(nearest.typeEmoji)
+                    .font(.system(size: 20))
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(baseTitle)
+                    .font(.body.weight(.medium))
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Text(Localized("公历 %@", solar.dateDisplayText))
+                        .font(.caption)
+                        .foregroundStyle(.pink)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Color.pink.opacity(0.12))
+                        .clipShape(Capsule())
+                    Text(Localized("农历 %@", lunar.dateDisplayText))
+                        .font(.caption)
+                        .foregroundStyle(.purple)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Color.purple.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+
+                HStack(spacing: 6) {
+                    Text(nearest.status.rawValue.localized)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(statusColor)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(statusColor.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+            }
+
+            Spacer()
+
+            Text(timeText)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(statusColor)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(.white.opacity(0.35), lineWidth: 0.8)
+        )
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
+        .opacity(nearest.isEnabled ? 1 : 0.5)
+    }
+
+    private var statusColor: Color {
+        switch nearest.status {
+        case .pending:   return ThemeTokens.statusWaiting
+        case .active:    return ThemeTokens.statusReminding
+        case .snoozed:   return ThemeTokens.statusSnoozed
+        case .confirmed: return ThemeTokens.statusCompleted
+        case .overdue:   return ThemeTokens.statusOverdue
+        }
+    }
+
+    private var timeText: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        return formatter.localizedString(for: nearest.nextTriggerAt, relativeTo: Date())
+    }
+}
+
 #Preview {
     List {
         ReminderRowView(reminder: Reminder(
