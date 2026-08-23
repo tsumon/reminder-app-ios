@@ -228,110 +228,14 @@ struct ReminderListView: View {
         }
     }
 
+    // v2.5.0: CI 端编译器对巨型修饰符链 type-check 超时——按职责分层拆成 5 个计算属性
     private var mainContentWrapped: some View {
-        sheetsWrapped
-            .onAppear {
-                saveWidgetSnapshot(reminders)
-                // 批次2 功能1: 冷启动兜底 —— 消费持久化的「通知点击直达确认面板」目标
-                if let pending = NotificationManager.takePendingDetailID(),
-                   let uuid = UUID(uuidString: pending) {
-                    pendingDetailID = uuid
-                }
-                // 自动同步（限频 5 分钟）
-                if SyncStore.autoSync && SyncStore.isConfigured &&
-                    Date().timeIntervalSince1970 - SyncStore.lastSyncAt > 300 {
-                    Task {
-                        _ = await WebDavSync.syncNow(reminders: reminders, modelContext: modelContext)
-                    }
-                }
-            }
-            .task {
-                // v2.4.2: 锚点星期修正——weekly 意图星期与锚点不符时提示一键修正
-                let mismatches = WeeklyWeekdayStore.anchorMismatches(reminders: reminders)
-                if !mismatches.isEmpty {
-                    anchorMismatches = mismatches
-                }
-                // v1.8.7 在线升级: 启动后台检查 GitHub 最新版本
-                if let info = await UpdateService.checkLatest(), info.isNewer {
-                    updateInfo = info
-                }
-                // v2.1.1: 本地自动备份（当日已备份则跳过）
-                LocalBackupService.backupOnLaunch(reminders: reminders)
-            }
-            .onChange(of: reminders) { _, newValue in
-                saveWidgetSnapshot(newValue)
-            }
-            // 批次2 功能1: 点击通知本体 → 直达该提醒的确认面板
-            // navigationDestination(item:) 需 Hashable → 用 UUID（SwiftData 模型非 Hashable，规避）
-            .navigationDestination(item: $pendingDetailID) { id in
-                if let reminder = reminders.first(where: { $0.id == id }) {
-                    ReminderDetailView(reminder: reminder)
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .openReminderDetail)) { note in
-                guard let idString = note.object as? String,
-                      let uuid = UUID(uuidString: idString) else { return }
-                pendingDetailID = uuid
-            }
-            // 批次2 功能2: 确认完成 → 打卡成功卡片（含当前连续天数）
-            .onReceive(NotificationCenter.default.publisher(for: .reminderConfirmed)) { _ in
-                let descriptor = FetchDescriptor<ReminderRecord>()
-                let records = (try? modelContext.fetch(descriptor)) ?? []
-                let streak = StatsService.summarize(records: records).currentStreak
-                checkInText = streak > 1
-                    ? "打卡成功，已连续 \(streak) 天 🎉"
-                    : "打卡成功 🎉"
-                checkInToken += 1
-            }
-            .overlay {
-                CheckInFeedbackBanner(text: checkInText)
-            }
-            // v2.5.0: 打卡成功全屏粉彩彩带（与庆祝卡片同触发）
-            .overlay {
-                ConfettiBurst(trigger: checkInToken)
-            }
-            // v2.0.21 G3: 自动消失改用可取消的 task —— 原 asyncAfter(2.8s) 无法撤销，
-            // 连续确认两条时第一条的计时器会把第二条卡片提前清掉。
-            // task(id:) 在 token 变化时自动取消上一个（对齐 Android LaunchedEffect(text) 语义）。
-            .task(id: checkInToken) {
-                guard checkInToken > 0, checkInText != nil else { return }
-                try? await Task.sleep(nanoseconds: 2_800_000_000)
-                guard !Task.isCancelled else { return }
-                checkInText = nil
-            }
-            .alert("同步".localized, isPresented: Binding(
-                get: { syncMessage != nil },
-                set: { if !$0 { syncMessage = nil } }
-            )) {
-                Button("好".localized, role: .cancel) {}
-            } message: {
-                Text((syncMessage ?? "").localized)
-            }
-            // v2.0.22: 删除保存失败提示
-            // v2.4.2: 锚点星期修正提示
-            .alert("提醒日错位".localized, isPresented: Binding(
-                get: { !anchorMismatches.isEmpty },
-                set: { if !$0 { anchorMismatches = [] } }
-            )) {
-                Button("修正为设定星期".localized) { fixAnchorMismatches() }
-                Button("忽略".localized, role: .cancel) { anchorMismatches = [] }
-            } message: {
-                let names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-                let lines = anchorMismatches.prefix(5).map { r -> String in
-                    let intended = WeeklyWeekdayStore.get(for: r.id) ?? 1
-                    let actual = ((Calendar.current.component(.weekday, from: r.firstTriggerAt) + 5) % 7) + 1
-                    return "\(r.title)：设定\(names[intended - 1])，实际\(names[actual - 1])"
-                }
-                return Text("以下每周提醒的触发日与设定不符：\n" + lines.joined(separator: "\n"))
-            }
-            .alert("删除失败".localized, isPresented: Binding(
-                get: { deleteError != nil },
-                set: { if !$0 { deleteError = nil } }
-            )) {
-                Button("好".localized, role: .cancel) {}
-            } message: {
-                Text(deleteError ?? "")
-            }
+        updateFlowLayer
+    }
+
+    /// 升级下载流（发现新版本 alert + 下载结果 sheet + 检查更新 alert + 日任务 sheet）
+    private var updateFlowLayer: some View {
+        baseAlertsLayer
             // v1.8.7 在线升级(自签): 发现新版本 → 下载 ipa 到本地文件 App
             .alert(
                 Localized("发现新版本 v%@", updateInfo?.latestVersion ?? ""),
@@ -389,6 +293,123 @@ struct ReminderListView: View {
                 if let day = selectedDay {
                     DayTasksSheet(day: day, reminders: reminders)
                 }
+            }
+    }
+
+    /// 三个轻量 alert（同步结果 / 锚点星期修正 / 删除失败）
+    private var baseAlertsLayer: some View {
+        lifecycleLayer
+            .alert("同步".localized, isPresented: Binding(
+                get: { syncMessage != nil },
+                set: { if !$0 { syncMessage = nil } }
+            )) {
+                Button("好".localized, role: .cancel) {}
+            } message: {
+                Text((syncMessage ?? "").localized)
+            }
+            // v2.0.22: 删除保存失败提示
+            // v2.4.2: 锚点星期修正提示
+            .alert("提醒日错位".localized, isPresented: Binding(
+                get: { !anchorMismatches.isEmpty },
+                set: { if !$0 { anchorMismatches = [] } }
+            )) {
+                Button("修正为设定星期".localized) { fixAnchorMismatches() }
+                Button("忽略".localized, role: .cancel) { anchorMismatches = [] }
+            } message: {
+                let names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+                let lines = anchorMismatches.prefix(5).map { r -> String in
+                    let intended = WeeklyWeekdayStore.get(for: r.id) ?? 1
+                    let actual = ((Calendar.current.component(.weekday, from: r.firstTriggerAt) + 5) % 7) + 1
+                    return "\(r.title)：设定\(names[intended - 1])，实际\(names[actual - 1])"
+                }
+                return Text("以下每周提醒的触发日与设定不符：\n" + lines.joined(separator: "\n"))
+            }
+            .alert("删除失败".localized, isPresented: Binding(
+                get: { deleteError != nil },
+                set: { if !$0 { deleteError = nil } }
+            )) {
+                Button("好".localized, role: .cancel) {}
+            } message: {
+                Text(deleteError ?? "")
+            }
+    }
+
+    /// 生命周期与导航事件（快照/同步/升级检查/通知直达/打卡事件）
+    private var lifecycleLayer: some View {
+        feedbackOverlayLayer
+            .onAppear {
+                saveWidgetSnapshot(reminders)
+                // 批次2 功能1: 冷启动兜底 —— 消费持久化的「通知点击直达确认面板」目标
+                if let pending = NotificationManager.takePendingDetailID(),
+                   let uuid = UUID(uuidString: pending) {
+                    pendingDetailID = uuid
+                }
+                // 自动同步（限频 5 分钟）
+                if SyncStore.autoSync && SyncStore.isConfigured &&
+                    Date().timeIntervalSince1970 - SyncStore.lastSyncAt > 300 {
+                    Task {
+                        _ = await WebDavSync.syncNow(reminders: reminders, modelContext: modelContext)
+                    }
+                }
+            }
+            .task {
+                // v2.4.2: 锚点星期修正——weekly 意图星期与锚点不符时提示一键修正
+                let mismatches = WeeklyWeekdayStore.anchorMismatches(reminders: reminders)
+                if !mismatches.isEmpty {
+                    anchorMismatches = mismatches
+                }
+                // v1.8.7 在线升级: 启动后台检查 GitHub 最新版本
+                if let info = await UpdateService.checkLatest(), info.isNewer {
+                    updateInfo = info
+                }
+                // v2.1.1: 本地自动备份（当日已备份则跳过）
+                LocalBackupService.backupOnLaunch(reminders: reminders)
+            }
+            .onChange(of: reminders) { _, newValue in
+                saveWidgetSnapshot(newValue)
+            }
+            // 批次2 功能1: 点击通知本体 → 直达该提醒的确认面板
+            // navigationDestination(item:) 需 Hashable → 用 UUID（SwiftData 模型非 Hashable，规避）
+            .navigationDestination(item: $pendingDetailID) { id in
+                if let reminder = reminders.first(where: { $0.id == id }) {
+                    ReminderDetailView(reminder: reminder)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .openReminderDetail)) { note in
+                guard let idString = note.object as? String,
+                      let uuid = UUID(uuidString: idString) else { return }
+                pendingDetailID = uuid
+            }
+            // 批次2 功能2: 确认完成 → 打卡成功卡片（含当前连续天数）
+            .onReceive(NotificationCenter.default.publisher(for: .reminderConfirmed)) { _ in
+                let descriptor = FetchDescriptor<ReminderRecord>()
+                let records = (try? modelContext.fetch(descriptor)) ?? []
+                let streak = StatsService.summarize(records: records).currentStreak
+                checkInText = streak > 1
+                    ? "打卡成功，已连续 \(streak) 天 🎉"
+                    : "打卡成功 🎉"
+                checkInToken += 1
+            }
+    }
+
+    /// 打卡反馈覆盖层（庆祝卡 + 全屏彩带 + 自动消失计时）
+    private var feedbackOverlayLayer: some View {
+        sheetsWrapped
+            .overlay {
+                CheckInFeedbackBanner(text: checkInText)
+            }
+            // v2.5.0: 打卡成功全屏粉彩彩带（与庆祝卡片同触发）
+            .overlay {
+                ConfettiBurst(trigger: checkInToken)
+            }
+            // v2.0.21 G3: 自动消失改用可取消的 task —— 原 asyncAfter(2.8s) 无法撤销，
+            // 连续确认两条时第一条的计时器会把第二条卡片提前清掉。
+            // task(id:) 在 token 变化时自动取消上一个（对齐 Android LaunchedEffect(text) 语义）。
+            .task(id: checkInToken) {
+                guard checkInToken > 0, checkInText != nil else { return }
+                try? await Task.sleep(nanoseconds: 2_800_000_000)
+                guard !Task.isCancelled else { return }
+                checkInText = nil
             }
     }
 
