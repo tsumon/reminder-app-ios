@@ -40,7 +40,7 @@ final class ChatHistoryUITests: XCTestCase {
         openAIPage(app)
 
         // 断言 1：注入的 3 条历史已恢复（load 路径）
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "打针")).firstMatch
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "测试消息")).firstMatch
             .waitForExistence(timeout: 8), "注入的历史未显示（load 失效）")
 
         // 发送一条新消息（假端点 → 网络失败 → catch 路径，用户消息仍应上屏+保存）
@@ -67,7 +67,7 @@ final class ChatHistoryUITests: XCTestCase {
         // 断言 3：重启后历史完整（save→load 全链路）
         XCTAssertTrue(app.staticTexts["uitest-save"].waitForExistence(timeout: 8),
                       "重启后用户消息丢失——save 或 load 失效")
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "打针")).firstMatch
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "测试消息")).firstMatch
             .waitForExistence(timeout: 5), "重启后注入历史丢失")
     }
 }

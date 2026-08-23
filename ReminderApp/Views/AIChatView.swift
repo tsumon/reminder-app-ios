@@ -58,6 +58,16 @@ struct AIChatView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
+                    // v2.5.1: 打开对话框自动滚到最新对话——原仅 messages 变化/加载才滚底，
+                    // 重进时内容相同不触发 onChange，停在最开始的旧对话（用户反馈）
+                    .onAppear {
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 60_000_000) // 等首帧布局
+                            if let last = messages.last?.id {
+                                withAnimation { proxy.scrollTo(last, anchor: .bottom) }
+                            }
+                        }
+                    }
                 }
                 .onChange(of: messages.count) { _ in
                     if let last = messages.last?.id {

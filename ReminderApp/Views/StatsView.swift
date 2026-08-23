@@ -357,28 +357,35 @@ struct StatsView: View {
         }
     }
 
+    @Environment(\.colorScheme) private var scheme
+
     private var cardBackground: some View {
         // v2.5.0: 粘土拟态卡（暖白渐变 + 高光描边 + 柔和双层阴影）
+        // v2.5.1: 补深色分支——原写死浅色，深色模式下浅卡+白字看不清
         RoundedRectangle(cornerRadius: 20, style: .continuous)
             .fill(
-                LinearGradient(
-                    colors: [.white, Playful.cream],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                scheme == .dark
+                    ? AnyShapeStyle(Color(hex: 0x2A2735))
+                    : AnyShapeStyle(LinearGradient(
+                        colors: [.white, Playful.cream],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .strokeBorder(
                         LinearGradient(
-                            colors: [.white.opacity(0.85), .white.opacity(0.25)],
+                            colors: scheme == .dark
+                                ? [.white.opacity(0.10), .white.opacity(0.03)]
+                                : [.white.opacity(0.85), .white.opacity(0.25)],
                             startPoint: .top,
                             endPoint: .bottom
                         ),
                         lineWidth: 1.5
                     )
             )
-            .shadow(color: Playful.purple.opacity(0.10), radius: 14, y: 8)
+            .shadow(color: scheme == .dark ? Color.clear : Playful.purple.opacity(0.10), radius: 14, y: 8)
             .shadow(color: .black.opacity(0.05), radius: 5, y: 3)
     }
 }

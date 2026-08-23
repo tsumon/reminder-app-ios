@@ -39,11 +39,11 @@ struct ReminderApp: App {
             UserDefaults.standard.set(true, forKey: "ai_is_local")
             UserDefaults.standard.set("http://127.0.0.1:9/v1", forKey: "ai_endpoint")
             let now = Date()
-            ChatHistoryStore.save([
-                ChatMessage(role: .user, content: "每周打针怎么设置", timestamp: now.addingTimeInterval(-3600)),
-                ChatMessage(role: .assistant, content: "已创建每周打针提醒，每周一 8:00", timestamp: now.addingTimeInterval(-3500)),
-                ChatMessage(role: .user, content: "打针改到周三", timestamp: now.addingTimeInterval(-3400))
-            ])
+            // v2.5.1: 15 条足够撑满视口——验证打开对话框自动滚到底部
+            let msgs = (1...15).map { i in
+                ChatMessage(role: .user, content: "测试消息 \(i)", timestamp: now.addingTimeInterval(Double(i - 20) * 60))
+            }
+            ChatHistoryStore.save(msgs)
         }
     }
     #endif
