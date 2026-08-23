@@ -35,16 +35,20 @@ struct ReminderRowView: View {
                     .foregroundStyle(isDone ? .secondary : .primary)
 
                 HStack(spacing: 6) {
-                    // 类型标签
-                    Image(systemName: reminder.kindIcon)
-                        .font(.caption2)
-                    Text(kindLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 2)
-                        .background(kindBadgeColor.opacity(0.12))
-                        .clipShape(Capsule())
+                    // v2.5.0: 周期类用深灰规则徽章（数据区对比色），日期类保留彩色
+                    if reminder.kind == .date {
+                        Image(systemName: reminder.kindIcon)
+                            .font(.caption2)
+                        Text(kindLabel)
+                            .font(.caption)
+                            .foregroundStyle(kindBadgeColor)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(kindBadgeColor.opacity(0.12))
+                            .clipShape(Capsule())
+                    } else {
+                        RepeatRuleBadge(reminder: reminder)
+                    }
                 }
 
                 // v1.9.8 状态胶囊（设计图独立 chip）
@@ -80,18 +84,10 @@ struct ReminderRowView: View {
                 .foregroundStyle(isDone ? Color(.tertiaryLabel) : statusColor)
                 .multilineTextAlignment(.trailing)
         }
-        // 液态玻璃行：ultraThinMaterial + 高光描边 + 柔和阴影
+        // v2.5.0: 粘土拟态行卡（替代液态玻璃）
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(.ultraThinMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(.white.opacity(0.35), lineWidth: 0.8)
-        )
-        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
+        .clayCard(radius: 18)
         .opacity(reminder.isEnabled ? 1 : 0.5)
     }
 
@@ -205,15 +201,7 @@ struct MergedBirthdayRow: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(.ultraThinMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(.white.opacity(0.35), lineWidth: 0.8)
-        )
-        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
+        .clayCard(radius: 18)
         .opacity(nearest.isEnabled ? 1 : 0.5)
     }
 

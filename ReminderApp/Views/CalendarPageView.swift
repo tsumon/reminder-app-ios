@@ -5,12 +5,18 @@ import SwiftData
 struct CalendarPageView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Reminder.nextTriggerAt) private var reminders: [Reminder]
+    // v2.5.0: 打卡记录（吉祥物心情 / 连胜旗 / 本周跑道）
+    @Query(sort: \ReminderRecord.performedAt) private var records: [ReminderRecord]
     @State private var selectedDate: Date = Date()
 
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
-                CalendarCardView(reminders: reminders) { date in
+                CalendarCardView(
+                    reminders: reminders,
+                    streak: StatsService.summarize(records: records).currentStreak,
+                    weekDone: weekDoneDays(records: records)
+                ) { date in
                     selectedDate = date
                 }
 
@@ -18,6 +24,7 @@ struct CalendarPageView: View {
             }
             .padding(16)
         }
+        .background(PastelPlaygroundBackground())
         .navigationTitle("日历".localized)
         // v1.9.8.1: iPad 大屏下大标题+玻璃背景形成大块空白，改 inline 更紧凑
         .navigationBarTitleDisplayMode(.inline)

@@ -91,15 +91,8 @@ struct ReminderListView: View {
             }
             // v2.1.1: 批量管理编辑模式（EditButton / 多选）
             .environment(\.editMode, $editMode)
-            // v2.2.1: 页面级柔和品牌渐变背景（浅色下紫灰淡入，深色自动回落）
-            .background(
-                LinearGradient(
-                    colors: [ThemeTokens.brandPrimary.opacity(0.06), Color.clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
-            )
+            // v2.5.0: 桃粉+薰衣草软渐变背景 + 漂浮星星/云朵（治愈游戏基调）
+            .background(PastelPlaygroundBackground())
             .scrollContentBackground(.hidden)
             .navigationTitle("提醒事项".localized)
             // v1.9.8.1: iPad 大屏下大标题区+玻璃背景形成大块空白，改 inline 更紧凑
@@ -218,6 +211,7 @@ struct ReminderListView: View {
                         Image(systemName: "ellipsis.circle")
                             .font(.title3.weight(.semibold))
                     }
+                    .accessibilityIdentifier("more-menu")
                 }
             }
     }
@@ -279,6 +273,10 @@ struct ReminderListView: View {
             }
             .overlay {
                 CheckInFeedbackBanner(text: checkInText)
+            }
+            // v2.5.0: 打卡成功全屏粉彩彩带（与庆祝卡片同触发）
+            .overlay {
+                ConfettiBurst(trigger: checkInToken)
             }
             // v2.0.21 G3: 自动消失改用可取消的 task —— 原 asyncAfter(2.8s) 无法撤销，
             // 连续确认两条时第一条的计时器会把第二条卡片提前清掉。
@@ -591,42 +589,26 @@ struct ReminderListView: View {
         List {
             // 日历
             Section {
-                CalendarCardView(reminders: reminders, onDateTap: { selectedDay = $0; showDaySheet = true })
+                CalendarCardView(
+                    reminders: reminders,
+                    streak: StatsService.summarize(records: records).currentStreak,
+                    weekDone: weekDoneDays(records: records),
+                    onDateTap: { selectedDay = $0; showDaySheet = true }
+                )
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
 
             Section {
-                VStack(spacing: 20) {
-                    Image(systemName: "bell.badge")
-                        .font(.system(size: 64))
-                        .foregroundStyle(.secondary)
-
-                    Text("暂无提醒".localized)
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-
-                    Text("点击右上角 + 创建你的第一个循环提醒".localized)
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.center)
-
-                    Button {
-                        showCreateSheet = true
-                    } label: {
-                        Label("创建提醒".localized, systemImage: "plus.circle.fill")
-                            .font(.headline)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .padding(.top, 8)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 40)
-                .listRowBackground(Color.clear)
+                // v2.5.0: 空状态=小狐狸挥手「今天想做什么呀？」
+                WavingEmptyMascot(onCreate: { showCreateSheet = true })
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
     }
 
     // MARK: - 下载结果 sheet
@@ -789,7 +771,9 @@ struct ReminderListView: View {
                 OverviewCard(
                     unhandledCount: unhandled,
                     nextReminder: next,
-                    todayDone: records.filter { $0.type == ReminderRecordType.confirm.rawValue && Calendar.current.isDateInToday($0.performedAt) }.count
+                    todayDone: records.filter { $0.type == ReminderRecordType.confirm.rawValue && Calendar.current.isDateInToday($0.performedAt) }.count,
+                    streak: StatsService.summarize(records: records).currentStreak,
+                    weekDone: weekDoneDays(records: records)
                 )
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
@@ -803,7 +787,10 @@ struct ReminderListView: View {
             }.sorted { $0.nextTriggerAt < $1.nextTriggerAt }
             if !todayReminders.isEmpty {
                 Section {
-                    TodayTimelineView(reminders: todayReminders)
+                    TodayTimelineView(
+                        reminders: todayReminders,
+                        doneToday: todayDoneCount(records: records)
+                    )
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -1195,129 +1182,84 @@ struct DayTasksSheet: View {
 struct OverviewCard: View {
     let unhandledCount: Int
     let nextReminder: Reminder?
-    /// v2.3.0: 今日完成数（完成率环）
     let todayDone: Int
+    /// v2.5.0: 连续打卡天数（城堡楼层）+ 本周打卡天数（彩虹跑道）
+    let streak: Int
+    let weekDone: Int
 
     var body: some View {
-        // v2.2.1 设计语言：日期大标题 + 农历徽章 + 待办强调 + 光斑装饰
-        ZStack(alignment: .topTrailing) {
-            // 装饰光斑（右上角柔光圆）
-            Circle()
-                .fill(.white.opacity(0.14))
-                .frame(width: 130, height: 130)
-                .offset(x: 45, y: -55)
-                .blur(radius: 6)
-                .allowsHitTesting(false)
-
-            VStack(alignment: .leading, spacing: 12) {
-                // 日期大标题 + 农历
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(dateTitle)
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
-                    Text(weekdayTitle)
-                        .font(.headline)
-                        .opacity(0.85)
-                    Spacer()
+        // v2.5.0 粘土拟态：暖白粘土卡 + 连续打卡城堡（头部）+ 本周彩虹跑道
+        VStack(alignment: .leading, spacing: 12) {
+            // 日期大标题 + 农历徽章 | 连续打卡城堡
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(dateTitle)
+                            .font(.system(size: 27, weight: .bold, design: .rounded))
+                        Text(weekdayTitle)
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                    }
                     if let lunar = lunarToday {
                         HStack(spacing: 4) {
-                            Image(systemName: "moon.stars.fill")
-                                .font(.caption)
+                            Text("🌙")
+                                .font(.system(size: 9))
                             Text(lunar)
-                                .font(.caption.weight(.medium))
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
                         }
-                        .padding(.horizontal, 10)
+                        .foregroundStyle(.white.opacity(0.92))
+                        .padding(.horizontal, 9)
                         .padding(.vertical, 4)
-                        .background(.white.opacity(0.18))
-                        .clipShape(Capsule())
+                        .background(Capsule().fill(Playful.ink.opacity(0.88)))
                     }
                 }
+                Spacer(minLength: 12)
+                StreakCastleView(streak: streak, compact: true)
+            }
 
-                Divider().overlay(.white.opacity(0.25))
+            Divider().overlay(Playful.lavender)
 
-                // 待处理 + 下次提醒
-                HStack(spacing: 14) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "bell.badge.fill")
-                                .font(.title3)
-                                .symbolEffect(.bounce, value: unhandledCount)
-                            Text(Localized("待处理 %d 项", unhandledCount))
-                                .font(.headline)
-                        }
-                        if let r = nextReminder {
-                            Label {
-                                Text("\(r.title) · \(r.nextTriggerAt.formatted(date: .numeric, time: .shortened))")
-                                    .lineLimit(1)
-                            } icon: {
-                                Image(systemName: "clock")
-                            }
-                            .font(.subheadline)
-                            .opacity(0.9)
-                        } else {
-                            Label("暂无即将到来的提醒".localized, systemImage: "checkmark.circle")
-                                .font(.subheadline)
-                                .opacity(0.9)
-                        }
-                    }
+            // 待处理 + 今日打卡 + 下次提醒
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    Text("🔔")
+                        .font(.system(size: 15))
+                        .symbolEffect(.bounce, value: unhandledCount)
+                    Text(Localized("待处理 %d 项", unhandledCount))
+                        .font(.headline)
                     Spacer()
-                    // v2.3.0: 今日完成率环（感知强的核心视觉）
-                    completionRing
+                    Text(Localized("今日 ✅ %d", todayDone))
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(Playful.ink)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Playful.mint.opacity(0.28)))
+                }
+                if let r = nextReminder {
+                    Label {
+                        Text("\(r.title) · \(r.nextTriggerAt.formatted(date: .numeric, time: .shortened))")
+                            .lineLimit(1)
+                    } icon: {
+                        Image(systemName: "clock")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                } else {
+                    Label("暂无即将到来的提醒".localized, systemImage: "checkmark.circle")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .padding(18)
+
+            // 本周彩虹跑道
+            WeeklyProgressTrack(done: weekDone, total: 7)
         }
-        .foregroundStyle(.white)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            LinearGradient(
-                colors: [ThemeTokens.brandGradientStart, ThemeTokens.brandPrimary, ThemeTokens.brandPrimaryDark],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        // 玻璃高光：顶部白色渐变
-        .overlay(
-            LinearGradient(
-                colors: [.white.opacity(0.28), .white.opacity(0.0)],
-                startPoint: .top,
-                endPoint: .center
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .allowsHitTesting(false)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(.white.opacity(0.35), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .shadow(color: ThemeTokens.brandPrimary.opacity(0.30), radius: 16, y: 8)
+        .clayCard(radius: 24)
         .listRowInsets(EdgeInsets())
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
-    }
-
-
-    /// 今日完成率环：完成 / (完成 + 未完成)
-    private var completionRing: some View {
-        let total = todayDone + unhandledCount
-        let progress = total > 0 ? Double(todayDone) / Double(total) : 0
-        return ZStack {
-            Circle()
-                .stroke(.white.opacity(0.22), lineWidth: 6)
-            Circle()
-                .trim(from: 0, to: max(0.02, progress))
-                .stroke(.white, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 0) {
-                Text("\(Int(progress * 100))%")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                Text("今日完成".localized)
-                    .font(.system(size: 9))
-                    .opacity(0.85)
-            }
-        }
-        .frame(width: 62, height: 62)
-        .padding(.trailing, 4)
     }
 
     /// 今天日期标题（如「8月16日」）
@@ -1350,22 +1292,25 @@ struct OverviewCard: View {
     }
 }
 
-// MARK: - 今日安排时间线（v2.4.0 布局重设计）
+// MARK: - 今日安排时间线（v2.4.0 布局重设计 / v2.5.0 治愈游戏化）
 
-/// 今天要触发的提醒按时间排列：左侧时间 + 竖线圆点 + 右侧卡片
+/// 今天要触发的提醒按时间排列：左侧时间 + 发光球打卡位 + 粘土卡（重复规则徽章），
+/// 底部挂里程碑宝箱。
 struct TodayTimelineView: View {
     let reminders: [Reminder]
+    /// v2.5.0: 今日已打卡数（宝箱进度口径 = 已打卡 + 待办）
+    var doneToday: Int = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(reminders.enumerated()), id: \.offset) { index, reminder in
-                HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .top, spacing: 8) {
                     // 左侧时间 + 时间线
                     VStack(spacing: 0) {
                         Text(timeText(reminder.nextTriggerAt))
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .foregroundStyle(ThemeTokens.brandPrimary)
-                            .frame(width: 44, alignment: .trailing)
+                            .frame(width: 40, alignment: .trailing)
                         if index < reminders.count - 1 {
                             Rectangle()
                                 .fill(ThemeTokens.brandPrimary.opacity(0.25))
@@ -1374,37 +1319,37 @@ struct TodayTimelineView: View {
                                 .padding(.vertical, 2)
                         }
                     }
-                    .frame(width: 46)
+                    .frame(width: 42)
 
-                    // 圆点
-                    Circle()
-                        .fill(ThemeTokens.brandPrimary)
-                        .frame(width: 9, height: 9)
-                        .overlay(
-                            Circle().strokeBorder(.white.opacity(0.6), lineWidth: 1.5)
-                        )
-                        .padding(.top, 4)
+                    // v2.5.0: 发光球打卡位（替代小圆点，点按即打卡 → 彩带庆祝）
+                    OrbCheckButton(done: false) {
+                        ReminderEngine.shared.confirmReminder(reminder)
+                    }
+                    .padding(.top, 10)
 
-                    // 右侧卡片
+                    // 右侧粘土卡：emoji + 标题 + 智能重复规则徽章 + 倒计时
                     HStack(spacing: 10) {
                         Text(reminder.typeEmoji)
                             .font(.system(size: 18))
                             .frame(width: 34, height: 34)
                             .background(
                                 LinearGradient(
-                                    colors: [ThemeTokens.brandPrimary.opacity(0.3), ThemeTokens.brandPrimary.opacity(0.1)],
+                                    colors: [Playful.gold.opacity(0.32), Playful.coral.opacity(0.16)],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
                             )
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 3) {
                             Text(reminder.title)
-                                .font(.subheadline.weight(.medium))
+                                .font(.subheadline.weight(.semibold))
                                 .lineLimit(1)
-                            Text(reminder.status == .overdue ? "已逾期".localized : reminder.status.rawValue.localized)
-                                .font(.caption2)
-                                .foregroundStyle(reminder.status == .overdue ? ThemeTokens.statusOverdue : ThemeTokens.statusWaiting)
+                            RepeatRuleBadge(reminder: reminder)
+                            if reminder.status == .overdue {
+                                Text("已逾期".localized)
+                                    .font(.caption2)
+                                    .foregroundStyle(ThemeTokens.statusOverdue)
+                            }
                         }
                         Spacer()
                         // 倒计时
@@ -1412,18 +1357,14 @@ struct TodayTimelineView: View {
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.secondary)
                     }
-                    .padding(10)
+                    .padding(11)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(.white.opacity(0.3), lineWidth: 0.8)
-                    )
+                    .clayCard(radius: 16)
                 }
             }
+
+            // v2.5.0: 里程碑宝箱
+            MilestoneChest(doneToday: doneToday, totalToday: reminders.count + doneToday)
         }
         .padding(.vertical, 4)
     }

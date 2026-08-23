@@ -1,4 +1,5 @@
 import XCTest
+import Foundation
 
 /// ask_user 历法澄清全链路 UI 回归（本地 mock 端点按剧本应答，配套
 /// ReminderAppUITests/MockAIServer.py：先 `python3 MockAIServer.py` 再跑本测试；
@@ -16,6 +17,17 @@ final class AskUserCalendarUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        // v2.5.0: 全新安装首启会弹通知权限系统弹窗，拦下来点允许（否则抢焦点、typeText 落空）
+        addUIInterruptionMonitor(withDescription: "notification-permission") { alert in
+            for label in ["Allow", "允许", "好", "OK"] {
+                let button = alert.buttons[label]
+                if button.exists {
+                    button.tap()
+                    return true
+                }
+            }
+            return false
+        }
     }
 
     func testAmbiguousDateAskUserButtonFlow() throws {
@@ -23,7 +35,9 @@ final class AskUserCalendarUITests: XCTestCase {
         app.launchArguments += [
             "-ai_endpoint", "http://127.0.0.1:8899/v1",
             "-ai_is_local", "1",
-            "-ai_model", "mock-test"
+            "-ai_model", "mock-test",
+            "-uitest_skip_permission", "1",
+            "-uitest_reset_mock", "1"
         ]
         app.launch()
 
@@ -47,7 +61,9 @@ final class AskUserCalendarUITests: XCTestCase {
         let input = app.textFields.firstMatch
         XCTAssertTrue(input.waitForExistence(timeout: 5), "输入框未找到")
         input.tap()
-        input.typeText("baba 2.10")
+        sleep(1)
+        input.tap()   // 菜单刚收起时首击可能没聚焦，补一击
+        app.typeText("baba 2.10")
         app.buttons["send-button"].tap()
 
         XCTAssertTrue(app.staticTexts.matching(
@@ -69,10 +85,16 @@ final class AskUserCalendarUITests: XCTestCase {
         let input2 = app.textFields.firstMatch
         XCTAssertTrue(input2.waitForExistence(timeout: 5), "第二段输入框未找到")
         input2.tap()
-        input2.typeText("mama 211")
+        sleep(1)
+        input2.tap()
+        app.typeText("mama 211")
         app.buttons["send-button"].tap()
         XCTAssertTrue(app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "已按农历创建：mama")).firstMatch
             .waitForExistence(timeout: 20), "第二段未创建或回复未上屏")
     }
+}
+
+extension XCTestCase {
+
 }

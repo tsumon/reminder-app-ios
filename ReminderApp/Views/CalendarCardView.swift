@@ -2,8 +2,11 @@ import SwiftUI
 import SwiftData
 
 /// 主页日历卡片：公历 + 农历 + 星期几 + 任务缩略标记
+/// v2.5.0: 日期格热力密度（任务越多底色越深）+ 今日格上站小狐狸 + 本周彩虹跑道
 struct CalendarCardView: View {
     let reminders: [Reminder]
+    var streak: Int = 0
+    var weekDone: Int? = nil
     var onDateTap: (Date) -> Void = { _ in }
 
     private let calendar = Calendar.current
@@ -15,12 +18,25 @@ struct CalendarCardView: View {
     // v1.8.7 UI 优化: 月份选择器 / 是否显示「回到今天」
     @State private var showMonthPicker = false
 
-    init(reminders: [Reminder], onDateTap: @escaping (Date) -> Void = { _ in }) {
+    init(reminders: [Reminder],
+         streak: Int = 0,
+         weekDone: Int? = nil,
+         onDateTap: @escaping (Date) -> Void = { _ in }) {
         self.reminders = reminders
+        self.streak = streak
+        self.weekDone = weekDone
         self.onDateTap = onDateTap
         let now = Date()
         _displayYear = State(initialValue: Calendar.current.component(.year, from: now))
         _displayMonth = State(initialValue: Calendar.current.component(.month, from: now))
+    }
+
+    /// 吉祥物心情随本周完成度变化
+    private var mascotMood: MascotView.Mood {
+        guard let done = weekDone else { return .idle }
+        if done >= 5 { return .cheer }
+        if done > 0 { return .happy }
+        return .idle
     }
 
     // MARK: - 今天信息
@@ -70,26 +86,16 @@ struct CalendarCardView: View {
             header
             weekdayRow
             dayGrid
+            // v2.5.0: 本周彩虹跑道（有打卡数据时展示）
+            if let done = weekDone {
+                WeeklyProgressTrack(done: done, total: 7)
+                    .padding(.horizontal, 8)
+                    .padding(.top, 6)
+            }
         }
         .padding(.vertical, 12)
-        // 液态玻璃：材质 + 高光描边 + 大圆角柔和阴影
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(.regularMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [.white.opacity(0.55), .white.opacity(0.12)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: 1
-                )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .shadow(color: ThemeTokens.brandPrimary.opacity(0.10), radius: 14, y: 6)
+        // v2.5.0: 粘土拟态卡（替代液态玻璃）
+        .clayCard(radius: 22)
         .sheet(isPresented: $showMonthPicker) {
             MonthYearPickerSheet(
                 year: displayYear,
@@ -219,7 +225,7 @@ struct CalendarCardView: View {
             // SwiftUI 会丢弃重复元素 → 8 月(leadingBlanks=5)的 1-4 日不显示
             ForEach(0..<leadingBlanks, id: \.self) { i in
                 Color.clear
-                    .frame(height: 50)
+                    .frame(height: 74)
                     .id("blank-\(i)")
             }
             ForEach(1...daysInMonth, id: \.self) { day in
@@ -245,6 +251,25 @@ struct CalendarCardView: View {
 
     // MARK: - 日期格子
 
+    /// v2.5.0 热力密度底色：任务越多品牌色越深（0=无 / 1 / 2 / 3+）
+    private func heatBackground(taskCount: Int, isToday: Bool, isSelected: Bool) -> AnyShapeStyle {
+        if isToday {
+            return AnyShapeStyle(
+                LinearGradient(colors: [ThemeTokens.brandGradientStart, ThemeTokens.brandPrimary],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+            )
+        }
+        if isSelected {
+            return AnyShapeStyle(Color.accentColor.opacity(0.16))
+        }
+        switch taskCount {
+        case 0: return AnyShapeStyle(Color.clear)
+        case 1: return AnyShapeStyle(ThemeTokens.brandPrimary.opacity(0.14))
+        case 2: return AnyShapeStyle(ThemeTokens.brandPrimary.opacity(0.26))
+        default: return AnyShapeStyle(ThemeTokens.brandPrimary.opacity(0.40))
+        }
+    }
+
     @MainActor private func dayCell(_ day: Int) -> some View {
         let isToday = displayYear == calendar.component(.year, from: today)
             && displayMonth == calendar.component(.month, from: today)
@@ -257,6 +282,10 @@ struct CalendarCardView: View {
         let holidayStatus = HolidayRemoteService.status(year: displayYear, month: displayMonth, day: day)
 
         return VStack(spacing: 1) {
+            // v2.5.0: 顶部 14pt 让位区——今日格的小狐狸要「站」在数字上，
+            // LazyVGrid 会裁剪溢出 cell 边界的内容，必须把站立位预留进格内
+            Color.clear.frame(height: 14)
+
             Text("\(day)")
                 .font(.subheadline)
                 .fontWeight(isToday || isSelected ? .bold : .regular)
@@ -265,25 +294,26 @@ struct CalendarCardView: View {
                         ? AnyShapeStyle(.tint)
                         : (isToday ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
                 )
-                .frame(width: 26, height: 26)
-                .background(
-                    isToday
-                        ? AnyShapeStyle(.tint)
-                        : (isSelected ? AnyShapeStyle(.tint.opacity(0.15)) : AnyShapeStyle(Color.clear))
-                )
-                .clipShape(Circle())
+                .frame(width: 30, height: 30)
+                .background(heatBackground(taskCount: taskCount, isToday: isToday, isSelected: isSelected))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                // v2.5.0: 小狐狸站在今日格右上角（表情随本周完成度），完全在格内
                 .overlay(alignment: .topTrailing) {
-                    // 任务角标：右上小圆点
-                    Circle()
-                        .fill(taskCount > 0 ? Color.accentColor : Color.clear)
-                        .frame(width: 5, height: 5)
-                        .padding(2)
+                    if isToday {
+                        MascotView(mood: mascotMood, size: 24)
+                            .offset(x: 7, y: -13)
+                            .allowsHitTesting(false)
+                    }
                 }
                 .overlay(
-                    isSelected && !isToday
-                        ? Circle().stroke(.tint, lineWidth: 1.5)
-                        : nil
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(isSelected && !isToday ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.clear), lineWidth: 1.5)
                 )
+
+            // v2.5.0 任务圆点：数字正下方独立一行（v2.4.5 教训——角标小点贴色圈不可见）
+            Circle()
+                .fill(taskCount > 0 ? Playful.coral : Color.clear)
+                .frame(width: 5.5, height: 5.5)
 
             Text(lunarText(day))
                 .font(.system(size: 8))
@@ -291,12 +321,12 @@ struct CalendarCardView: View {
                 .lineLimit(1)
 
             // 休/班角标：放假红「休」、调休上班橙「班」；普通日占位保持对齐
-            Text(holidayStatus.map { $0.isHoliday ? "休" : "班" } ?? "")
+                Text(holidayStatus.map { $0.isHoliday ? "休" : "班" } ?? "")
                 .font(.system(size: 8, weight: .semibold))
                 .foregroundStyle(holidayStatus?.isHoliday == true ? ThemeTokens.holidayRest : ThemeTokens.holidayWork)
                 .lineLimit(1)
         }
-        .frame(height: 50)
+        .frame(height: 70)
         .frame(maxWidth: .infinity)
         .onTapGesture {
             let d = dateFor(day) ?? Date()

@@ -271,12 +271,15 @@ struct CreateReminderView: View {
 
     private var cycleSection: some View {
         Section("提醒周期".localized) {
-            Picker("周期".localized, selection: $cycle) {
+            // v2.5.0 游戏化周期选择：emoji 卡片网格 + 彩虹光晕选中态（替代菜单选择器）
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                 ForEach(ReminderCycle.allCases, id: \.self) { c in
-                    Text(c.rawValue.localized).tag(c)
+                    CycleOptionCard(option: c, isSelected: cycle == c) {
+                        cycle = c
+                    }
                 }
             }
-            .pickerStyle(.menu)
+            .padding(.vertical, 2)
             .onChange(of: cycle) { _, newValue in
                 showCustomDaysField = newValue == .custom
             }
@@ -339,12 +342,15 @@ struct CreateReminderView: View {
             }
             .pickerStyle(.menu)
 
-            Picker("星期几".localized, selection: $ruleWeekday) {
+            // v2.5.0 星期灯泡：点亮=选中（替代菜单选择器）
+            HStack(spacing: 6) {
                 ForEach(RuleWeekday.allCases, id: \.self) { w in
-                    Text(w.label.localized).tag(w)
+                    WeekdayBulb(weekday: w, isOn: ruleWeekday == w) {
+                        ruleWeekday = w
+                    }
                 }
             }
-            .pickerStyle(.menu)
+            .padding(.vertical, 2)
 
             // 示例预览
             HStack {
@@ -699,4 +705,94 @@ struct CreateReminderView: View {
 #Preview {
     CreateReminderView()
         .modelContainer(for: [Reminder.self, ReminderRecord.self])
+}
+
+// MARK: - v2.5.0 游戏化周期选择组件
+
+/// 周期选项卡：emoji + 标题，选中态彩虹光晕描边 + 微放大
+struct CycleOptionCard: View {
+    let option: ReminderCycle
+    let isSelected: Bool
+    let action: () -> Void
+
+    private var emoji: String {
+        switch option {
+        case .once:      return "1️⃣"
+        case .daily:     return "☀️"
+        case .weekly:    return "📆"
+        case .biweekly:  return "🌗"
+        case .monthly:   return "🌙"
+        case .quarterly: return "🧭"
+        case .yearly:    return "🎂"
+        case .custom:    return "🪄"
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Text(emoji)
+                    .font(.system(size: 22))
+                Text(option.rawValue.localized)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(isSelected ? Playful.purple : .primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(isSelected
+                          ? AnyShapeStyle(LinearGradient(colors: [Playful.purple.opacity(0.14), Playful.coral.opacity(0.10)],
+                                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                          : AnyShapeStyle(Playful.ink.opacity(0.05)))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(
+                        isSelected
+                            ? AnyShapeStyle(AngularGradient(colors: [Playful.mint, Playful.gold, Playful.coral, Playful.purple, Playful.mint],
+                                                            center: .center))
+                            : AnyShapeStyle(Color.clear),
+                        lineWidth: 2
+                    )
+            )
+            .scaleEffect(isSelected ? 1.05 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(option.rawValue.localized)
+    }
+}
+
+/// 星期灯泡：点亮=选中（金色光晕），熄灭=灰色
+struct WeekdayBulb: View {
+    let weekday: RuleWeekday
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Text("💡")
+                    .font(.system(size: 17))
+                    .grayscale(isOn ? 0 : 1)
+                    .opacity(isOn ? 1 : 0.4)
+                    .shadow(color: isOn ? Playful.gold.opacity(0.85) : .clear, radius: 6)
+                Text(weekday.label.localized)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(isOn ? Playful.purple : .secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isOn ? Playful.gold.opacity(0.18) : Color.clear)
+            )
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isOn)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(weekday.label.localized)
+    }
 }

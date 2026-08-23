@@ -21,6 +21,33 @@ enum ReminderMigrationPlan: SchemaMigrationPlan {
 
 @main
 struct ReminderApp: App {
+
+    #if DEBUG
+    /// v2.5.0: UI 测试预置钩子——-uitest_ai_fixture 注入假端点 + 3 条「打针」历史。
+    /// （原方案由测试进程写容器 plist，但 UI 测试跑在模拟器 iOS 内无法执行宿主命令，
+    ///   改由 App 侧在启动时自注入，测试只需加 launchArguments）
+    init() {
+        // mock 按请求序号应答——AskUser 用例启动前归零计数器（测试进程 ATS 拦 http，由 App 代发）
+        if ProcessInfo.processInfo.arguments.contains("-uitest_reset_mock") {
+            var request = URLRequest(url: URL(string: "http://127.0.0.1:8899/reset")!)
+            request.timeoutInterval = 2
+            URLSession.shared.dataTask(with: request) { _, _, _ in }.resume()
+        }
+        // 仅在无 AI 配置时注入（否则每次重启都会把测试刚写入的历史冲掉）
+        if ProcessInfo.processInfo.arguments.contains("-uitest_ai_fixture"),
+           UserDefaults.standard.string(forKey: "ai_endpoint") == nil {
+            UserDefaults.standard.set(true, forKey: "ai_is_local")
+            UserDefaults.standard.set("http://127.0.0.1:9/v1", forKey: "ai_endpoint")
+            let now = Date()
+            ChatHistoryStore.save([
+                ChatMessage(role: .user, content: "每周打针怎么设置", timestamp: now.addingTimeInterval(-3600)),
+                ChatMessage(role: .assistant, content: "已创建每周打针提醒，每周一 8:00", timestamp: now.addingTimeInterval(-3500)),
+                ChatMessage(role: .user, content: "打针改到周三", timestamp: now.addingTimeInterval(-3400))
+            ])
+        }
+    }
+    #endif
+
     @StateObject private var notificationManager = NotificationManager.shared
     @StateObject private var reminderEngine = ReminderEngine.shared
     @Environment(\.scenePhase) private var scenePhase
@@ -86,8 +113,11 @@ struct ReminderApp: App {
                     }
                 }
                 .task {
-                    _ = await notificationManager.requestAuthorization()
-                    _ = await VoiceRecognizer.shared.requestAuthorization()
+                    // UI 测试可用 -uitest_skip_permission 跳过权限弹窗（系统弹窗抢焦点会让 typeText 落空）
+                    if !ProcessInfo.processInfo.arguments.contains("-uitest_skip_permission") {
+                        _ = await notificationManager.requestAuthorization()
+                        _ = await VoiceRecognizer.shared.requestAuthorization()
+                    }
                     let descriptor = FetchDescriptor<Reminder>()
                     if let reminders = try? Self.sharedModelContainer.mainContext.fetch(descriptor) {
                         await reminderEngine.checkMissedReminders(reminders: reminders)

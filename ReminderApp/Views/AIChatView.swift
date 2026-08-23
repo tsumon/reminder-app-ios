@@ -143,6 +143,12 @@ struct AIChatView: View {
             }
         }
         .onAppear {
+            // v2.5.0 fix: 退出聊天再进时 @State 可能复用旧快照（落盘已含最新对话），
+            // 出现时强制与磁盘同步，防「再进只剩旧对话」——落盘数据始终完好，见 MultiTurnHistoryUITests
+            let stored = ChatHistoryStore.load()
+            if stored != messages {
+                messages = stored
+            }
             // v2.4.3 fix: 加 messages.isEmpty 守卫——否则每次进入都追加一条欢迎语，
             // 且被 onChange 持久化后越积越多；有历史记录时也不再打断
             if !settings.isConfigured && messages.isEmpty {

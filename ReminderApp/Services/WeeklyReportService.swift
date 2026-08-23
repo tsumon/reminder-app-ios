@@ -85,6 +85,8 @@ enum WeeklyReportService {
         full: StatsSummary,
         rateText: String
     ) async -> String? {
+        // UI 测试（-uitest_reset_mock）下跳过——启动时的周报 AI 调用会消耗 mock 剧本第 0 位
+        if ProcessInfo.processInfo.arguments.contains("-uitest_reset_mock") { return nil }
         let settings = AISettings.shared
         guard settings.isConfigured else { return nil }
 
