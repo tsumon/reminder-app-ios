@@ -142,71 +142,7 @@ struct ReminderListView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
-                        Button {
-                            menuAction { showCreateSheet = true }
-                        } label: {
-                            Label("新建提醒".localized, systemImage: "plus.circle")
-                        }
-                        Divider()
-                        // v1.8.7 任务③: 统计洞察
-                        NavigationLink {
-                            StatsView()
-                        } label: {
-                            Label("统计洞察".localized, systemImage: "chart.bar.fill")
-                        }
-                        Divider()
-                        Button {
-                            syncNow()
-                        } label: {
-                            Label("立即同步".localized, systemImage: "arrow.triangle.2.circlepath")
-                        }
-                        NavigationLink {
-                            SyncSettingsView()
-                        } label: {
-                            Label("同步设置".localized, systemImage: "gearshape")
-                        }
-                        Divider()
-                        Button {
-                            menuAction { exportBackup() }
-                        } label: {
-                            Label("导出提醒".localized, systemImage: "square.and.arrow.up")
-                        }
-                        // v1.8.7 任务④: 导出 .ics 日历（可导入系统日历/Google 日历）
-                        Button {
-                            menuAction { exportICS() }
-                        } label: {
-                            Label("导出日历(.ics)".localized, systemImage: "calendar.badge.plus")
-                        }
-                        // 近场传输: 同一局域网互传提醒
-                        Button {
-                            menuAction { showNearbyShare = true }
-                        } label: {
-                            Label("附近传输".localized, systemImage: "wifi")
-                        }
-                        // v1.9.0: 主动检查更新
-                        Button {
-                            menuAction { checkForUpdates() }
-                        } label: {
-                            Label("检查更新".localized, systemImage: "arrow.clockwise")
-                        }
-                        Divider()
-                        // v1.9.2: 设置（版本/更新日志/AI/同步）
-                        NavigationLink {
-                            SettingsView()
-                        } label: {
-                            Label("设置".localized, systemImage: "gearshape")
-                        }
-                        Button {
-                            menuAction { showImportImporter = true }
-                        } label: {
-                            Label("导入提醒".localized, systemImage: "square.and.arrow.down")
-                        }
-                        // 批次3 功能6: 单条分享卡片粘贴导入（聊天里收到的 JSON 直接粘进来）
-                        Button {
-                            menuAction { showCardImport = true }
-                        } label: {
-                            Label("导入分享卡片".localized, systemImage: "doc.on.clipboard")
-                        }
+                        overflowMenuContent
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.title3.weight(.semibold))
@@ -214,6 +150,75 @@ struct ReminderListView: View {
                     .accessibilityIdentifier("more-menu")
                 }
             }
+    }
+
+    // v2.5.0: CI 端编译器对巨型 Menu 表达式 type-check 超时，抽成独立 @ViewBuilder
+    @ViewBuilder private var overflowMenuContent: some View {
+        Button {
+            menuAction { showCreateSheet = true }
+        } label: {
+            Label("新建提醒".localized, systemImage: "plus.circle")
+        }
+        Divider()
+        // v1.8.7 任务③: 统计洞察
+        NavigationLink {
+            StatsView()
+        } label: {
+            Label("统计洞察".localized, systemImage: "chart.bar.fill")
+        }
+        Divider()
+        Button {
+            syncNow()
+        } label: {
+            Label("立即同步".localized, systemImage: "arrow.triangle.2.circlepath")
+        }
+        NavigationLink {
+            SyncSettingsView()
+        } label: {
+            Label("同步设置".localized, systemImage: "gearshape")
+        }
+        Divider()
+        Button {
+            menuAction { exportBackup() }
+        } label: {
+            Label("导出提醒".localized, systemImage: "square.and.arrow.up")
+        }
+        // v1.8.7 任务④: 导出 .ics 日历（可导入系统日历/Google 日历）
+        Button {
+            menuAction { exportICS() }
+        } label: {
+            Label("导出日历(.ics)".localized, systemImage: "calendar.badge.plus")
+        }
+        // 近场传输: 同一局域网互传提醒
+        Button {
+            menuAction { showNearbyShare = true }
+        } label: {
+            Label("附近传输".localized, systemImage: "wifi")
+        }
+        // v1.9.0: 主动检查更新
+        Button {
+            menuAction { checkForUpdates() }
+        } label: {
+            Label("检查更新".localized, systemImage: "arrow.clockwise")
+        }
+        Divider()
+        // v1.9.2: 设置（版本/更新日志/AI/同步）
+        NavigationLink {
+            SettingsView()
+        } label: {
+            Label("设置".localized, systemImage: "gearshape")
+        }
+        Button {
+            menuAction { showImportImporter = true }
+        } label: {
+            Label("导入提醒".localized, systemImage: "square.and.arrow.down")
+        }
+        // 批次3 功能6: 单条分享卡片粘贴导入（聊天里收到的 JSON 直接粘进来）
+        Button {
+            menuAction { showCardImport = true }
+        } label: {
+            Label("导入分享卡片".localized, systemImage: "doc.on.clipboard")
+        }
     }
 
     private var mainContentWrapped: some View {
