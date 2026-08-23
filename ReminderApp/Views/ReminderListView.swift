@@ -102,54 +102,61 @@ struct ReminderListView: View {
             // iOS 26 上 .searchable 的搜索栏占 leading 位，会把 AI 入口顶掉；
             // AI 入口按用户要求固定左上（navigationBarLeading），搜索栏必须让位。
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    NavigationLink {
-                        AIChatView()
-                    } label: {
-                        Image(systemName: "sparkles")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(ThemeTokens.brandPrimary)
-                    }
-                    .accessibilityLabel("AI")
-                    .accessibilityIdentifier("ai-entry")
-                }
-                // v2.1.1: 批量管理（多选完成/删除）
-                ToolbarItemGroup(placement: .bottomBar) {
-                    if editMode.isEditing {
-                        Button {
-                            selectedIDs = Set(reminders.map(\.id))
-                        } label: {
-                            Label("全选".localized, systemImage: "checkmark.circle")
-                        }
-                        Spacer()
-                        Button {
-                            batchComplete()
-                        } label: {
-                            Label("完成".localized, systemImage: "checkmark")
-                        }
-                        .disabled(selectedIDs.isEmpty)
-                        Spacer()
-                        Button(role: .destructive) {
-                            batchDelete()
-                        } label: {
-                            Label("删除".localized, systemImage: "trash")
-                        }
-                        .disabled(selectedIDs.isEmpty)
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        overflowMenuContent
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.title3.weight(.semibold))
-                    }
-                    .accessibilityIdentifier("more-menu")
-                }
+                homeToolbar
             }
+    }
+
+    /// v2.5.0: 整个 toolbar 抽成独立 ToolbarContent——CI 端编译器对 mainContent
+    /// 巨型表达式 type-check 超时（拆 Menu 不够，须把 toolbar 子树整体挪出）
+    @ToolbarContentBuilder
+    private var homeToolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            NavigationLink {
+                AIChatView()
+            } label: {
+                Image(systemName: "sparkles")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(ThemeTokens.brandPrimary)
+            }
+            .accessibilityLabel("AI")
+            .accessibilityIdentifier("ai-entry")
+        }
+        // v2.1.1: 批量管理（多选完成/删除）
+        ToolbarItemGroup(placement: .bottomBar) {
+            if editMode.isEditing {
+                Button {
+                    selectedIDs = Set(reminders.map(\.id))
+                } label: {
+                    Label("全选".localized, systemImage: "checkmark.circle")
+                }
+                Spacer()
+                Button {
+                    batchComplete()
+                } label: {
+                    Label("完成".localized, systemImage: "checkmark")
+                }
+                .disabled(selectedIDs.isEmpty)
+                Spacer()
+                Button(role: .destructive) {
+                    batchDelete()
+                } label: {
+                    Label("删除".localized, systemImage: "trash")
+                }
+                .disabled(selectedIDs.isEmpty)
+            }
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
+            EditButton()
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Menu {
+                overflowMenuContent
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3.weight(.semibold))
+            }
+            .accessibilityIdentifier("more-menu")
+        }
     }
 
     // v2.5.0: CI 端编译器对巨型 Menu 表达式 type-check 超时，抽成独立 @ViewBuilder
