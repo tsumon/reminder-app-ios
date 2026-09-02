@@ -12,9 +12,21 @@ Native iOS app.
 
 ## Current UI
 
-Four bottom tabs: Home / Calendar / Stats / Settings. AI lives in Settings, not as its own tab.
+Dark UI aligned with GitHub 2.5.1 — not Home A, not QuietHome. Four bottom tabs. AI lives in Settings, not as its own tab.
 
-Home title is 「提醒事项」: toolbar search, chips 全部 / 今天 / 本周, groups 提醒中 / 等待中. Due rows have in-line 确认; retry subtitle is 「还没确认 · HH:MM 再响」. Calendar lists that day's tasks after a date is selected. Stats show this-month done / streak / completion rate (empty state 0%), plus check-in castle, weekly garden, and most-forgotten hours.
+- **Home** (title 「提醒事项」): chips 全部 / 今天 / 本周 only; groups 提醒中 / 等待中. Due rows confirm in-line (no large confirm dialog).
+- **Calendar**: solar + lunar + fox on today + 班/休; selecting a date lists that day's tasks. No weekly progress bar (progress lives on 本周花园).
+- **Stats**: this-month done / streak / completion rate + confirmed/missed; check-in castle, weekly garden, most-forgotten hours. No big ring, no heatmap.
+- **Settings**: skins, etc.
+
+```mermaid
+flowchart TB
+  app[Recurring Reminder]
+  app --> home[Home]
+  app --> cal[Calendar]
+  app --> stats[Stats]
+  app --> set[Settings]
+```
 
 ```mermaid
 flowchart LR
