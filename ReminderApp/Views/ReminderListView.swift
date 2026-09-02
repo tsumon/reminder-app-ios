@@ -34,8 +34,10 @@ struct ReminderListView: View {
     // 智能清单筛选
     @State private var smartList: SmartList = .all
 
-    // 搜索
+    // 搜索：默认收起，点工具栏放大镜再展开
     @State private var searchText = ""
+    @State private var isSearchPresented = false
+    @FocusState private var searchFocused: Bool
     // v2.1.1: 批量管理（多选完成/删除）
     @State private var editMode: EditMode = .inactive
     @State private var selectedIDs = Set<Reminder.ID>()
@@ -144,6 +146,25 @@ struct ReminderListView: View {
                 }
                 .disabled(selectedIDs.isEmpty)
             }
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isSearchPresented.toggle()
+                }
+                if isSearchPresented {
+                    searchFocused = true
+                } else {
+                    searchText = ""
+                    searchFocused = false
+                }
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(isSearchPresented ? ThemeTokens.brandPrimary : Color.primary)
+            }
+            .accessibilityLabel("搜索".localized)
+            .accessibilityIdentifier("home-search")
         }
         ToolbarItem(placement: .navigationBarTrailing) {
             EditButton()
@@ -724,72 +745,7 @@ struct ReminderListView: View {
 
     private var listView: some View {
         List(selection: $selectedIDs) {
-            // v2.4.11: 遗漏补办——已触发未确认/已逾期的提醒，一键补确认或推到明天
-            let missed = reminders.filter {
-                $0.isEnabled && ($0.status == .active || $0.status == .overdue)
-            }.sorted { $0.nextTriggerAt < $1.nextTriggerAt }
-            if !missed.isEmpty {
-                Section {
-                    ForEach(missed.prefix(5)) { r in
-                        HStack(spacing: 10) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(r.title).font(.subheadline.weight(.medium))
-                                Text("错过: \(r.nextTriggerAt, style: .date) \(r.nextTriggerAt, style: .time)")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Button("补确认".localized) {
-                                ReminderEngine.shared.confirmReminder(r, source: "遗漏补办")
-                            }
-                            .font(.caption.weight(.semibold))
-                            Button("明天".localized) {
-                                ReminderEngine.shared.snoozeReminderTomorrow(r)
-                            }
-                            .font(.caption.weight(.semibold))
-                        }
-                    }
-                } header: {
-                    Label(Localized("你错过了 %d 条提醒", missed.count), systemImage: "bell.badge")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.orange)
-                }
-            }
-
-            // v2.4.9: 自定义搜索框（替代 .searchable，后者在 iOS 26 占用
-            // 导航栏 leading 位导致 AI 入口被顶掉）
-            Section {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField("搜索标题或备注".localized, text: $searchText)
-                        .autocorrectionDisabled()
-                    if !searchText.isEmpty {
-                        Button {
-                            searchText = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.tertiary)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("清空搜索".localized)
-                    }
-                }
-                .font(.subheadline)
-                .padding(.vertical, 9)
-                .padding(.horizontal, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(.tertiarySystemFill))
-                )
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-            }
-
-            // 智能清单筛选条
+            // 智能清单筛选条：首页只展示 全部 / 今天 / 本周
             Section {
                 smartListBar
                     .listRowInsets(EdgeInsets())
@@ -797,39 +753,13 @@ struct ReminderListView: View {
                     .listRowSeparator(.hidden)
             }
 
-            // 概览（参考滴答清单：待处理数 + 最近提醒）
+            // 概览：日期 + 农历 | 待处理数
             let unhandled = reminders.filter { $0.isEnabled && $0.status != .confirmed }.count
-            let next = reminders.filter { $0.isEnabled && $0.nextTriggerAt > Date() }.min { $0.nextTriggerAt < $1.nextTriggerAt }
             Section {
-                OverviewCard(
-                    unhandledCount: unhandled,
-                    nextReminder: next,
-                    todayDone: records.filter { $0.type == ReminderRecordType.confirm.rawValue && Calendar.current.isDateInToday($0.performedAt) }.count,
-                    streak: StatsService.summarize(records: records).currentStreak,
-                    weekDone: weekDoneDays(records: records)
-                )
+                OverviewCard(unhandledCount: unhandled)
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-            }
-
-            // v2.4.0: 今日安排时间线（今天要触发的提醒按时间排列，布局重设计核心）
-            let todayReminders = reminders.filter {
-                matchSmartList($0) && $0.isEnabled && $0.status != .confirmed &&
-                Calendar.current.isDateInToday($0.nextTriggerAt)
-            }.sorted { $0.nextTriggerAt < $1.nextTriggerAt }
-            if !todayReminders.isEmpty {
-                Section {
-                    TodayTimelineView(
-                        reminders: todayReminders,
-                        doneToday: todayDoneCount(records: records)
-                    )
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                } header: {
-                    sectionHeader(title: "今日安排", color: ThemeTokens.brandPrimary, count: todayReminders.count)
-                }
             }
 
             // v1.9.8: 日历卡片移到「日历」Tab（CalendarPageView），首页只保留列表
@@ -843,7 +773,7 @@ struct ReminderListView: View {
                  $0.note.localizedCaseInsensitiveContains(query))
             }
 
-            // 正在提醒中（active / snoozed / overdue）
+            // 正在提醒中（active / snoozed / overdue）置顶，行内确认
             let activeReminders = filtered.filter {
                 $0.status == .active || $0.status == .snoozed || $0.status == .overdue
             }
@@ -853,7 +783,9 @@ struct ReminderListView: View {
                         NavigationLink {
                             ReminderDetailView(reminder: reminder)
                         } label: {
-                            ReminderRowView(reminder: reminder)
+                            ReminderRowView(reminder: reminder) {
+                                ReminderEngine.shared.confirmReminder(reminder)
+                            }
                                 .listRowInsets(EdgeInsets())
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
@@ -936,9 +868,43 @@ struct ReminderListView: View {
         .animation(.easeInOut(duration: 0.2), value: searchText)
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+        .safeAreaInset(edge: .top) {
+            if isSearchPresented {
+                homeSearchBar
+            }
+        }
         .refreshable {
             await ReminderEngine.shared.checkMissedReminders(reminders: reminders)
         }
+    }
+
+    private var homeSearchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("搜索标题或备注".localized, text: $searchText)
+                .focused($searchFocused)
+                .autocorrectionDisabled()
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("清空搜索".localized)
+            }
+        }
+        .font(.subheadline)
+        .padding(.vertical, 9)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(.tertiarySystemFill))
+        )
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 
     // MARK: - 智能清单筛选条
@@ -946,7 +912,7 @@ struct ReminderListView: View {
     private var smartListBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(SmartList.allCases, id: \.self) { list in
+                ForEach([SmartList.all, .today, .week], id: \.self) { list in
                     Button {
                         smartList = list
                     } label: {
@@ -1210,82 +1176,32 @@ struct DayTasksSheet: View {
     }
 }
 
-// MARK: - 首页概览卡片（参考滴答清单：待处理数 + 最近提醒）
+// MARK: - 首页概览卡片（日期 + 农历 | 待处理数）
 
 struct OverviewCard: View {
     let unhandledCount: Int
-    let nextReminder: Reminder?
-    let todayDone: Int
-    /// v2.5.0: 连续打卡天数（城堡楼层）+ 本周打卡天数（彩虹跑道）
-    let streak: Int
-    let weekDone: Int
 
     var body: some View {
-        // v2.5.0 粘土拟态：暖白粘土卡 + 连续打卡城堡（头部）+ 本周彩虹跑道
-        VStack(alignment: .leading, spacing: 12) {
-            // 日期大标题 + 农历徽章 | 连续打卡城堡
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(dateTitle)
-                            .font(.system(size: 27, weight: .bold, design: .rounded))
-                        Text(weekdayTitle)
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let lunar = lunarToday {
-                        HStack(spacing: 4) {
-                            Text("🌙")
-                                .font(.system(size: 9))
-                            Text(lunar)
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        }
-                        .foregroundStyle(.white.opacity(0.92))
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(Playful.ink.opacity(0.88)))
-                    }
-                }
-                Spacer(minLength: 12)
-                StreakCastleView(streak: streak, compact: true)
-            }
-
-            Divider().overlay(Playful.lavender)
-
-            // 待处理 + 今日打卡 + 下次提醒
+        HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 10) {
-                    Text("🔔")
-                        .font(.system(size: 15))
-                        .symbolEffect(.bounce, value: unhandledCount)
-                    Text(Localized("待处理 %d 项", unhandledCount))
-                        .font(.headline)
-                    Spacer()
-                    Text(Localized("今日 ✅ %d", todayDone))
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(Playful.ink)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(Playful.mint.opacity(0.28)))
-                }
-                if let r = nextReminder {
-                    Label {
-                        Text("\(r.title) · \(r.nextTriggerAt.formatted(date: .numeric, time: .shortened))")
-                            .lineLimit(1)
-                    } icon: {
-                        Image(systemName: "clock")
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                } else {
-                    Label("暂无即将到来的提醒".localized, systemImage: "checkmark.circle")
+                Text("\(dateTitle) \(weekdayTitle)")
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                if let lunar = lunarToday {
+                    Text(lunar)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
-
-            // 本周彩虹跑道
-            WeeklyProgressTrack(done: weekDone, total: 7)
+            Spacer(minLength: 12)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(unhandledCount)")
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .foregroundStyle(ThemeTokens.brandPrimary)
+                Text("待处理".localized)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1295,7 +1211,7 @@ struct OverviewCard: View {
         .listRowSeparator(.hidden)
     }
 
-    /// 今天日期标题（如「8月16日」）
+    /// 今天日期标题（如「9月3日」）
     private var dateTitle: String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "zh_CN")
@@ -1303,7 +1219,7 @@ struct OverviewCard: View {
         return f.string(from: Date())
     }
 
-    /// 今天周几（如「周六」）
+    /// 今天周几（如「星期四」）
     private var weekdayTitle: String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "zh_CN")
@@ -1311,7 +1227,7 @@ struct OverviewCard: View {
         return f.string(from: Date())
     }
 
-    /// 今天农历（如「六月廿三」）
+    /// 今天农历（如「农历七月廿二」）
     private var lunarToday: String? {
         let lunar = LunarCalendar.solarToLunar(Date())
         guard lunar.month > 0 else { return nil }
@@ -1321,7 +1237,7 @@ struct OverviewCard: View {
                         "廿一", "廿二", "廿三", "廿四", "廿五", "廿六", "廿七", "廿八", "廿九", "三十"]
         let month = lunar.isLeapMonth ? "闰" + monthNames[lunar.month] : monthNames[lunar.month]
         let day = dayNames.indices.contains(lunar.day) ? dayNames[lunar.day] : "\(lunar.day)日"
-        return "\(month)月\(day)"
+        return "农历\(month)月\(day)"
     }
 }
 

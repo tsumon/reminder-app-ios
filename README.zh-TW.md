@@ -2,9 +2,13 @@
 
 ---
 
-# 循環提醒器 - iOS 原生 App
+# 循環提醒
 
-![App UI](docs/screenshots/ios.png)
+![Home](docs/screenshots/home.png)
+
+![Calendar](docs/screenshots/calendar.png)
+
+![Stats](docs/screenshots/stats.png)
 
 ## 🌐 多語言支援 / Multi-language Support
 

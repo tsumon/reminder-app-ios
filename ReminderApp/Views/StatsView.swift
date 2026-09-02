@@ -1,12 +1,9 @@
 import SwiftUI
 import SwiftData
 
-/// 统计洞察页（v1.8.7 任务③）：完成率 / 连续打卡 / 最常忘记时段 / 月历热力图
+/// 统计洞察页（v1.8.7 任务③）：完成率 / 连续打卡 / 最常忘记时段
 struct StatsView: View {
     @Query private var reminders: [Reminder]
-    @State private var displayMonth = Date() // 热力图月份
-
-    private let calendar = Calendar.current
 
     var body: some View {
         let records = reminders.flatMap { $0.records }
@@ -16,13 +13,12 @@ struct StatsView: View {
         ScrollView {
             VStack(spacing: 14) {
                 overviewCards(summary)
-                completionCard(summary)
+                confirmMissLine(summary)
                 // v2.5.0: 连续打卡城堡（替代两张 streak 小卡）
                 castleCard(summary)
                 // v2.5.0: 本周盆栽花园（打卡越多长得越高）
                 gardenCard(records: records)
                 forgetHoursCard(summary)
-                heatmapCard(summary)
             }
             .padding(16)
         }
@@ -41,7 +37,7 @@ struct StatsView: View {
             overviewCard(title: "连续天数", value: "\(s.currentStreak)", color: .orange)
             overviewCard(
                 title: "完成率",
-                value: s.completionRate.map { "\(Int($0 * 100))%" } ?? "—",
+                value: s.completionRate.map { "\(Int($0 * 100))%" } ?? "0%",
                 color: ThemeTokens.brandPrimary
             )
         }
@@ -61,49 +57,18 @@ struct StatsView: View {
         .background(cardBackground)
     }
 
-    // MARK: - 完成率
+    // MARK: - 确认 / 漏掉（单行，无完成率环）
 
-    private func completionCard(_ s: StatsSummary) -> some View {
-        VStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .stroke(Color.gray.opacity(0.18), lineWidth: 12)
-                Circle()
-                    .trim(from: 0, to: s.completionRate.map { max(0.02, min($0, 1)) } ?? 0)
-                    .stroke(
-                        LinearGradient(colors: [ThemeTokens.brandGradientStart, ThemeTokens.brandPrimary], startPoint: .topLeading, endPoint: .bottomTrailing),
-                        style: StrokeStyle(lineWidth: 12, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-                VStack(spacing: 2) {
-                    if let rate = s.completionRate {
-                        Text("\(Int(rate * 100))%")
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
-                    } else {
-                        Text("—")
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
-                    Text("完成率".localized)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(width: 150, height: 150)
-            .padding(.top, 8)
-
-            HStack(spacing: 24) {
-                Label(Localized("确认 %d", s.confirmCount), systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Label(Localized("漏掉 %d", s.missedCount), systemImage: "bell.slash.fill")
-                    .foregroundStyle(.red)
-            }
-            .font(.subheadline.weight(.medium))
-            .padding(.bottom, 8)
+    private func confirmMissLine(_ s: StatsSummary) -> some View {
+        HStack(spacing: 22) {
+            Label(Localized("确认 %d", s.confirmCount), systemImage: "checkmark")
+                .foregroundStyle(.primary)
+            Label(Localized("漏掉 %d", s.missedCount), systemImage: "minus.circle")
+                .foregroundStyle(.secondary)
         }
+        .font(.subheadline.weight(.medium))
         .frame(maxWidth: .infinity)
-        .padding(16)
-        .background(cardBackground)
+        .padding(.vertical, 2)
     }
 
     // MARK: - 连续打卡城堡（v2.5.0）
@@ -140,10 +105,10 @@ struct StatsView: View {
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("本周花园".localized, systemImage: "leaf.fill")
+                Text("本周花园".localized)
                     .font(.headline)
                 Spacer()
-                Text("打卡越多长得越高 🌱".localized)
+                Text("打卡越多长得越高".localized)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -227,7 +192,7 @@ struct StatsView: View {
                     .padding(.vertical, 4)
                 }
             } else {
-                Text("坚持得很好，没有漏掉过提醒 🎉".localized)
+                Text("坚持得很好，没有漏掉过提醒".localized)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 8)
@@ -235,126 +200,6 @@ struct StatsView: View {
         }
         .padding(16)
         .background(cardBackground)
-    }
-
-    // MARK: - 月历热力图
-
-    private func heatmapCard(_ s: StatsSummary) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("月历热力图".localized, systemImage: "calendar")
-                    .font(.headline)
-                Spacer()
-                Button {
-                    changeMonth(-1)
-                } label: {
-                    Image(systemName: "chevron.left")
-                }
-                Text(monthTitle)
-                    .font(.subheadline.weight(.semibold))
-                Button {
-                    changeMonth(1)
-                } label: {
-                    Image(systemName: "chevron.right")
-                }
-            }
-
-            // 星期表头
-            HStack(spacing: 0) {
-                ForEach(["一", "二", "三", "四", "五", "六", "日"], id: \.self) { d in
-                    Text(d)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-
-            heatmapGrid(s)
-
-            // 图例
-            HStack(spacing: 6) {
-                Text("少".localized)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                ForEach(0..<4, id: \.self) { lv in
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(heatColor(lv))
-                        .frame(width: 14, height: 14)
-                }
-                Text("多".localized)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            .padding(.top, 2)
-        }
-        .padding(16)
-        .background(cardBackground)
-    }
-
-    @ViewBuilder
-    private func heatmapGrid(_ s: StatsSummary) -> some View {
-        let comps = calendar.dateComponents([.year, .month], from: displayMonth)
-        let year = comps.year ?? 2026
-        let month = comps.month ?? 1
-        if let first = calendar.date(from: DateComponents(year: year, month: month, day: 1)),
-           let days = calendar.range(of: .day, in: .month, for: first)?.count {
-
-            let firstWeekday = (calendar.component(.weekday, from: first) + 5) % 7 + 1
-            let leading = firstWeekday - 1
-            let total = ((leading + days + 6) / 7) * 7
-
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 5) {
-                ForEach(0..<total, id: \.self) { idx in
-                    let day = idx - leading + 1
-                    if day >= 1 && day <= days {
-                        let key = String(format: "%04d-%02d-%02d", year, month, day)
-                        let count = s.heatmap[key] ?? 0
-                        VStack(spacing: 2) {
-                            RoundedRectangle(cornerRadius: 5)
-                                .fill(heatColor(heatLevel(count)))
-                                .frame(height: 26)
-                            Text("\(day)")
-                                .font(.system(size: 8))
-                                .foregroundStyle(.secondary)
-                        }
-                    } else {
-                        Color.clear.frame(height: 32)
-                    }
-                }
-            }
-        }
-    }
-
-    /// 0=无，1=1次，2=2-3次，3=4+次
-    private func heatLevel(_ count: Int) -> Int {
-        switch count {
-        case 0: return 0
-        case 1: return 1
-        case 2...3: return 2
-        default: return 3
-        }
-    }
-
-    private func heatColor(_ level: Int) -> Color {
-        switch level {
-        case 0: return ThemeTokens.heatmap0
-        case 1: return ThemeTokens.heatmap1
-        case 2: return ThemeTokens.heatmap2
-        default: return ThemeTokens.heatmap3
-        }
-    }
-
-    private var monthTitle: String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy年M月"
-        return f.string(from: displayMonth)
-    }
-
-    private func changeMonth(_ delta: Int) {
-        if let d = calendar.date(byAdding: .month, value: delta, to: displayMonth) {
-            displayMonth = d
-        }
     }
 
     @Environment(\.colorScheme) private var scheme

@@ -4,7 +4,11 @@
 
 # 繰り返しリマインダー — ネイティブ iOS アプリ
 
-![App UI](docs/screenshots/ios.png)
+![Home](docs/screenshots/home.png)
+
+![Calendar](docs/screenshots/calendar.png)
+
+![Stats](docs/screenshots/stats.png)
 
 ## 🌐 多言語対応 / Multi-language Support
 

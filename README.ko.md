@@ -4,7 +4,11 @@
 
 # 반복 리마인더 — 네이티브 iOS 앱
 
-![App UI](docs/screenshots/ios.png)
+![Home](docs/screenshots/home.png)
+
+![Calendar](docs/screenshots/calendar.png)
+
+![Stats](docs/screenshots/stats.png)
 
 ## 🌐 다국어 지원 / Multi-language Support
 

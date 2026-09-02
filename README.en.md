@@ -2,9 +2,31 @@
 
 ---
 
-# Recurring Reminder — Native iOS App
+# Recurring Reminder
 
-![App UI](docs/screenshots/ios.png)
+Native iOS app.
+
+| Home | Calendar | Stats |
+|:---:|:---:|:---:|
+| ![Home](docs/screenshots/home.png) | ![Calendar](docs/screenshots/calendar.png) | ![Stats](docs/screenshots/stats.png) |
+
+## Current UI
+
+Four bottom tabs: Home / Calendar / Stats / Settings. AI lives in Settings, not as its own tab.
+
+Home title is 「提醒事项」: toolbar search, chips 全部 / 今天 / 本周, groups 提醒中 / 等待中. Due rows have in-line 确认; retry subtitle is 「还没确认 · HH:MM 再响」. Calendar lists that day's tasks after a date is selected. Stats show this-month done / streak / completion rate (empty state 0%), plus check-in castle, weekly garden, and most-forgotten hours.
+
+```mermaid
+flowchart LR
+  waiting[Waiting] --> due[Due]
+  due -->|Confirm| next[Next cycle]
+  due -->|Unconfirmed| retry[Escalating retry]
+  retry -->|Confirm| next
+  retry -->|Cap| overdue[Overdue]
+  overdue -->|Manual confirm| next
+```
+
+Retry engine remains 1h → 4h → 12h → 24h → overdue (then stops auto-ringing). Notification actions are Confirm and Later.
 
 ## 🌐 Multi-language Support
 
@@ -28,7 +50,7 @@ This app (iOS & Android) has built-in multi-language support that follows the sy
 
 A pure native SwiftUI iOS reminder app that supports:
 - Set cycle: daily, weekly, monthly, quarterly, yearly, custom number of days
-- Due push notification with two action buttons: "Confirm Complete" and "Remind Later"
+- Due push notification with two action buttons: "Confirm" and "Later"
 - Unacknowledged escalating retry (aligned across platforms since v1.9.7): 1h → 4h → 12h → 24h → 24h
   - After the 5th escalation it is marked `overdue`, stops nagging, and waits for manual confirmation / re-open
 - Cycle anchor anti-drift: computed from the first trigger time, won't shift due to delayed confirmation (month-end alignment, correct leap years)
@@ -84,7 +106,7 @@ ReminderApp/
 │   ├── CreateReminderView.swift   # New reminder form
 │   ├── ReminderDetailView.swift   # Detail page + confirm / later actions + history
 │   ├── CalendarView.swift         # Calendar view
-│   ├── StatsView.swift            # Stats / heatmap
+│   ├── StatsView.swift            # Stats (month done / streak / completion rate)
 │   ├── AIChatView.swift           # AI chat
 │   ├── AISettingsView.swift       # AI config
 │   ├── NearbyShareView.swift      # Nearby transfer (QR + TCP)

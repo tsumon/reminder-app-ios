@@ -55,7 +55,7 @@ final class NotificationManager: NSObject, ObservableObject {
         // 「确认完成」按钮
         let confirmAction = UNNotificationAction(
             identifier: Self.confirmActionID,
-            title: "确认完成",
+            title: "确认",
             options: [.foreground]  // 点击后打开 App 处理
         )
 
@@ -64,7 +64,7 @@ final class NotificationManager: NSObject, ObservableObject {
         // 但该选项实际要求认证，锁屏上点稍后会被系统拦下，与产品预期相反
         let snoozeAction = UNNotificationAction(
             identifier: Self.snoozeActionID,
-            title: "稍后提醒",
+            title: "稍后",
             options: []
         )
 
@@ -110,7 +110,7 @@ final class NotificationManager: NSObject, ObservableObject {
         let content = UNMutableNotificationContent()
         content.title = "⏰ \(reminder.title)"
         content.body = reminder.note.isEmpty
-            ? "该完成了，点击确认或稍后提醒"
+            ? "该完成了，点确认或稍后"
             : reminder.note
         content.sound = .default
         content.badge = NSNumber(value: badgeCount)
