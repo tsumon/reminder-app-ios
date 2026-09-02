@@ -2,7 +2,8 @@ import SwiftUI
 import SwiftData
 
 /// 主页日历卡片：公历 + 农历 + 星期几 + 任务缩略标记
-/// v2.5.0: 日期格热力密度（任务越多底色越深）+ 今日格上站小狐狸 + 本周彩虹跑道
+/// v2.5.0: 日期格热力密度（任务越多底色越深）+ 今日格上站小狐狸
+/// 本周进度只在统计「本周花园」，日历卡不再展示跑道
 struct CalendarCardView: View {
     let reminders: [Reminder]
     var streak: Int = 0
@@ -86,12 +87,6 @@ struct CalendarCardView: View {
             header
             weekdayRow
             dayGrid
-            // v2.5.0: 本周彩虹跑道（有打卡数据时展示）
-            if let done = weekDone {
-                WeeklyProgressTrack(done: done, total: 7)
-                    .padding(.horizontal, 8)
-                    .padding(.top, 6)
-            }
         }
         .padding(.vertical, 12)
         // v2.5.0: 粘土拟态卡（替代液态玻璃）

@@ -3,6 +3,8 @@ import SwiftUI
 /// 提醒行视图（列表中的每一行）
 struct ReminderRowView: View {
     let reminder: Reminder
+    /// 提醒中（active / snoozed / overdue）行内确认。等待中不传。
+    var onConfirm: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 13) {
@@ -35,24 +37,21 @@ struct ReminderRowView: View {
                     .foregroundStyle(isDone ? .secondary : .primary)
 
                 HStack(spacing: 6) {
-                    // v2.5.0: 周期类用深灰规则徽章（数据区对比色），日期类保留彩色
+                    // 日期类：公历/农历彩色标签；周期类用规则徽章
                     if reminder.kind == .date {
-                        Image(systemName: reminder.kindIcon)
-                            .font(.caption2)
-                        Text(kindLabel)
-                            .font(.caption)
-                            .foregroundStyle(kindBadgeColor)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
-                            .background(kindBadgeColor.opacity(0.12))
-                            .clipShape(Capsule())
+                        dateTypeBadge
                     } else {
                         RepeatRuleBadge(reminder: reminder)
                     }
                 }
 
-                // v1.9.8 状态胶囊（设计图独立 chip）
-                HStack(spacing: 6) {
+                if reminder.retryStage > 0 && !isDone {
+                    Text("还没确认 · \(retryClock) 再响")
+                        .font(.caption2)
+                        .foregroundStyle(ThemeTokens.statusSnoozed)
+                }
+
+                if showsStatusChip {
                     Text(reminder.status.rawValue.localized)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(statusColor)
@@ -60,12 +59,6 @@ struct ReminderRowView: View {
                         .padding(.vertical, 3)
                         .background(statusColor.opacity(0.12))
                         .clipShape(Capsule())
-
-                    if reminder.retryStage > 0 && !isDone {
-                        Text(Localized("第%d次重试", reminder.retryStage))
-                            .font(.caption2)
-                            .foregroundStyle(ThemeTokens.statusSnoozed)
-                    }
                 }
 
                 if reminder.note.isNotEmpty && reminder.retryStage == 0 {
@@ -78,11 +71,32 @@ struct ReminderRowView: View {
 
             Spacer()
 
-            // 下次触发时间：状态色（设计图）
-            Text(timeText)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(isDone ? Color(.tertiaryLabel) : statusColor)
-                .multilineTextAlignment(.trailing)
+            VStack(alignment: .trailing, spacing: 8) {
+                HStack(spacing: 4) {
+                    Text(timeText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(isDone ? Color(.tertiaryLabel) : timeColor)
+                        .multilineTextAlignment(.trailing)
+                    if onConfirm == nil {
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                if let onConfirm {
+                    Button(action: onConfirm) {
+                        Text("确认".localized)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .background(ThemeTokens.brandPrimary, in: Capsule())
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("确认".localized)
+                    .accessibilityIdentifier("row-confirm")
+                }
+            }
         }
         // v2.5.0: 粘土拟态行卡（替代液态玻璃）
         .padding(12)
@@ -93,10 +107,39 @@ struct ReminderRowView: View {
 
     private var isDone: Bool { reminder.status == .confirmed }
 
+    /// 等待中由分组标题表达，提醒中改走行内确认，不再叠状态胶囊
+    private var showsStatusChip: Bool {
+        if onConfirm != nil { return false }
+        if reminder.status == .pending { return false }
+        return true
+    }
+
+    private var timeColor: Color {
+        reminder.status == .pending ? ThemeTokens.brandPrimary : statusColor
+    }
+
     // MARK: - 类型标签
 
-    private var kindLabel: String {
-        "\(reminder.priority.emoji) \(reminder.dateDisplayText)"
+    @ViewBuilder
+    private var dateTypeBadge: some View {
+        Text(dateBadgeText)
+            .font(.caption)
+            .foregroundStyle(kindBadgeColor)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(kindBadgeColor.opacity(0.12))
+            .clipShape(Capsule())
+    }
+
+    private var dateBadgeText: String {
+        switch reminder.dateType {
+        case .solarBirthday:
+            return Localized("公历 %@", reminder.dateDisplayText)
+        case .lunarBirthday:
+            return Localized("农历 %@", reminder.dateDisplayText)
+        default:
+            return reminder.dateDisplayText
+        }
     }
 
     private var kindBadgeColor: Color {
@@ -121,6 +164,13 @@ struct ReminderRowView: View {
         case .confirmed: return ThemeTokens.statusCompleted
         case .overdue:   return ThemeTokens.statusOverdue
         }
+    }
+
+    private var retryClock: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "HH:mm"
+        return f.string(from: reminder.nextTriggerAt)
     }
 
     private var timeText: String {
@@ -180,39 +230,24 @@ struct MergedBirthdayRow: View {
                         .background(Color.purple.opacity(0.12))
                         .clipShape(Capsule())
                 }
-
-                HStack(spacing: 6) {
-                    Text(nearest.status.rawValue.localized)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(statusColor)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 3)
-                        .background(statusColor.opacity(0.12))
-                        .clipShape(Capsule())
-                }
             }
 
             Spacer()
 
-            Text(timeText)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(statusColor)
-                .multilineTextAlignment(.trailing)
+            HStack(spacing: 4) {
+                Text(timeText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(ThemeTokens.brandPrimary)
+                    .multilineTextAlignment(.trailing)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .clayCard(radius: 18)
         .opacity(nearest.isEnabled ? 1 : 0.5)
-    }
-
-    private var statusColor: Color {
-        switch nearest.status {
-        case .pending:   return ThemeTokens.statusWaiting
-        case .active:    return ThemeTokens.statusReminding
-        case .snoozed:   return ThemeTokens.statusSnoozed
-        case .confirmed: return ThemeTokens.statusCompleted
-        case .overdue:   return ThemeTokens.statusOverdue
-        }
     }
 
     private var timeText: String {

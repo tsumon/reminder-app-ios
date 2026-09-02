@@ -2,9 +2,43 @@
 
 ---
 
-# Recurring Reminder — Native iOS App
+# Recurring Reminder
 
-![App UI](docs/screenshots/ios.png)
+Native iOS app.
+
+| Home | Calendar | Stats |
+|:---:|:---:|:---:|
+| ![Home](docs/screenshots/home.png) | ![Calendar](docs/screenshots/calendar.png) | ![Stats](docs/screenshots/stats.png) |
+
+## Current UI
+
+Dark UI aligned with GitHub 2.5.1 — not Home A, not QuietHome. Four bottom tabs. AI lives in Settings, not as its own tab.
+
+- **Home** (title 「提醒事项」): chips 全部 / 今天 / 本周 only; groups 提醒中 / 等待中. Due rows confirm in-line (no large confirm dialog).
+- **Calendar**: solar + lunar + fox on today + 班/休; selecting a date lists that day's tasks. No weekly progress bar (progress lives on 本周花园).
+- **Stats**: this-month done / streak / completion rate + confirmed/missed; check-in castle, weekly garden, most-forgotten hours. No big ring, no heatmap.
+- **Settings**: skins, etc.
+
+```mermaid
+flowchart TB
+  app[Recurring Reminder]
+  app --> home[Home]
+  app --> cal[Calendar]
+  app --> stats[Stats]
+  app --> set[Settings]
+```
+
+```mermaid
+flowchart LR
+  waiting[Waiting] --> due[Due]
+  due -->|Confirm| next[Next cycle]
+  due -->|Unconfirmed| retry[Escalating retry]
+  retry -->|Confirm| next
+  retry -->|Cap| overdue[Overdue]
+  overdue -->|Manual confirm| next
+```
+
+Retry engine remains 1h → 4h → 12h → 24h → overdue (then stops auto-ringing). Notification actions are Confirm and Later.
 
 ## 🌐 Multi-language Support
 
@@ -28,7 +62,7 @@ This app (iOS & Android) has built-in multi-language support that follows the sy
 
 A pure native SwiftUI iOS reminder app that supports:
 - Set cycle: daily, weekly, monthly, quarterly, yearly, custom number of days
-- Due push notification with two action buttons: "Confirm Complete" and "Remind Later"
+- Due push notification with two action buttons: "Confirm" and "Later"
 - Unacknowledged escalating retry (aligned across platforms since v1.9.7): 1h → 4h → 12h → 24h → 24h
   - After the 5th escalation it is marked `overdue`, stops nagging, and waits for manual confirmation / re-open
 - Cycle anchor anti-drift: computed from the first trigger time, won't shift due to delayed confirmation (month-end alignment, correct leap years)
@@ -84,7 +118,7 @@ ReminderApp/
 │   ├── CreateReminderView.swift   # New reminder form
 │   ├── ReminderDetailView.swift   # Detail page + confirm / later actions + history
 │   ├── CalendarView.swift         # Calendar view
-│   ├── StatsView.swift            # Stats / heatmap
+│   ├── StatsView.swift            # Stats (month done / streak / completion rate)
 │   ├── AIChatView.swift           # AI chat
 │   ├── AISettingsView.swift       # AI config
 │   ├── NearbyShareView.swift      # Nearby transfer (QR + TCP)
