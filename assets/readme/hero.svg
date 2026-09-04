@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">循环提醒</title>
+  <desc id="desc">原生 SwiftUI iOS 提醒应用。到期未确认会按 1 小时、4 小时、12 小时、24 小时递增再响；确认后周期从首次触发锚点前进。</desc>
+
+  <defs>
+    <linearGradient id="hero-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B1114"/>
+      <stop offset="1" stop-color="#102024"/>
+    </linearGradient>
+    <linearGradient id="clock-fill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4DB6AC"/>
+      <stop offset="1" stop-color="#0E6E70"/>
+    </linearGradient>
+    <linearGradient id="confirm-fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1AAEAF"/>
+      <stop offset="1" stop-color="#159A9C"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="420" rx="24" fill="url(#hero-bg)"/>
+
+  <g id="motif-clock" transform="translate(1048 36)" opacity="0.14" fill="none" stroke-linecap="round">
+    <circle cx="0" cy="110" r="126" stroke="#159A9C" stroke-width="26"/>
+    <path d="M-6 110 L-6 42" stroke="#F3F7F7" stroke-width="16"/>
+    <path d="M-6 110 L52 74" stroke="#F3F7F7" stroke-width="14"/>
+  </g>
+
+  <g id="title-block" transform="translate(56 44)">
+    <g id="clock-mark">
+      <circle cx="22" cy="22" r="22" fill="url(#clock-fill)"/>
+      <path d="M22 8 A14 14 0 1 1 10 30" fill="none" stroke="#F3F7F7" stroke-width="3.4" stroke-linecap="round"/>
+      <path d="M22 22 L22 13" fill="none" stroke="#F3F7F7" stroke-width="2.6" stroke-linecap="round"/>
+      <path d="M22 22 L30 26" fill="none" stroke="#F3F7F7" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+    <text x="56" y="28" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#8B96A3" letter-spacing="1.4">SWIFTUI  ·  iOS 17+  ·  v2.6.0</text>
+
+    <text x="0" y="100" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="56" font-weight="800" fill="#F3F7F7">循环提醒</text>
+    <text x="0" y="138" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="22" font-weight="600" fill="#4DB6AC">Recurring Reminder</text>
+
+    <text x="0" y="188" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="21" fill="#D5DDE2">到期没确认，就按 1h → 4h → 12h → 24h 再响。</text>
+    <text x="0" y="218" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="21" fill="#D5DDE2">确认之后，下次从首次触发锚点计算，不会漂。</text>
+  </g>
+
+  <g id="project-proof" transform="translate(668 44)">
+    <rect x="0" y="0" width="476" height="214" rx="20" fill="#171E24" stroke="#2A3A40" stroke-width="1"/>
+    <circle cx="28" cy="28" r="7" fill="#159A9C"/>
+    <text x="44" y="34" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="18" font-weight="600" fill="#8B96A3">循环提醒</text>
+    <text x="24" y="80" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="26" font-weight="700" fill="#F3F7F7">吃降压药</text>
+    <text x="24" y="110" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="18" fill="#8B96A3">每天 09:00</text>
+    <text x="24" y="136" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="18" fill="#E7A23A">还没确认 · 03:04 再响</text>
+    <rect x="24" y="154" width="200" height="44" rx="14" fill="url(#confirm-fill)"/>
+    <text x="124" y="183" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="20" font-weight="700" fill="#F3F7F7">确认</text>
+    <rect x="236" y="154" width="216" height="44" rx="14" fill="#1C262C" stroke="#3A4A50" stroke-width="1"/>
+    <text x="344" y="183" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="20" font-weight="700" fill="#4DB6AC">稍后</text>
+  </g>
+
+  <g id="retry-ladder" transform="translate(56 286)">
+    <rect x="0" y="0" width="1088" height="96" rx="18" fill="#141C21"/>
+    <g fill="none" stroke="#2E4A4C" stroke-width="3" stroke-linecap="round">
+      <path d="M156 36 H248"/>
+      <path d="M372 36 H464"/>
+      <path d="M588 36 H680"/>
+      <path d="M804 36 H896"/>
+    </g>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" fill="#6F8A8C">
+      <text x="202" y="26" text-anchor="middle">+1h</text>
+      <text x="418" y="26" text-anchor="middle">+4h</text>
+      <text x="634" y="26" text-anchor="middle">+12h</text>
+      <text x="850" y="26" text-anchor="middle">+24h</text>
+    </g>
+    <g font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="20" font-weight="600">
+      <circle cx="88" cy="40" r="9" fill="#159A9C"/>
+      <text x="88" y="76" text-anchor="middle" fill="#E8EEF0">到期</text>
+      <circle cx="304" cy="40" r="9" fill="#159A9C"/>
+      <text x="304" y="76" text-anchor="middle" fill="#E8EEF0">第 2 次</text>
+      <circle cx="520" cy="40" r="9" fill="#159A9C"/>
+      <text x="520" y="76" text-anchor="middle" fill="#E8EEF0">第 3 次</text>
+      <circle cx="736" cy="40" r="9" fill="#159A9C"/>
+      <text x="736" y="76" text-anchor="middle" fill="#E8EEF0">第 4 次</text>
+      <circle cx="980" cy="40" r="9" fill="#C0392B"/>
+      <text x="980" y="76" text-anchor="middle" fill="#E7B0AA">逾期停响</text>
+    </g>
+  </g>
+</svg>
