@@ -84,46 +84,73 @@ struct ReminderListView: View {
     }
 
     private var mainContent: some View {
-        Group {
+        VStack(spacing: 0) {
+            homeChromeHeader
+            Group {
                 if reminders.isEmpty {
                     emptyView
                 } else {
                     listView
                 }
             }
+        }
             // v2.1.1: 批量管理编辑模式（EditButton / 多选）
             .environment(\.editMode, $editMode)
-            // v2.5.0: 桃粉+薰衣草软渐变背景 + 漂浮星星/云朵（治愈游戏基调）
-            .background(PastelPlaygroundBackground())
+            .background(PaperCanvas())
             .scrollContentBackground(.hidden)
-            .navigationTitle("提醒事项".localized)
-            // v1.9.8.1: iPad 大屏下大标题区+玻璃背景形成大块空白，改 inline 更紧凑
             .navigationBarTitleDisplayMode(.inline)
-            .glassNavigationBar()
-            // v2.4.9: 弃用 .searchable，改为列表内自定义搜索框——
-            // iOS 26 上 .searchable 的搜索栏占 leading 位，会把 AI 入口顶掉；
-            // AI 入口按用户要求固定左上（navigationBarLeading），搜索栏必须让位。
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
             .toolbar {
                 homeToolbar
             }
     }
 
-    /// v2.5.0: 整个 toolbar 抽成独立 ToolbarContent——CI 端编译器对 mainContent
-    /// 巨型表达式 type-check 超时（拆 Menu 不够，须把 toolbar 子树整体挪出）
-    @ToolbarContentBuilder
-    private var homeToolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarLeading) {
+    /// 顶栏：标题屏幕居中；左 AI、右 + / … 为两颗独立 40 圆钮（间距 8），不走 ToolbarItemGroup。
+    private var homeChromeHeader: some View {
+        SoftScreenHeader(title: "提醒事项") {
             NavigationLink {
                 AIChatView()
             } label: {
-                Image(systemName: "sparkles")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(ThemeTokens.brandPrimary)
+                SoftCircleChrome(size: 40) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(ThemeTokens.strong)
+                }
             }
+            .buttonStyle(.plain)
             .accessibilityLabel("AI")
             .accessibilityIdentifier("ai-entry")
+        } trailing: {
+            HStack(spacing: 8) {
+                SoftCircleButton(size: 40, action: { showCreateSheet = true }) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(soft.text)
+                }
+                .accessibilityLabel("新建提醒".localized)
+
+                Menu {
+                    overflowMenuContent
+                } label: {
+                    SoftCircleChrome(size: 40) {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(soft.text)
+                    }
+                }
+                .accessibilityIdentifier("more-menu")
+            }
         }
-        // v2.1.1: 批量管理（多选完成/删除）
+        .background(soft.canvas)
+    }
+
+    /// v2.5.0: 整个 toolbar 抽成独立 ToolbarContent——CI 端编译器对 mainContent
+    /// 巨型表达式 type-check 超时（拆 Menu 不够，须把 toolbar 子树整体挪出）
+    @Environment(\.soft) private var soft
+
+    @ToolbarContentBuilder
+    private var homeToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .bottomBar) {
             if editMode.isEditing {
                 Button {
@@ -147,37 +174,6 @@ struct ReminderListView: View {
                 .disabled(selectedIDs.isEmpty)
             }
         }
-        ToolbarItem(placement: .navigationBarTrailing) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isSearchPresented.toggle()
-                }
-                if isSearchPresented {
-                    searchFocused = true
-                } else {
-                    searchText = ""
-                    searchFocused = false
-                }
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(isSearchPresented ? ThemeTokens.brandPrimary : Color.primary)
-            }
-            .accessibilityLabel("搜索".localized)
-            .accessibilityIdentifier("home-search")
-        }
-        ToolbarItem(placement: .navigationBarTrailing) {
-            EditButton()
-        }
-        ToolbarItem(placement: .navigationBarTrailing) {
-            Menu {
-                overflowMenuContent
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.title3.weight(.semibold))
-            }
-            .accessibilityIdentifier("more-menu")
-        }
     }
 
     // v2.5.0: CI 端编译器对巨型 Menu 表达式 type-check 超时，抽成独立 @ViewBuilder
@@ -186,6 +182,11 @@ struct ReminderListView: View {
             menuAction { showCreateSheet = true }
         } label: {
             Label("新建提醒".localized, systemImage: "plus.circle")
+        }
+        Button {
+            editMode = editMode.isEditing ? .inactive : .active
+        } label: {
+            Label("批量管理".localized, systemImage: "checkmark.circle")
         }
         Divider()
         // v1.8.7 任务③: 统计洞察
@@ -640,29 +641,15 @@ struct ReminderListView: View {
     // MARK: - 空状态
 
     private var emptyView: some View {
-        List {
-            // 日历
-            Section {
-                CalendarCardView(
-                    reminders: reminders,
-                    streak: StatsService.summarize(records: records).currentStreak,
-                    weekDone: weekDoneDays(records: records),
-                    onDateTap: { selectedDay = $0; showDaySheet = true }
-                )
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-            }
-
-            Section {
-                // v2.5.0: 空状态=小狐狸挥手「今天想做什么呀？」
+        ScrollView {
+            VStack(spacing: 12) {
+                SoftInsetSearch(text: $searchText, focused: $searchFocused)
+                    .padding(.horizontal, 16)
+                smartListBar
                 WavingEmptyMascot(onCreate: { showCreateSheet = true })
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
             }
+            .padding(.top, 4)
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
     }
 
     // MARK: - 下载结果 sheet
@@ -745,7 +732,13 @@ struct ReminderListView: View {
 
     private var listView: some View {
         List(selection: $selectedIDs) {
-            // 智能清单筛选条：首页只展示 全部 / 今天 / 本周
+            Section {
+                SoftInsetSearch(text: $searchText, focused: $searchFocused)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 2, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+
             Section {
                 smartListBar
                     .listRowInsets(EdgeInsets())
@@ -753,11 +746,12 @@ struct ReminderListView: View {
                     .listRowSeparator(.hidden)
             }
 
-            // 概览：日期 + 农历 | 待处理数
             let unhandled = reminders.filter { $0.isEnabled && $0.status != .confirmed }.count
+            let enabledCount = max(reminders.filter(\.isEnabled).count, 1)
+            let doneShare = Double(max(enabledCount - unhandled, 0)) / Double(enabledCount)
             Section {
-                OverviewCard(unhandledCount: unhandled)
-                    .listRowInsets(EdgeInsets())
+                OverviewCard(unhandledCount: unhandled, progress: doneShare)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
@@ -780,16 +774,17 @@ struct ReminderListView: View {
             if !activeReminders.isEmpty {
                 Section {
                     ForEach(activeReminders) { reminder in
-                        NavigationLink {
-                            ReminderDetailView(reminder: reminder)
+                        Button {
+                            pendingDetailID = reminder.id
                         } label: {
                             ReminderRowView(reminder: reminder) {
                                 ReminderEngine.shared.confirmReminder(reminder)
                             }
-                                .listRowInsets(EdgeInsets())
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
                         }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                         .swipeActions(edge: .leading) {
                             completeSwipe(for: reminder)
                         }
@@ -810,23 +805,25 @@ struct ReminderListView: View {
                     ForEach(display) { item in
                         switch item {
                         case .pair(let solar, let lunar):
-                            NavigationLink {
-                                ReminderDetailView(reminder: item.nearest)
+                            Button {
+                                pendingDetailID = item.nearest.id
                             } label: {
                                 MergedBirthdayRow(solar: solar, lunar: lunar)
-                                    .listRowInsets(EdgeInsets())
-                                    .listRowBackground(Color.clear)
-                                    .listRowSeparator(.hidden)
                             }
+                            .buttonStyle(.plain)
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
                         case .single(let reminder):
-                            NavigationLink {
-                                ReminderDetailView(reminder: reminder)
+                            Button {
+                                pendingDetailID = reminder.id
                             } label: {
                                 ReminderRowView(reminder: reminder)
-                                    .listRowInsets(EdgeInsets())
-                                    .listRowBackground(Color.clear)
-                                    .listRowSeparator(.hidden)
                             }
+                            .buttonStyle(.plain)
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
                             .swipeActions(edge: .leading) {
                                 completeSwipe(for: reminder)
                             }
@@ -845,14 +842,15 @@ struct ReminderListView: View {
             if !confirmedReminders.isEmpty {
                 Section {
                     ForEach(confirmedReminders) { reminder in
-                        NavigationLink {
-                            ReminderDetailView(reminder: reminder)
+                        Button {
+                            pendingDetailID = reminder.id
                         } label: {
                             ReminderRowView(reminder: reminder)
-                                .listRowInsets(EdgeInsets())
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
                         }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                         .swipeActions(edge: .leading) {
                             reopenSwipe(for: reminder)
                         }
@@ -868,11 +866,6 @@ struct ReminderListView: View {
         .animation(.easeInOut(duration: 0.2), value: searchText)
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .safeAreaInset(edge: .top) {
-            if isSearchPresented {
-                homeSearchBar
-            }
-        }
         .refreshable {
             await ReminderEngine.shared.checkMissedReminders(reminders: reminders)
         }
@@ -910,44 +903,23 @@ struct ReminderListView: View {
     // MARK: - 智能清单筛选条
 
     private var smartListBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach([SmartList.all, .today, .week], id: \.self) { list in
-                    Button {
-                        smartList = list
-                    } label: {
-                        Text(list.label)
-                            .font(.subheadline.weight(.medium))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 7)
-                            .background(smartList == list ? Color.accentColor : Color.gray.opacity(0.18))
-                            .foregroundStyle(smartList == list ? .white : .primary)
-                            .clipShape(Capsule())
-                    }
+        HStack(spacing: 8) {
+            ForEach([SmartList.all, .today, .week], id: \.self) { list in
+                SoftChip(title: list.label, selected: smartList == list) {
+                    smartList = list
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
     }
 
     // MARK: - 分组标题（设计图风格：小色条 + 标题 + 数量）
 
     @ViewBuilder
     private func sectionHeader(title: String, color: Color, count: Int) -> some View {
-        HStack(spacing: 8) {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(color)
-                .frame(width: 4, height: 14)
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(.primary)
-            Text("· \(count)")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(color)
-            Spacer()
-        }
-        .padding(.horizontal, 4)
+        SoftSectionHeader(title: title, color: color, count: count)
     }
 
     // MARK: - 滑动操作
@@ -1180,35 +1152,28 @@ struct DayTasksSheet: View {
 
 struct OverviewCard: View {
     let unhandledCount: Int
+    var progress: Double = 0
+    @Environment(\.soft) private var soft
 
     var body: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("\(dateTitle) \(weekdayTitle)")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
-                if let lunar = lunarToday {
-                    Text(lunar)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+        SoftShadowCard(kind: .elevated, radius: ThemeTokens.radiusElevated) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("\(dateTitle) \(weekdayTitle)")
+                        .font(SoftType.title)
+                        .foregroundStyle(soft.text)
+                    if let lunar = lunarToday {
+                        Text(lunar)
+                            .font(SoftType.caption)
+                            .foregroundStyle(soft.muted)
+                    }
                 }
+                Spacer(minLength: 12)
+                PendingCountRing(count: unhandledCount, progress: progress)
             }
-            Spacer(minLength: 12)
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("\(unhandledCount)")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundStyle(ThemeTokens.brandPrimary)
-                Text("待处理".localized)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .clayCard(radius: 24)
-        .listRowInsets(EdgeInsets())
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
     }
 
     /// 今天日期标题（如「9月3日」）

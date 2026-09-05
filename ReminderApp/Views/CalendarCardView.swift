@@ -1,43 +1,28 @@
 import SwiftUI
 import SwiftData
 
-/// 主页日历卡片：公历 + 农历 + 星期几 + 任务缩略标记
-/// v2.5.0: 日期格热力密度（任务越多底色越深）+ 今日格上站小狐狸
-/// 本周进度只在统计「本周花园」，日历卡不再展示跑道
+/// 月历 elevated 卡。热力只在统计页，这里只有圆点 + 今天胶囊。
 struct CalendarCardView: View {
     let reminders: [Reminder]
-    var streak: Int = 0
-    var weekDone: Int? = nil
+    @Binding var displayYear: Int
+    @Binding var displayMonth: Int
     var onDateTap: (Date) -> Void = { _ in }
 
     private let calendar = Calendar.current
     private let weekdayHeader = ["一", "二", "三", "四", "五", "六", "日"]
 
-    @State private var displayYear: Int
-    @State private var displayMonth: Int // 1-12
     @State private var selectedDate: Date?
-    // v1.8.7 UI 优化: 月份选择器 / 是否显示「回到今天」
     @State private var showMonthPicker = false
+    @Environment(\.soft) private var soft
 
     init(reminders: [Reminder],
-         streak: Int = 0,
-         weekDone: Int? = nil,
+         displayYear: Binding<Int>,
+         displayMonth: Binding<Int>,
          onDateTap: @escaping (Date) -> Void = { _ in }) {
         self.reminders = reminders
-        self.streak = streak
-        self.weekDone = weekDone
+        self._displayYear = displayYear
+        self._displayMonth = displayMonth
         self.onDateTap = onDateTap
-        let now = Date()
-        _displayYear = State(initialValue: Calendar.current.component(.year, from: now))
-        _displayMonth = State(initialValue: Calendar.current.component(.month, from: now))
-    }
-
-    /// 吉祥物心情随本周完成度变化
-    private var mascotMood: MascotView.Mood {
-        guard let done = weekDone else { return .idle }
-        if done >= 5 { return .cheer }
-        if done > 0 { return .happy }
-        return .idle
     }
 
     // MARK: - 今天信息
@@ -83,14 +68,15 @@ struct CalendarCardView: View {
     // MARK: - Body
 
     var body: some View {
-        VStack(spacing: 8) {
-            header
-            weekdayRow
-            dayGrid
+        SoftShadowCard(kind: .elevated, radius: ThemeTokens.radiusElevated) {
+            VStack(spacing: 8) {
+                header
+                weekdayRow
+                dayGrid
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 6)
         }
-        .padding(.vertical, 12)
-        // v2.5.0: 粘土拟态卡（替代液态玻璃）
-        .clayCard(radius: 22)
         .sheet(isPresented: $showMonthPicker) {
             MonthYearPickerSheet(
                 year: displayYear,
@@ -106,78 +92,36 @@ struct CalendarCardView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 4) {
-            // 上一月（加大热区）
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) { changeMonth(by: -1) }
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            // 月份标题：点击弹出月份选择器（v1.8.7 UI 优化）
-            Button {
-                showMonthPicker = true
-            } label: {
-                VStack(spacing: 3) {
-                    HStack(spacing: 4) {
-                        Text(Localized("%d年%d月", displayYear, displayMonth))
-                            .font(.headline)
-                        Image(systemName: "chevron.down")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    // v2.0.22: 副标题只描述当前浏览月份——原实现切到其他月份时
-                    // 仍显示「今天」的农历/星期/节假日，标题与副标题语义错位
-                    if isCurrentMonth {
-                        Text(Localized("今天 · 农历%@ · %@%@", todayLunarText, todayWeekdayText, todayHolidaySuffix))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text(" ")
-                            .font(.caption)
-                    }
+        VStack(spacing: 4) {
+            Button { showMonthPicker = true } label: {
+                HStack(spacing: 4) {
+                    Text(Localized("%d年 %d月", displayYear, displayMonth))
+                        .font(SoftType.section)
+                        .foregroundStyle(soft.text)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(soft.muted)
                 }
             }
             .buttonStyle(.plain)
 
-            Spacer()
-
-            // 回到今天（非当月时显示）
-            if !isCurrentMonth {
+            if isCurrentMonth {
+                Text(Localized("今天 · 农历%@ · %@%@", todayLunarText, todayWeekdayText, todayHolidaySuffix))
+                    .font(SoftType.caption)
+                    .foregroundStyle(soft.muted)
+            } else {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        goToToday()
-                    }
+                    withAnimation(.easeInOut(duration: 0.2)) { goToToday() }
                 } label: {
                     Text("今天".localized)
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(ThemeTokens.brandPrimary.opacity(0.12))
-                        .foregroundStyle(ThemeTokens.brandPrimary)
-                        .clipShape(Capsule())
+                        .font(SoftType.caption)
+                        .foregroundStyle(ThemeTokens.strong)
                 }
                 .buttonStyle(.plain)
             }
-
-            // 下一月（加大热区）
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) { changeMonth(by: 1) }
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 4)
     }
 
     /// 当前是否显示本月
@@ -208,24 +152,17 @@ struct CalendarCardView: View {
     @MainActor private var dayGrid: some View {
         let firstOfMonth = firstOfDisplayMonth()
         let daysInMonth = calendar.range(of: .day, in: .month, for: firstOfMonth)?.count ?? 30
-        // Calendar.weekday: 1=周日...7=周六 → 周一=1...周日=7
         let firstWeekday = (calendar.component(.weekday, from: firstOfMonth) + 5) % 7 + 1
         let leadingBlanks = firstWeekday - 1
+        let cells = paddedCells(leading: leadingBlanks, daysInMonth: daysInMonth)
 
         return LazyVGrid(
             columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7),
-            spacing: 4
+            spacing: 6
         ) {
-            // ⚠️ 两个 ForEach 的 id 必须加前缀区分：空格 id 0..<N 与日期 id 1..N 重叠时
-            // SwiftUI 会丢弃重复元素 → 8 月(leadingBlanks=5)的 1-4 日不显示
-            ForEach(0..<leadingBlanks, id: \.self) { i in
-                Color.clear
-                    .frame(height: 74)
-                    .id("blank-\(i)")
-            }
-            ForEach(1...daysInMonth, id: \.self) { day in
-                dayCell(day)
-                    .id("day-\(day)")
+            ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
+                dayCell(cell)
+                    .id("\(cell.year)-\(cell.month)-\(cell.day)")
             }
         }
         .contentShape(Rectangle())
@@ -246,105 +183,107 @@ struct CalendarCardView: View {
 
     // MARK: - 日期格子
 
-    /// v2.5.0 热力密度底色：任务越多品牌色越深（0=无 / 1 / 2 / 3+）
-    private func heatBackground(taskCount: Int, isToday: Bool, isSelected: Bool) -> AnyShapeStyle {
-        if isToday {
-            return AnyShapeStyle(
-                LinearGradient(colors: [ThemeTokens.brandGradientStart, ThemeTokens.brandPrimary],
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
-            )
-        }
-        if isSelected {
-            return AnyShapeStyle(Color.accentColor.opacity(0.16))
-        }
-        switch taskCount {
-        case 0: return AnyShapeStyle(Color.clear)
-        case 1: return AnyShapeStyle(ThemeTokens.brandPrimary.opacity(0.14))
-        case 2: return AnyShapeStyle(ThemeTokens.brandPrimary.opacity(0.26))
-        default: return AnyShapeStyle(ThemeTokens.brandPrimary.opacity(0.40))
-        }
+    private struct DayCellData {
+        let year: Int
+        let month: Int
+        let day: Int
+        let inMonth: Bool
     }
 
-    @MainActor private func dayCell(_ day: Int) -> some View {
-        let isToday = displayYear == calendar.component(.year, from: today)
-            && displayMonth == calendar.component(.month, from: today)
-            && day == calendar.component(.day, from: today)
-
-        let key = String(format: "%04d-%02d-%02d", displayYear, displayMonth, day)
-        let taskCount = taskDates[key] ?? 0
-        let isSelected = selectedDate.map { calendar.isDate($0, inSameDayAs: dateFor(day) ?? Date()) } ?? false
-        // v1.8.7 任务②：联网节假日的「休/班」状态（无数据返回 nil）
-        let holidayStatus = HolidayRemoteService.status(year: displayYear, month: displayMonth, day: day)
-
-        return VStack(spacing: 1) {
-            // v2.5.0: 顶部 14pt 让位区——今日格的小狐狸要「站」在数字上，
-            // LazyVGrid 会裁剪溢出 cell 边界的内容，必须把站立位预留进格内
-            Color.clear.frame(height: 14)
-
-            Text("\(day)")
-                .font(.subheadline)
-                .fontWeight(isToday || isSelected ? .bold : .regular)
-                .foregroundStyle(
-                    isSelected
-                        ? AnyShapeStyle(.tint)
-                        : (isToday ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
-                )
-                .frame(width: 30, height: 30)
-                .background(heatBackground(taskCount: taskCount, isToday: isToday, isSelected: isSelected))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                // v2.5.0: 小狐狸站在今日格右上角（表情随本周完成度），完全在格内
-                .overlay(alignment: .topTrailing) {
-                    if isToday {
-                        MascotView(mood: mascotMood, size: 24)
-                            .offset(x: 7, y: -13)
-                            .allowsHitTesting(false)
-                    }
-                }
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(isSelected && !isToday ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.clear), lineWidth: 1.5)
-                )
-
-            // v2.5.0 任务圆点：数字正下方独立一行（v2.4.5 教训——角标小点贴色圈不可见）
-            Circle()
-                .fill(taskCount > 0 ? Playful.coral : Color.clear)
-                .frame(width: 5.5, height: 5.5)
-
-            Text(lunarText(day))
-                .font(.system(size: 8))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            // 休/班角标：放假红「休」、调休上班橙「班」；普通日占位保持对齐
-                Text(holidayStatus.map { $0.isHoliday ? "休" : "班" } ?? "")
-                .font(.system(size: 8, weight: .semibold))
-                .foregroundStyle(holidayStatus?.isHoliday == true ? ThemeTokens.holidayRest : ThemeTokens.holidayWork)
-                .lineLimit(1)
+    private func paddedCells(leading: Int, daysInMonth: Int) -> [DayCellData] {
+        var cells: [DayCellData] = []
+        var prevY = displayYear
+        var prevM = displayMonth - 1
+        if prevM < 1 { prevM = 12; prevY -= 1 }
+        let prevDays = calendar.range(of: .day, in: .month, for: dateYMD(prevY, prevM, 1) ?? today)?.count ?? 30
+        if leading > 0 {
+            for d in (prevDays - leading + 1)...prevDays {
+                cells.append(DayCellData(year: prevY, month: prevM, day: d, inMonth: false))
+            }
         }
-        .frame(height: 70)
+        for d in 1...daysInMonth {
+            cells.append(DayCellData(year: displayYear, month: displayMonth, day: d, inMonth: true))
+        }
+        var nextY = displayYear
+        var nextM = displayMonth + 1
+        if nextM > 12 { nextM = 1; nextY += 1 }
+        var n = 1
+        while cells.count % 7 != 0 {
+            cells.append(DayCellData(year: nextY, month: nextM, day: n, inMonth: false))
+            n += 1
+        }
+        return cells
+    }
+
+    private func dateYMD(_ y: Int, _ m: Int, _ d: Int) -> Date? {
+        var c = DateComponents(); c.year = y; c.month = m; c.day = d
+        return calendar.date(from: c)
+    }
+
+    @MainActor private func dayCell(_ cell: DayCellData) -> some View {
+        let isToday = cell.year == calendar.component(.year, from: today)
+            && cell.month == calendar.component(.month, from: today)
+            && cell.day == calendar.component(.day, from: today)
+        let key = String(format: "%04d-%02d-%02d", cell.year, cell.month, cell.day)
+        let taskCount = cell.inMonth ? (taskDates[key] ?? 0) : 0
+        let date = dateYMD(cell.year, cell.month, cell.day) ?? Date()
+        let isSelected = selectedDate.map { calendar.isDate($0, inSameDayAs: date) } ?? false
+        let holidayStatus = HolidayRemoteService.status(year: cell.year, month: cell.month, day: cell.day)
+        let holidayMark = holidayStatus.map { $0.isHoliday ? "休" : "班" }
+        let muted = !cell.inMonth
+
+        return VStack(spacing: 2) {
+            if isToday {
+                VStack(spacing: 0) {
+                    Text("🦊")
+                        .font(.system(size: 11))
+                    Text("\(cell.day)")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(ThemeTokens.onStrong)
+                    Text(holidayMark ?? lunarText(year: cell.year, month: cell.month, day: cell.day))
+                        .font(SoftType.calendarLunar)
+                        .foregroundStyle(ThemeTokens.onStrong.opacity(0.9))
+                }
+                .frame(width: 32, height: 48)
+                .background(ThemeTokens.strong, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            } else {
+                Text("\(cell.day)")
+                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                    .foregroundStyle(muted ? soft.muted.opacity(0.45) : (isSelected ? ThemeTokens.strong : soft.text))
+                if let mark = holidayMark {
+                    Text(mark)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(holidayStatus?.isHoliday == true ? ThemeTokens.holidayRest : ThemeTokens.holidayWork)
+                } else {
+                    Text(lunarText(year: cell.year, month: cell.month, day: cell.day))
+                        .font(SoftType.calendarLunar)
+                        .foregroundStyle(soft.muted.opacity(muted ? 0.45 : 1))
+                        .lineLimit(1)
+                }
+                Circle()
+                    .fill(taskCount > 0 ? ThemeTokens.strong : Color.clear)
+                    .frame(width: 5, height: 5)
+            }
+        }
+        .frame(height: 56)
         .frame(maxWidth: .infinity)
         .onTapGesture {
-            let d = dateFor(day) ?? Date()
-            selectedDate = d
-            onDateTap(d)
+            selectedDate = date
+            onDateTap(date)
         }
     }
 
     private func dateFor(_ day: Int) -> Date? {
-        var comps = DateComponents()
-        comps.year = displayYear
-        comps.month = displayMonth
-        comps.day = day
-        return calendar.date(from: comps)
+        dateYMD(displayYear, displayMonth, day)
     }
 
     // MARK: - 农历
 
-    private func lunarText(_ day: Int) -> String {
+    private func lunarText(year: Int, month: Int, day: Int) -> String {
         let cal = Calendar.current
         var comps = DateComponents()
-        comps.year = displayYear
-        comps.month = displayMonth
+        comps.year = year
+        comps.month = month
         comps.day = day
         comps.hour = 12
         guard let date = cal.date(from: comps) else { return "" }
@@ -384,8 +323,12 @@ struct CalendarCardView: View {
 }
 
 #Preview {
-    CalendarCardView(reminders: [])
-        .padding()
+    CalendarCardView(
+        reminders: [],
+        displayYear: .constant(2026),
+        displayMonth: .constant(9)
+    )
+    .padding()
 }
 
 // MARK: - 月份/年份选择器（v1.8.7 UI 优化）
