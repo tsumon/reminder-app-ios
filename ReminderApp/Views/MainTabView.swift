@@ -27,6 +27,15 @@ struct MainTabView: View {
         _selectedTab = State(initialValue: initial)
     }
 
+    /// Home-indicator pill ~5pt, ~8pt from the physical bottom.
+    private var contentBottomPad: CGFloat {
+        ThemeTokens.dockPadBottom + ThemeTokens.dockIndicator
+    }
+
+    private var dockReserve: CGFloat {
+        ThemeTokens.dockPadTop + ThemeTokens.dockH + contentBottomPad
+    }
+
     private var dockItems: [SoftTabItem] {
         [
             SoftTabItem(id: 0, title: "首页", systemImage: "house.fill"),
@@ -37,30 +46,34 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            NavigationStack { ReminderListView() }
-                .tag(0)
-                .toolbar(.hidden, for: .tabBar)
+        // ZStack to the physical bottom so the icon row can sit 4pt above the
+        // indicator pill. TabView / safeAreaInset would park the row above the
+        // whole 34pt safe area and leave icons hanging in the upper half of the fill.
+        ZStack(alignment: .bottom) {
+            Group {
+                switch selectedTab {
+                case 0: NavigationStack { ReminderListView() }
+                case 1: NavigationStack { CalendarPageView() }
+                case 2: NavigationStack { StatsView() }
+                default: NavigationStack { SettingsView() }
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: dockReserve)
+            }
 
-            NavigationStack { CalendarPageView() }
-                .tag(1)
-                .toolbar(.hidden, for: .tabBar)
-
-            NavigationStack { StatsView() }
-                .tag(2)
-                .toolbar(.hidden, for: .tabBar)
-
-            NavigationStack { SettingsView() }
-                .tag(3)
-                .toolbar(.hidden, for: .tabBar)
+            SoftTabDock(
+                selection: $selectedTab,
+                items: dockItems,
+                bottomPad: contentBottomPad
+            )
+            .padding(.bottom, ThemeTokens.dockBottomGap)
+            .environment(\.soft, SoftPalette.of(resolvedScheme))
         }
         .tint(ThemeTokens.brandPrimary)
         .environment(\.soft, SoftPalette.of(resolvedScheme))
         .preferredColorScheme(themeMode == 1 ? .light : themeMode == 2 ? .dark : nil)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            SoftTabDock(selection: $selectedTab, items: dockItems)
-                .environment(\.soft, SoftPalette.of(resolvedScheme))
-        }
+        .ignoresSafeArea(edges: .bottom)
         .onReceive(NotificationCenter.default.publisher(for: .openReminderDetail)) { _ in
             selectedTab = 0
         }

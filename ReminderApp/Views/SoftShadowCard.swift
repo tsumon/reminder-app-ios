@@ -23,63 +23,126 @@ struct SoftShadowCard<Content: View>: View {
     @ViewBuilder var content: Content
 
     @Environment(\.soft) private var soft
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         content
             .padding(padding ?? 0)
-            .background(cardFill, in: shape)
-            .overlay { hairline }
-            .shadow(color: shadowA.color, radius: shadowA.radius, x: 0, y: shadowA.y)
-            .shadow(color: shadowB.color, radius: shadowB.radius, x: 0, y: shadowB.y)
-            .shadow(color: shadowC.color, radius: shadowC.radius, x: 0, y: shadowC.y)
-    }
-
-    private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .modifier(SoftElevation(kind: kind, radius: radius, fill: cardFill))
     }
 
     private var cardFill: Color {
         fill ?? (kind == .elevated ? soft.elevated : soft.surface)
     }
+}
 
-    @ViewBuilder
-    private var hairline: some View {
-        if soft.isDark {
-            let op: Double = kind == .elevated ? 0.07 : (kind == .sm ? 0.04 : 0.06)
-            shape.strokeBorder(Color.white.opacity(op), lineWidth: 1)
+/// DESIGN Shadow：多层 `.shadow` + overlay 模拟 inset；暗色 hairline 是 1pt spread，不是 `.stroke()`。
+private struct SoftElevation: ViewModifier {
+    var kind: SoftShadowKind
+    var radius: CGFloat
+    var fill: Color
+    /// Bottom corners; `nil` matches `radius`. Dock uses 0 so fill can square off at the physical bottom.
+    var bottomRadius: CGFloat? = nil
+    @Environment(\.soft) private var soft
+
+    func body(content: Content) -> some View {
+        let br = bottomRadius ?? radius
+        let shape = UnevenRoundedRectangle(
+            topLeadingRadius: radius,
+            bottomLeadingRadius: br,
+            bottomTrailingRadius: br,
+            topTrailingRadius: radius,
+            style: .continuous
+        )
+        content
+            .background {
+                ZStack {
+                    if soft.isDark {
+                        shape.fill(Color.white.opacity(hairlineOpacity))
+                            .padding(-1)
+                    }
+                    shape.fill(fill)
+                }
+            }
+            .overlay {
+                LinearGradient(
+                    stops: [
+                        .init(color: Color.white.opacity(insetOpacity), location: 0),
+                        .init(color: Color.white.opacity(insetOpacity * 0.35), location: 0.035),
+                        .init(color: Color.clear, location: 0.12)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .clipShape(shape)
+                .allowsHitTesting(false)
+            }
+            .shadow(color: drop1.color, radius: drop1.blur, x: 0, y: drop1.y)
+            .shadow(color: drop2.color, radius: drop2.blur, x: 0, y: drop2.y)
+            .shadow(color: drop3.color, radius: drop3.blur, x: 0, y: drop3.y)
+    }
+
+    private var hairlineOpacity: Double {
+        switch kind {
+        case .sm: return 0.05
+        case .card: return 0.08
+        case .elevated: return 0.10
         }
     }
 
-    private var shadowA: (color: Color, radius: CGFloat, y: CGFloat) {
+    private var insetOpacity: Double {
         if soft.isDark {
             switch kind {
-            case .sm: return (Color.black.opacity(0.38), 2, 1)
-            case .card: return (Color.black.opacity(0.46), 28, 10)
-            case .elevated: return (Color.black.opacity(0.50), 32, 12)
+            case .sm: return 0
+            case .card: return 0.10
+            case .elevated: return 0.14
             }
         }
         switch kind {
-        case .sm: return (Color(hex: 0x111111).opacity(0.04), 1, 1)
-        case .card: return (Color(hex: 0x111111).opacity(0.05), 3, 1)
-        case .elevated: return (Color(hex: 0x111111).opacity(0.05), 2, 1)
+        case .sm: return 0
+        case .card: return 0.85
+        case .elevated: return 0.95
         }
     }
 
-    private var shadowB: (color: Color, radius: CGFloat, y: CGFloat) {
-        if soft.isDark { return (.clear, 0, 0) }
+    private var drop1: (color: Color, blur: CGFloat, y: CGFloat) {
+        if soft.isDark {
+            switch kind {
+            case .sm: return (Color.black.opacity(0.40), 2, 1)
+            case .card: return (Color.black.opacity(0.45), 8, 4)
+            case .elevated: return (Color.black.opacity(0.50), 12, 6)
+            }
+        }
+        let ink = Color(hex: 0x111111)
         switch kind {
-        case .sm: return (Color(hex: 0x111111).opacity(0.04), 4, 2)
-        case .card: return (Color(hex: 0x111111).opacity(0.08), 28, 10)
-        case .elevated: return (Color(hex: 0x111111).opacity(0.05), 8, 4)
+        case .sm: return (ink.opacity(0.05), 1, 1)
+        case .card: return (ink.opacity(0.06), 2, 1)
+        case .elevated: return (ink.opacity(0.06), 4, 2)
         }
     }
 
-    private var shadowC: (color: Color, radius: CGFloat, y: CGFloat) {
-        if soft.isDark { return (.clear, 0, 0) }
+    private var drop2: (color: Color, blur: CGFloat, y: CGFloat) {
+        if soft.isDark {
+            switch kind {
+            case .sm: return (.clear, 0, 0)
+            case .card: return (Color.black.opacity(0.50), 32, 12)
+            case .elevated: return (Color.black.opacity(0.55), 40, 16)
+            }
+        }
+        let ink = Color(hex: 0x111111)
         switch kind {
-        case .elevated: return (Color(hex: 0x111111).opacity(0.04), 24, 8)
-        default: return (.clear, 0, 0)
+        case .sm: return (ink.opacity(0.05), 4, 2)
+        case .card: return (ink.opacity(0.06), 12, 6)
+        case .elevated: return (ink.opacity(0.07), 16, 8)
+        }
+    }
+
+    private var drop3: (color: Color, blur: CGFloat, y: CGFloat) {
+        if soft.isDark { return (.clear, 0, 0) }
+        let ink = Color(hex: 0x111111)
+        switch kind {
+        case .sm: return (.clear, 0, 0)
+        case .card: return (ink.opacity(0.08), 32, 14)
+        case .elevated: return (ink.opacity(0.08), 40, 16)
         }
     }
 }
@@ -104,33 +167,39 @@ struct SoftCircleChrome<Content: View>: View {
             Circle()
                 .fill(
                     LinearGradient(
-                        colors: soft.isDark
-                            ? [Color.white.opacity(0.28), Color.white.opacity(0.06), Color.clear]
-                            : [Color.white.opacity(0.92), Color.white.opacity(0.22)],
+                        stops: soft.isDark
+                            ? [
+                                .init(color: Color.white.opacity(0.16), location: 0),
+                                .init(color: Color.white.opacity(0.06), location: 0.22),
+                                .init(color: Color.clear, location: 0.62)
+                            ]
+                            : [
+                                .init(color: Color.white.opacity(0.95), location: 0),
+                                .init(color: Color.white.opacity(0.50), location: 0.28),
+                                .init(color: Color.clear, location: 0.62)
+                            ],
                         startPoint: .top,
-                        endPoint: .center
+                        endPoint: .bottom
                     )
                 )
-                .padding(1)
-            if soft.isDark {
-                Ellipse()
-                    .fill(Color.white.opacity(0.16))
-                    .frame(width: size * 0.62, height: size * 0.22)
-                    .offset(y: -size * 0.28)
-                    .blur(radius: 0.6)
-            }
             content
         }
         .frame(width: size, height: size)
-        .overlay {
+        .background {
             if soft.isDark {
-                Circle().strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+                Circle().fill(Color.white.opacity(0.10)).padding(-1)
             }
         }
-        .shadow(color: soft.isDark ? Color.black.opacity(0.50) : Color(hex: 0x111111).opacity(0.05),
-                radius: soft.isDark ? 20 : 2, y: soft.isDark ? 8 : 1)
-        .shadow(color: soft.isDark ? .clear : Color(hex: 0x111111).opacity(0.08),
-                radius: 16, y: 6)
+        .shadow(
+            color: soft.isDark ? Color.black.opacity(0.50) : Color(hex: 0x111111).opacity(0.06),
+            radius: soft.isDark ? 20 : 2,
+            y: soft.isDark ? 8 : 1
+        )
+        .shadow(
+            color: soft.isDark ? .clear : Color(hex: 0x111111).opacity(0.10),
+            radius: 16,
+            y: 6
+        )
     }
 }
 
@@ -215,17 +284,27 @@ struct SoftChip: View {
                 .foregroundStyle(selected ? ThemeTokens.onStrong : soft.muted)
                 .padding(.horizontal, 14)
                 .frame(height: ThemeTokens.chipH)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(selected ? ThemeTokens.strong : soft.surface)
-                )
-                .shadow(color: selected ? .clear : Color(hex: 0x111111).opacity(soft.isDark ? 0.35 : 0.04),
-                        radius: selected ? 0 : 2, y: 1)
-                .overlay {
-                    if soft.isDark && !selected {
-                        Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.04), lineWidth: 1)
+                .background {
+                    ZStack {
+                        if soft.isDark && !selected {
+                            Capsule(style: .continuous)
+                                .fill(Color.white.opacity(0.05))
+                                .padding(-1)
+                        }
+                        Capsule(style: .continuous)
+                            .fill(selected ? ThemeTokens.strong : soft.surface)
                     }
                 }
+                .shadow(
+                    color: selected ? .clear : (soft.isDark ? Color.black.opacity(0.40) : Color(hex: 0x111111).opacity(0.05)),
+                    radius: selected ? 0 : (soft.isDark ? 2 : 1),
+                    y: selected ? 0 : 1
+                )
+                .shadow(
+                    color: selected || soft.isDark ? .clear : Color(hex: 0x111111).opacity(0.05),
+                    radius: 4,
+                    y: 2
+                )
         }
         .buttonStyle(.plain)
         .animation(.timingCurve(0.25, 1, 0.5, 1, duration: 0.18), value: selected)
@@ -542,6 +621,7 @@ struct SoftTabItem: Identifiable {
 struct SoftTabDock: View {
     @Binding var selection: Int
     let items: [SoftTabItem]
+    var bottomPad: CGFloat = ThemeTokens.dockPadBottom
 
     @Environment(\.soft) private var soft
 
@@ -553,46 +633,46 @@ struct SoftTabDock: View {
                         selection = item.id
                     }
                 } label: {
-                    VStack(spacing: 4) {
+                    VStack(spacing: 2) {
                         ZStack {
                             if selection == item.id {
                                 Circle()
                                     .fill(ThemeTokens.strong)
-                                    .frame(width: 40, height: 40)
+                                    .frame(width: ThemeTokens.dockSelected, height: ThemeTokens.dockSelected)
                             }
                             Image(systemName: item.systemImage)
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(selection == item.id ? ThemeTokens.onStrong : soft.muted)
                         }
-                        .frame(height: 40)
+                        .frame(width: ThemeTokens.dockSelected, height: ThemeTokens.dockSelected)
                         Text(item.title.localized)
                             .font(SoftType.tab)
                             .foregroundStyle(selection == item.id ? ThemeTokens.strong : soft.muted)
                     }
                     .frame(maxWidth: .infinity)
+                    .frame(height: ThemeTokens.dockH, alignment: .top)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(item.title.localized)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 8)
-        .padding(.bottom, 6)
-        .background(
-            RoundedRectangle(cornerRadius: ThemeTokens.radiusElevated, style: .continuous)
-                .fill(soft.elevated)
-        )
-        .overlay {
-            if soft.isDark {
-                RoundedRectangle(cornerRadius: ThemeTokens.radiusElevated, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.07), lineWidth: 1)
-            }
+        .padding(.horizontal, ThemeTokens.gutter)
+        .padding(.top, ThemeTokens.dockPadTop)
+        .padding(.bottom, bottomPad)
+        .frame(maxWidth: .infinity)
+        .background(alignment: .top) {
+            // Full-width elevated fill to the physical bottom (home-indicator sits on --elevated).
+            // Icon row uses a small top pad — not vertically centered in this skirt.
+            Color.clear
+                .frame(maxWidth: .infinity)
+                .frame(height: ThemeTokens.dockPadTop + ThemeTokens.dockH + bottomPad + 80)
+                .modifier(SoftElevation(
+                    kind: .elevated,
+                    radius: ThemeTokens.radiusElevated,
+                    fill: soft.elevated,
+                    bottomRadius: 0
+                ))
         }
-        .shadow(color: Color.black.opacity(soft.isDark ? 0.40 : 0.05), radius: soft.isDark ? 28 : 2, y: soft.isDark ? 10 : 1)
-        .shadow(color: Color.black.opacity(soft.isDark ? 0 : 0.05), radius: 8, y: 4)
-        .shadow(color: Color.black.opacity(soft.isDark ? 0 : 0.04), radius: 24, y: 8)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
     }
 }
 

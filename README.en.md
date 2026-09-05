@@ -12,7 +12,7 @@ Native iOS app.
 
 ## Current UI
 
-Hammer-paper soft-shadow: light paper canvas / dark elevated surfaces. Cards have no stroke; actions are soft round buttons. Four bottom tabs. AI lives in Settings, not as its own tab. iOS has no FAB.
+Hammer-paper soft-shadow: light paper canvas / dark elevated surfaces. Cards have no stroke; actions are soft round buttons. Dock fills to the physical bottom (48pt). Four bottom tabs. Settings rows 52pt. AI lives in Settings, not as its own tab. iOS has no FAB.
 
 - **Home** (title 「提醒事项」): inset search; chips 全部 / 今天 / 本周; today card + soft ring for pending count; groups 提醒中 / 等待中. Due rows confirm in-line (no large confirm dialog). Retry subtitle 「还没确认 · HH:MM 再响」. 44 emoji wells; light-blue wash cycle badges.
 - **Calendar**: month as one elevated card; today as a vertical capsule + 🦊; solar + lunar + 班/休; adjacent-month dates dimmed; selecting a date lists that day's tasks. No weekly progress bar.
