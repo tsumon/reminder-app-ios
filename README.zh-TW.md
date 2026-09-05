@@ -106,7 +106,7 @@ ReminderApp/
 │   ├── QRCodeService.swift        # QR Code 生成與掃碼（AVFoundation）
 │   ├── UpdateService.swift        # GitHub releases.atom 檢查更新
 │   ├── TelemetryService.swift     # 埋點（confirm / escalate / ...）
-│   └── LiquidGlass.swift          # 液態玻璃樣式庫
+│   └── SoftShadowCard.swift          # 紙面軟影 / donut / 熱力
 └── Widgets/
     └── ReminderWidget.swift       # 桌面小工具
 ```
@@ -149,12 +149,13 @@ ReminderApp/
 
 | 版本 | 日期 | 更新內容 |
 |------|------|----------|
-| v1.9.7 | 2026-08 | 遞增重試上限封頂 overdue、液態玻璃 UI、掃碼互傳 |
-| v1.9.6 | 2026-08 | 五輪審查 70 項修復 + 近場傳輸 + 刪除 AI 免 API 模式 |
-| v1.9.5 | 2026-08 | 檢查更新改 `releases.atom` 防 API 限流 |
-| v1.9.4 | 2026-08 | WebDAV 同步 404 → 自動 MKCOL 建目錄 |
-| v1.9.3 | 2026-08 | 設定頁（版本號 / 檢查更新 / 更新日誌） |
-| v1.9.2 | 2026-08 | 更新檢查逾時重試 + WebDAV 友好提示 |
-| v1.9.1 | 2026-08 | AI 規則提醒 + 首頁選單「檢查更新」 |
-| v1.9.0 | 2026-08 | UI 優化（液態玻璃）+ 線上升級 + App 圖示 |
-| v1.8.7 | 2026-08 | 小工具增強 / 節假日聯網 / 統計洞察 / .ics 匯出 / 設計令牌 / 崩潰監控 |
+| v2.7.1 | 2026-09 | soft-ui chrome：锤子立体软影、底栏铺物理底（DockH 48 / 选中圆 32）、设置行高 52 |
+| v2.7.0 | 2026-09 | soft-ui 纸面软影；首页今日卡+待处理环；统计 donut + 本月打卡热力 |
+| v2.6.0 | 2026-09 | 行内确认、日历当天任务、统计空完成率 0% |
+| v2.4.14 | 2026-08 | AI 一次只问一事；公历+农历生日合并显示 |
+| v2.4.10 | 2026-08 | 避开节假日/周末自动顺延到下一工作日 |
+| v2.4.0 | 2026-08 | 首页时间线 + 六色主题 |
+| v2.3.0 | 2026-08 | 品牌色改青碧 Teal |
+
+
+Earlier: [https://github.com/tsumon/reminder-app-ios/releases](https://github.com/tsumon/reminder-app-ios/releases).
