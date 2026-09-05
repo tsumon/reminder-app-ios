@@ -10,23 +10,9 @@ iOS 原生。到期你点确认，周期才往前走；滑掉就按 1 小时 →
   <img alt="循环提醒" src="https://img.shields.io/badge/v2.7.1-soft--ui-159A9C?style=flat-square" />
 </p>
 
-```svg
-<svg xmlns="http://www.w3.org/2000/svg" width="880" height="160" viewBox="0 0 880 160" role="img" aria-label="循环提醒">
-  <defs>
-    <filter id="soft" x="-20%" y="-40%" width="140%" height="180%">
-      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000" flood-opacity="0.35"/>
-    </filter>
-  </defs>
-  <rect width="880" height="160" rx="28" fill="#12121A"/>
-  <rect x="36" y="28" width="808" height="104" rx="22" fill="#2A2A36" filter="url(#soft)"/>
-  <rect x="36" y="28" width="808" height="18" rx="22" fill="#ffffff" opacity="0.06"/>
-  <text x="64" y="78" fill="#F5F5F3" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="34" font-weight="700">循环提醒</text>
-  <text x="64" y="112" fill="#9AA0AE" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="16">确认才进下一周期 · 没确认就 1h→4h→12h→24h 再响</text>
-  <circle cx="780" cy="80" r="28" fill="#159A9C"/>
-  <text x="780" y="88" text-anchor="middle" font-size="26">🦊</text>
-</svg>
-```
-
+<p align="center">
+  <img src="./assets/readme/hero.svg" width="100%" alt="循环提醒：确认才进下一周期，没确认就 1h→4h→12h→24h 再响">
+</p>
 
 | 首页 | 日历 | 统计 | 设置 |
 |:---:|:---:|:---:|:---:|

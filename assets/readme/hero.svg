@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="218" viewBox="0 0 1200 218"
+     role="img" aria-labelledby="title desc">
+  <title id="title">循环提醒</title>
+  <desc id="desc">确认才进下一周期。没确认就按 1h → 4h → 12h → 24h 再响。</desc>
+  <defs>
+    <filter id="soft" x="-20%" y="-40%" width="140%" height="180%">
+      <feDropShadow dx="0" dy="14" stdDeviation="19" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="218" rx="38" fill="#12121A"/>
+  <rect x="49" y="38" width="1102" height="142" rx="30" fill="#2A2A36" filter="url(#soft)"/>
+  <rect x="49" y="38" width="1102" height="25" rx="30" fill="#ffffff" opacity="0.06"/>
+  <text x="87" y="106" fill="#F5F5F3"
+        font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif"
+        font-size="46" font-weight="700">循环提醒</text>
+  <text x="87" y="153" fill="#9AA0AE"
+        font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif"
+        font-size="22">确认才进下一周期 · 没确认就 1h→4h→12h→24h 再响</text>
+  <circle cx="1064" cy="109" r="38" fill="#159A9C"/>
+  <text x="1064" y="120" text-anchor="middle" font-size="35">🦊</text>
+</svg>
