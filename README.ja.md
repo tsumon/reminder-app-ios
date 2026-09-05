@@ -106,7 +106,7 @@ ReminderApp/
 │   ├── QRCodeService.swift        # QR 生成と読み取り（AVFoundation）
 │   ├── UpdateService.swift        # GitHub releases.atom アップデート確認
 │   ├── TelemetryService.swift     # アクセス解析（confirm / escalate / ...）
-│   └── LiquidGlass.swift          # リキッドガラススタイルライブラリ
+│   └── SoftShadowCard.swift          # ソフトシャドウ / donut / ヒートマップ
 └── Widgets/
     └── ReminderWidget.swift       # ホーム画面ウィジェット
 ```
@@ -147,14 +147,15 @@ ReminderApp/
 
 ## 変更履歴
 
-| バージョン | 日付 | 更新内容 |
-|------------|------|----------|
-| v1.9.7 | 2026-08 | 段階的再通知を `overdue` で上限化、リキッドガラス UI、QR 転送 |
-| v1.9.6 | 2026-08 | 5 回のレビューで 70 件の修正 + 近距離転送 + AI 無料 API なしモードの削除 |
-| v1.9.5 | 2026-08 | アップデート確認を `releases.atom` に変更（API レート制限を回避） |
-| v1.9.4 | 2026-08 | WebDAV 同期の 404 → 自動 `MKCOL` でディレクトリ作成 |
-| v1.9.3 | 2026-08 | 設定ページ（バージョン / アップデート確認 / 変更履歴） |
-| v1.9.2 | 2026-08 | アップデート確認のタイムアウト再試行 + WebDAV の親切な案内 |
-| v1.9.1 | 2026-08 | AI ルールリマインダー + ホームメニューの「アップデート確認」 |
-| v1.9.0 | 2026-08 | UI 最適化（リキッドガラス）+ OTA アップデート + アプリアイコン |
-| v1.8.7 | 2026-08 | ウィジェット強化 / 祝日のオンライン取得 / 統計インサイト / .ics 書き出し / デザイントークン / クラッシュ監視 |
+| Version | Date | Changes |
+|---------|------|---------|
+| v2.7.1 | 2026-09 | soft-ui chrome: hammer 3D soft-shadow, dock fill to physical bottom (DockH 48 / selected 32), settings row 52 |
+| v2.7.0 | 2026-09 | soft-ui paper elevation; today card + pending ring; stats donut + monthly heatmap |
+| v2.6.0 | 2026-09 | In-row confirm, calendar day tasks, empty completion rate shows 0% |
+| v2.4.14 | 2026-08 | AI asks one question at a time; solar+lunar birthday rows merged |
+| v2.4.10 | 2026-08 | Skip weekends/holidays to next workday |
+| v2.4.0 | 2026-08 | Home timeline + 6-color themes |
+| v2.3.0 | 2026-08 | Brand color → teal |
+
+
+Earlier: [https://github.com/tsumon/reminder-app-ios/releases](https://github.com/tsumon/reminder-app-ios/releases).

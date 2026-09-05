@@ -6,11 +6,11 @@
 
 Native iOS app.
 
-| Home | Calendar | Stats |
-|:---:|:---:|:---:|
-| ![Home](docs/screenshots/home.png) | ![Calendar](docs/screenshots/calendar.png) | ![Stats](docs/screenshots/stats.png) |
+| Home | Calendar | Stats | Settings |
+|:---:|:---:|:---:|:---:|
+| ![Home](docs/screenshots/home.png) | ![Calendar](docs/screenshots/calendar.png) | ![Stats](docs/screenshots/stats.png) | ![Settings](docs/screenshots/settings.png) |
 
-## Current UI
+## Current UI (v2.7.1)
 
 Hammer-paper soft-shadow: light paper canvas / dark elevated surfaces. Cards have no stroke; actions are soft round buttons. Dock fills to the physical bottom (48pt). Four bottom tabs. Settings rows 52pt. AI lives in Settings, not as its own tab. iOS has no FAB.
 
@@ -135,7 +135,7 @@ ReminderApp/
 │   ├── QRCodeService.swift        # QR generation & scanning (AVFoundation)
 │   ├── UpdateService.swift        # GitHub releases.atom update check
 │   ├── TelemetryService.swift     # Analytics (confirm / escalate / ...)
-│   └── LiquidGlass.swift          # Liquid glass style library
+│   └── SoftShadowCard.swift       # paper soft-shadow / donut / heatmap
 └── Widgets/
     └── ReminderWidget.swift       # Home screen widget
 ```
@@ -178,12 +178,13 @@ If the user does nothing (swipes it away), it enters escalating retry:
 
 | Version | Date | Changes |
 |---------|------|---------|
-| v1.9.7 | 2026-08 | Escalating retry capped at `overdue`, liquid glass UI, QR transfer |
-| v1.9.6 | 2026-08 | Five review rounds with 70 fixes + nearby transfer + removed AI no-API mode |
-| v1.9.5 | 2026-08 | Update check switched to `releases.atom` to avoid API rate limiting |
-| v1.9.4 | 2026-08 | WebDAV sync 404 → auto `MKCOL` directory creation |
-| v1.9.3 | 2026-08 | Settings page (version / check update / changelog) |
-| v1.9.2 | 2026-08 | Update check timeout retry + friendly WebDAV hints |
-| v1.9.1 | 2026-08 | AI rule reminders + home menu "Check Update" |
-| v1.9.0 | 2026-08 | UI optimization (liquid glass) + OTA upgrade + app icon |
-| v1.8.7 | 2026-08 | Widget enhancement / online holidays / stats insight / .ics export / design tokens / crash monitoring |
+| v2.7.1 | 2026-09 | soft-ui chrome: hammer 3D soft-shadow, dock fill to physical bottom (DockH 48 / selected 32), settings row 52 |
+| v2.7.0 | 2026-09 | soft-ui paper elevation; today card + pending ring; stats donut + monthly heatmap |
+| v2.6.0 | 2026-09 | In-row confirm, calendar day tasks, empty completion rate shows 0% |
+| v2.4.14 | 2026-08 | AI asks one question at a time; solar+lunar birthday rows merged |
+| v2.4.10 | 2026-08 | Skip weekends/holidays to next workday |
+| v2.4.0 | 2026-08 | Home timeline + 6-color themes |
+| v2.3.0 | 2026-08 | Brand color → teal |
+
+
+Earlier releases: [https://github.com/tsumon/reminder-app-ios/releases](https://github.com/tsumon/reminder-app-ios/releases).

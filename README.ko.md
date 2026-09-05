@@ -106,7 +106,7 @@ ReminderApp/
 │   ├── QRCodeService.swift        # QR 생성 및 스캔 (AVFoundation)
 │   ├── UpdateService.swift        # GitHub releases.atom 업데이트 확인
 │   ├── TelemetryService.swift     # 분석 (confirm / escalate / ...)
-│   └── LiquidGlass.swift          # 액체 유리 스타일 라이브러리
+│   └── SoftShadowCard.swift          # 소프트 섀도 / donut / 히트맵
 └── Widgets/
     └── ReminderWidget.swift       # 홈 화면 위젯
 ```
@@ -147,14 +147,15 @@ ReminderApp/
 
 ## 변경 이력
 
-| 버전 | 날짜 | 변경 내용 |
-|------|------|-----------|
-| v1.9.7 | 2026-08 | 단계적 재알림을 `overdue`로 상한 처리, 액체 유리 UI, QR 전송 |
-| v1.9.6 | 2026-08 | 5차 검토 70건 수정 + 근거리 전송 + AI 무료 API 없는 모드 삭제 |
-| v1.9.5 | 2026-08 | 업데이트 확인을 `releases.atom`으로 변경 (API 속도 제한 방지) |
-| v1.9.4 | 2026-08 | WebDAV 동기화 404 → 자동 `MKCOL` 디렉터리 생성 |
-| v1.9.3 | 2026-08 | 설정 페이지 (버전 / 업데이트 확인 / 변경 이력) |
-| v1.9.2 | 2026-08 | 업데이트 확인 타임아웃 재시도 + 친절한 WebDAV 안내 |
-| v1.9.1 | 2026-08 | AI 규칙 알림 + 홈 메뉴 "업데이트 확인" |
-| v1.9.0 | 2026-08 | UI 최적화 (액체 유리) + OTA 업데이트 + 앱 아이콘 |
-| v1.8.7 | 2026-08 | 위젯 강화 / 공휴일 온라인 / 통계 인사이트 / .ics 내보내기 / 디자인 토큰 / 크래시 모니터링 |
+| Version | Date | Changes |
+|---------|------|---------|
+| v2.7.1 | 2026-09 | soft-ui chrome: hammer 3D soft-shadow, dock fill to physical bottom (DockH 48 / selected 32), settings row 52 |
+| v2.7.0 | 2026-09 | soft-ui paper elevation; today card + pending ring; stats donut + monthly heatmap |
+| v2.6.0 | 2026-09 | In-row confirm, calendar day tasks, empty completion rate shows 0% |
+| v2.4.14 | 2026-08 | AI asks one question at a time; solar+lunar birthday rows merged |
+| v2.4.10 | 2026-08 | Skip weekends/holidays to next workday |
+| v2.4.0 | 2026-08 | Home timeline + 6-color themes |
+| v2.3.0 | 2026-08 | Brand color → teal |
+
+
+Earlier: [https://github.com/tsumon/reminder-app-ios/releases](https://github.com/tsumon/reminder-app-ios/releases).
