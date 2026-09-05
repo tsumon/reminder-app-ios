@@ -84,6 +84,22 @@ enum ThemeTokens {
     static let gutter: CGFloat = 16
     static let cardPad: CGFloat = 14
     static let cardGap: CGFloat = 8
+    static let dockH: CGFloat = 48
+    static let dockSelected: CGFloat = 32
+    static let dockPadTop: CGFloat = 3
+    static let dockPadBottom: CGFloat = 4
+    /// Home-indicator pill (~5) + inset from the physical bottom (~8).
+    static let dockIndicator: CGFloat = 13
+    static let dockBottomGap: CGFloat = 0
+    static let settingsGroupPadX: CGFloat = 16
+    static let settingsGroupPadY: CGFloat = 4
+    static let settingsRowH: CGFloat = 52
+    static let settingsRowH2: CGFloat = 64
+    static let settingsRowPadX: CGFloat = 16
+    static let settingsRowPadY: CGFloat = 14
+    static let settingsRowPadY2: CGFloat = 12
+    static let settingsGroupGap: CGFloat = 16
+    static let settingsThemeDot: CGFloat = 28
 
     static let cardRadius: CGFloat = 16
     static let cellRadius: CGFloat = 6
@@ -122,7 +138,7 @@ struct SoftPalette {
             return SoftPalette(
                 canvas: Color(hex: 0x12121A),
                 surface: Color(hex: 0x1C1C26),
-                elevated: Color(hex: 0x23232E),
+                elevated: Color(hex: 0x2A2A36),
                 text: Color(hex: 0xEDEDF0),
                 muted: Color(hex: 0x8E8E9A),
                 track: Color.white.opacity(0.08),

@@ -27,35 +27,39 @@ struct SettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 14) {
+            VStack(spacing: ThemeTokens.settingsGroupGap) {
                 settingsGroup {
-                    Picker("语言".localized, selection: $appLanguage) {
-                        ForEach(AppLanguage.allCases) { lang in
-                            Text(lang.displayName).tag(lang.rawValue)
+                    settingsPickerRow {
+                        Picker("语言".localized, selection: $appLanguage) {
+                            ForEach(AppLanguage.allCases) { lang in
+                                Text(lang.displayName).tag(lang.rawValue)
+                            }
                         }
+                        .pickerStyle(.navigationLink)
                     }
-                    .pickerStyle(.navigationLink)
                 }
 
                 settingsGroup {
-                    Picker("主题".localized, selection: $themeMode) {
-                        Text("跟随系统".localized).tag(0)
-                        Text("浅色".localized).tag(1)
-                        Text("深色".localized).tag(2)
+                    settingsPickerRow {
+                        Picker("外观".localized, selection: $themeMode) {
+                            Text("跟随系统".localized).tag(0)
+                            Text("浅色".localized).tag(1)
+                            Text("深色".localized).tag(2)
+                        }
+                        .pickerStyle(.navigationLink)
                     }
-                    .pickerStyle(.navigationLink)
-                    Divider().background(soft.track)
+                    settingsDivider
                     HStack(spacing: 10) {
                         Text("主题色".localized)
                             .font(SoftType.body)
                             .foregroundStyle(soft.text)
-                        Spacer()
+                        Spacer(minLength: 8)
                         ForEach(Array(ThemeTokens.palettes.enumerated()), id: \.offset) { index, palette in
                             Button { themeColor = index } label: {
                                 ZStack {
                                     Circle()
                                         .fill(palette.primary)
-                                        .frame(width: 28, height: 28)
+                                        .frame(width: ThemeTokens.settingsThemeDot, height: ThemeTokens.settingsThemeDot)
                                     if themeColor == index {
                                         Image(systemName: "checkmark")
                                             .font(.caption2.weight(.bold))
@@ -64,55 +68,59 @@ struct SettingsView: View {
                                 }
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel(["青碧", "活力蓝", "玫粉", "暖橙", "森林绿", "深空蓝紫"][index])
                         }
                     }
-                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity, minHeight: ThemeTokens.settingsRowH)
+                    .padding(.horizontal, ThemeTokens.settingsRowPadX)
+                    .contentShape(Rectangle())
                 }
 
                 settingsGroup {
                     NavigationLink { SyncSettingsView() } label: {
                         settingsRow("WebDAV 同步", systemImage: "arrow.triangle.2.circlepath")
                     }
+                    .buttonStyle(.plain)
                 }
 
                 settingsGroup {
                     NavigationLink { DiagnosticsView() } label: {
                         settingsRow("提醒诊断", systemImage: "stethoscope")
                     }
-                    Divider().background(soft.track)
+                    .buttonStyle(.plain)
+                    settingsDivider
                     NavigationLink { LocalBackupsView() } label: {
                         settingsRow("本地备份", systemImage: "externaldrive")
                     }
+                    .buttonStyle(.plain)
                 }
 
                 settingsGroup {
                     NavigationLink { AISettingsView() } label: {
                         settingsRow("AI 助手设置", systemImage: "sparkles")
                     }
+                    .buttonStyle(.plain)
                 }
 
                 settingsGroup {
-                    HStack {
-                        settingsRow("版本", systemImage: "app.badge")
-                        Spacer()
+                    settingsRow("版本", systemImage: "app.badge") {
                         Text(appVersion)
                             .font(SoftType.body)
                             .foregroundStyle(soft.muted)
                     }
-                    Divider().background(soft.track)
+                    settingsDivider
                     Button { checkForUpdates() } label: {
-                        HStack {
-                            settingsRow("检查更新", systemImage: "arrow.clockwise")
-                            Spacer()
+                        settingsRow("检查更新", systemImage: "arrow.clockwise") {
                             if checking { ProgressView() }
                         }
                     }
                     .disabled(checking)
                     .buttonStyle(.plain)
-                    Divider().background(soft.track)
+                    settingsDivider
                     NavigationLink { ChangelogView() } label: {
                         settingsRow("更新日志", systemImage: "doc.text")
                     }
+                    .buttonStyle(.plain)
                 }
 
                 Text("支持循环提醒 · 同步 · 在线升级".localized)
@@ -121,7 +129,7 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 8)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, ThemeTokens.gutter)
             .padding(.top, 4)
             .padding(.bottom, 24)
         }
@@ -165,17 +173,48 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 content()
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.vertical, ThemeTokens.settingsGroupPadY)
             .foregroundStyle(soft.text)
         }
     }
 
-    private func settingsRow(_ title: String, systemImage: String) -> some View {
-        Label(title.localized, systemImage: systemImage)
+    private var settingsDivider: some View {
+        Rectangle()
+            .fill(soft.track)
+            .frame(height: 1)
+            .padding(.leading, ThemeTokens.settingsRowPadX)
+    }
+
+    private func settingsPickerRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
             .font(SoftType.body)
-            .foregroundStyle(soft.text)
-            .padding(.vertical, 10)
+            .tint(soft.text)
+            .frame(maxWidth: .infinity, minHeight: ThemeTokens.settingsRowH, alignment: .leading)
+            .padding(.horizontal, ThemeTokens.settingsRowPadX)
+            .contentShape(Rectangle())
+    }
+
+    private func settingsRow<Trailing: View>(
+        _ title: String,
+        systemImage: String,
+        dual: Bool = false,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        HStack(spacing: 12) {
+            Label(title.localized, systemImage: systemImage)
+                .font(SoftType.body)
+                .foregroundStyle(soft.text)
+            Spacer(minLength: 8)
+            trailing()
+        }
+        .frame(maxWidth: .infinity, minHeight: dual ? ThemeTokens.settingsRowH2 : ThemeTokens.settingsRowH, alignment: .center)
+        .padding(.horizontal, ThemeTokens.settingsRowPadX)
+        .padding(.vertical, dual ? ThemeTokens.settingsRowPadY2 : 0)
+        .contentShape(Rectangle())
+    }
+
+    private func settingsRow(_ title: String, systemImage: String) -> some View {
+        settingsRow(title, systemImage: systemImage) { EmptyView() }
     }
 
     private func checkForUpdates() {
