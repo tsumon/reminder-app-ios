@@ -1,15 +1,22 @@
 import SwiftUI
 
-/// v1.9.8 底部导航 Tab（对齐 README 设计图）：首页 / 日历 / 统计 / 设置
-///
-/// 每个 Tab 内嵌独立 NavigationStack，push 页（详情/AI/同步设置等）在各自栈内跳转。
+/// 四 Tab + 悬浮 pill dock。iOS 无 FAB。
 struct MainTabView: View {
     @State private var selectedTab: Int
+    @Environment(\.colorScheme) private var scheme
+    @AppStorage(ThemeStore.key) private var themeMode = 0
+
+    private var resolvedScheme: ColorScheme {
+        switch themeMode {
+        case 1: return .light
+        case 2: return .dark
+        default: return scheme
+        }
+    }
 
     init() {
         var initial = 0
         #if DEBUG
-        // v1.9.8: 截图验证用——simctl launch booted com.reminder.app -tab 1 可直接落到指定 Tab
         let args = ProcessInfo.processInfo.arguments
         if let idx = args.firstIndex(of: "-tab"),
            args.indices.contains(idx + 1),
@@ -20,41 +27,46 @@ struct MainTabView: View {
         _selectedTab = State(initialValue: initial)
     }
 
+    private var dockItems: [SoftTabItem] {
+        [
+            SoftTabItem(id: 0, title: "首页", systemImage: "house.fill"),
+            SoftTabItem(id: 1, title: "日历", systemImage: "calendar"),
+            SoftTabItem(id: 2, title: "统计", systemImage: "chart.bar.fill"),
+            SoftTabItem(id: 3, title: "设置", systemImage: "gearshape.fill")
+        ]
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
-            NavigationStack {
-                ReminderListView()
-            }
-            .tabItem { Label("首页".localized, systemImage: "house.fill") }
-            .tag(0)
+            NavigationStack { ReminderListView() }
+                .tag(0)
+                .toolbar(.hidden, for: .tabBar)
 
-            NavigationStack {
-                CalendarPageView()
-            }
-            .tabItem { Label("日历".localized, systemImage: "calendar") }
-            .tag(1)
+            NavigationStack { CalendarPageView() }
+                .tag(1)
+                .toolbar(.hidden, for: .tabBar)
 
-            NavigationStack {
-                StatsView()
-            }
-            .tabItem { Label("统计".localized, systemImage: "chart.bar.fill") }
-            .tag(2)
+            NavigationStack { StatsView() }
+                .tag(2)
+                .toolbar(.hidden, for: .tabBar)
 
-            NavigationStack {
-                SettingsView()
-            }
-            .tabItem { Label("设置".localized, systemImage: "gearshape.fill") }
-            .tag(3)
+            NavigationStack { SettingsView() }
+                .tag(3)
+                .toolbar(.hidden, for: .tabBar)
         }
-        // 批次2 功能1: 点击通知本体 → 切回首页 Tab（详情页在首页栈内 push）
+        .tint(ThemeTokens.brandPrimary)
+        .environment(\.soft, SoftPalette.of(resolvedScheme))
+        .preferredColorScheme(themeMode == 1 ? .light : themeMode == 2 ? .dark : nil)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            SoftTabDock(selection: $selectedTab, items: dockItems)
+                .environment(\.soft, SoftPalette.of(resolvedScheme))
+        }
         .onReceive(NotificationCenter.default.publisher(for: .openReminderDetail)) { _ in
             selectedTab = 0
         }
-        // 批次2 功能3: 点击统计周报通知 → 切到统计 Tab
         .onReceive(NotificationCenter.default.publisher(for: .openStatsTab)) { _ in
             selectedTab = 2
         }
-        .tint(ThemeTokens.brandPrimary)
     }
 }
 

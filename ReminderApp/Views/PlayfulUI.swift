@@ -491,10 +491,10 @@ struct WeeklyProgressTrack: View {
 
 // MARK: - 智能重复规则徽章
 
-/// 周期规则徽章：深灰底 + 🔁 + 精确重复规则（如「每周 · 08:00」），
-/// 与暖色卡面对比形成「智能高效」的数据区。
+/// 周期规则徽章：`--strong` 浅容器洗色，圆角 8，无外描边。
 struct RepeatRuleBadge: View {
     let reminder: Reminder
+    @Environment(\.soft) private var soft
 
     private var ruleText: String {
         let time: String
@@ -512,18 +512,18 @@ struct RepeatRuleBadge: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
-            Text("🔁")
-                .font(.system(size: 9))
-            Text(ruleText)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .lineLimit(1)
-        }
-        .foregroundStyle(.white.opacity(0.92))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Capsule().fill(Playful.ink.opacity(0.88)))
-        .overlay(Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 0.8))
+        Text(ruleText)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(soft.isDark ? ThemeTokens.brandGradientStart : ThemeTokens.brandPrimaryDark)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(soft.isDark
+                          ? ThemeTokens.strong.opacity(0.22)
+                          : ThemeTokens.brandContainer.opacity(0.62))
+            )
     }
 }
 

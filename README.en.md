@@ -12,11 +12,11 @@ Native iOS app.
 
 ## Current UI
 
-Dark UI aligned with GitHub 2.5.1 — not Home A, not QuietHome. Four bottom tabs. AI lives in Settings, not as its own tab.
+Hammer-paper soft-shadow: light paper canvas / dark elevated surfaces. Cards have no stroke; actions are soft round buttons. Four bottom tabs. AI lives in Settings, not as its own tab. iOS has no FAB.
 
-- **Home** (title 「提醒事项」): chips 全部 / 今天 / 本周 only; groups 提醒中 / 等待中. Due rows confirm in-line (no large confirm dialog).
-- **Calendar**: solar + lunar + fox on today + 班/休; selecting a date lists that day's tasks. No weekly progress bar (progress lives on 本周花园).
-- **Stats**: this-month done / streak / completion rate + confirmed/missed; check-in castle, weekly garden, most-forgotten hours. No big ring, no heatmap.
+- **Home** (title 「提醒事项」): inset search; chips 全部 / 今天 / 本周; today card + soft ring for pending count; groups 提醒中 / 等待中. Due rows confirm in-line (no large confirm dialog). Retry subtitle 「还没确认 · HH:MM 再响」. 44 emoji wells; light-blue wash cycle badges.
+- **Calendar**: month as one elevated card; today as a vertical capsule + 🦊; solar + lunar + 班/休; adjacent-month dates dimmed; selecting a date lists that day's tasks. No weekly progress bar.
+- **Stats**: three tiles (this-month done / streak / completion rate) + thick-stroke soft donut (rate / confirmed / missed) + monthly check-in heatmap + check-in castle + most-forgotten hours. Weekly garden is a caption line on the heatmap card.
 - **Settings**: skins, etc.
 
 ```mermaid

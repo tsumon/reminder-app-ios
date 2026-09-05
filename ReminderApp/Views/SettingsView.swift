@@ -23,43 +23,39 @@ struct SettingsView: View {
         return "\(short) (\(build))"
     }
 
+    @Environment(\.soft) private var soft
+
     var body: some View {
-        // v1.9.8: NavigationStack 由 MainTabView 的 Tab 提供
-        Form {
-                // MARK: 语言（v2.0.4：手动切换，跟随系统为默认）
-                Section("语言".localized) {
+        ScrollView {
+            VStack(spacing: 14) {
+                settingsGroup {
                     Picker("语言".localized, selection: $appLanguage) {
                         ForEach(AppLanguage.allCases) { lang in
                             Text(lang.displayName).tag(lang.rawValue)
                         }
                     }
+                    .pickerStyle(.navigationLink)
                 }
-                // MARK: 外观（v2.1.1：手动主题；v2.4.0：主题色板）
-                Section("外观".localized) {
+
+                settingsGroup {
                     Picker("主题".localized, selection: $themeMode) {
                         Text("跟随系统".localized).tag(0)
                         Text("浅色".localized).tag(1)
                         Text("深色".localized).tag(2)
                     }
-                    // v2.4.0: 主题色板（6 色圆点，点击即全局换肤）
+                    .pickerStyle(.navigationLink)
+                    Divider().background(soft.track)
                     HStack(spacing: 10) {
                         Text("主题色".localized)
-                            .font(.subheadline)
+                            .font(SoftType.body)
+                            .foregroundStyle(soft.text)
                         Spacer()
                         ForEach(Array(ThemeTokens.palettes.enumerated()), id: \.offset) { index, palette in
-                            Button {
-                                themeColor = index
-                            } label: {
+                            Button { themeColor = index } label: {
                                 ZStack {
                                     Circle()
                                         .fill(palette.primary)
-                                        .frame(width: 26, height: 26)
-                                        .overlay(
-                                            Circle().strokeBorder(
-                                                themeColor == index ? Color.primary : Color.clear,
-                                                lineWidth: 2
-                                            )
-                                        )
+                                        .frame(width: 28, height: 28)
                                     if themeColor == index {
                                         Image(systemName: "checkmark")
                                             .font(.caption2.weight(.bold))
@@ -70,79 +66,77 @@ struct SettingsView: View {
                             .buttonStyle(.plain)
                         }
                     }
+                    .padding(.vertical, 4)
                 }
-                // MARK: 同步
-                Section("同步".localized) {
-                    NavigationLink {
-                        SyncSettingsView()
-                    } label: {
-                        Label("WebDAV 同步".localized, systemImage: "arrow.triangle.2.circlepath")
-                    }
-                }
-                // MARK: 诊断（v2.1.1：提醒可靠性诊断）
-                Section("维护".localized) {
-                    NavigationLink {
-                        DiagnosticsView()
-                    } label: {
-                        Label("提醒诊断".localized, systemImage: "stethoscope")
-                    }
-                    // v2.1.1: 本地备份（自签无 iCloud 的本地兜底）
-                    NavigationLink {
-                        LocalBackupsView()
-                    } label: {
-                        Label("本地备份".localized, systemImage: "externaldrive")
-                    }
-                }
-                // MARK: AI
-                Section("AI") {
-                    NavigationLink {
-                        AISettingsView()
-                    } label: {
-                        Label("AI 助手设置".localized, systemImage: "sparkles")
+
+                settingsGroup {
+                    NavigationLink { SyncSettingsView() } label: {
+                        settingsRow("WebDAV 同步", systemImage: "arrow.triangle.2.circlepath")
                     }
                 }
 
-                // MARK: 关于
-                Section {
-                    // 版本号
+                settingsGroup {
+                    NavigationLink { DiagnosticsView() } label: {
+                        settingsRow("提醒诊断", systemImage: "stethoscope")
+                    }
+                    Divider().background(soft.track)
+                    NavigationLink { LocalBackupsView() } label: {
+                        settingsRow("本地备份", systemImage: "externaldrive")
+                    }
+                }
+
+                settingsGroup {
+                    NavigationLink { AISettingsView() } label: {
+                        settingsRow("AI 助手设置", systemImage: "sparkles")
+                    }
+                }
+
+                settingsGroup {
                     HStack {
-                        Label("版本".localized, systemImage: "app.badge")
+                        settingsRow("版本", systemImage: "app.badge")
                         Spacer()
                         Text(appVersion)
-                            .foregroundStyle(.secondary)
+                            .font(SoftType.body)
+                            .foregroundStyle(soft.muted)
                     }
-
-                    // 检查更新
-                    Button {
-                        checkForUpdates()
-                    } label: {
+                    Divider().background(soft.track)
+                    Button { checkForUpdates() } label: {
                         HStack {
-                            Label("检查更新".localized, systemImage: "arrow.clockwise")
+                            settingsRow("检查更新", systemImage: "arrow.clockwise")
                             Spacer()
-                            if checking {
-                                ProgressView()
-                            }
+                            if checking { ProgressView() }
                         }
                     }
                     .disabled(checking)
-
-                    // 更新日志
-                    NavigationLink {
-                        ChangelogView()
-                    } label: {
-                        Label("更新日志".localized, systemImage: "doc.text")
+                    .buttonStyle(.plain)
+                    Divider().background(soft.track)
+                    NavigationLink { ChangelogView() } label: {
+                        settingsRow("更新日志", systemImage: "doc.text")
                     }
-                } header: {
-                    Text("关于".localized)
-                } footer: {
-                    Text("支持循环提醒 · 同步 · 在线升级".localized)
                 }
+
+                Text("支持循环提醒 · 同步 · 在线升级".localized)
+                    .font(SoftType.caption)
+                    .foregroundStyle(soft.muted)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 8)
             }
-            .navigationTitle("设置".localized)
-            // v1.9.8.1: iPad 大屏下大标题+玻璃背景形成大块空白，去背景（inline 标题原本就是）
-            .navigationBarTitleDisplayMode(.inline)
-            .glassNavigationBar()
-            .scrollContentBackground(.hidden)
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+            .padding(.bottom, 24)
+        }
+        .background(PaperCanvas())
+        .navigationTitle("设置".localized)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(soft.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("设置".localized)
+                    .font(SoftType.title)
+                    .foregroundStyle(soft.text)
+            }
+        }
             .alert(
                 "检查更新",
                 isPresented: Binding(
@@ -164,6 +158,24 @@ struct SettingsView: View {
             } message: {
                 Text((resultMsg ?? "").localized)
             }
+    }
+
+    private func settingsGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        SoftShadowCard(kind: .card, radius: ThemeTokens.radiusCard) {
+            VStack(alignment: .leading, spacing: 0) {
+                content()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .foregroundStyle(soft.text)
+        }
+    }
+
+    private func settingsRow(_ title: String, systemImage: String) -> some View {
+        Label(title.localized, systemImage: systemImage)
+            .font(SoftType.body)
+            .foregroundStyle(soft.text)
+            .padding(.vertical, 10)
     }
 
     private func checkForUpdates() {

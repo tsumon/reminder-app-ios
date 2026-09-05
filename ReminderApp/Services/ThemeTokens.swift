@@ -1,95 +1,185 @@
 import SwiftUI
 
-/// 设计令牌（v1.8.7 任务⑤）— 双端统一（iOS 本文件 / Android Tokens.kt）
-///
-/// 一份令牌，两端各映射一份；新 UI 一律引用令牌，不写硬编码颜色/圆角/字号。
-/// 主色统一为 Material Design 3 紫色 #6750A4。
+/// 设计令牌 — soft-ui v2（Joe 2026-09-05）
+/// 双端对齐：iOS 本文件 / Android Tokens.kt
 enum ThemeTokens {
 
-    // MARK: 品牌主色（v2.4.0: 可切换色板，默认青碧 Teal）
+    // MARK: 品牌主色（六色皮肤 → `--strong`，默认青碧）
 
-    /// v2.4.0: 主题色板（与 Android Tokens.Palettes 一一对应）
     struct BrandPalette {
         let primary: Color
         let primaryDark: Color
         let gradientStart: Color
+        let container: Color
     }
 
     static let palettes: [BrandPalette] = [
-        // 青碧（默认）
-        BrandPalette(primary: Color(red: 0x15/255.0, green: 0x9A/255.0, blue: 0x9C/255.0),
-                     primaryDark: Color(red: 0x0E/255.0, green: 0x6E/255.0, blue: 0x70/255.0),
-                     gradientStart: Color(red: 0x4D/255.0, green: 0xB6/255.0, blue: 0xAC/255.0)),
-        // 活力蓝
-        BrandPalette(primary: Color(red: 0x3B/255.0, green: 0x82/255.0, blue: 0xF6/255.0),
-                     primaryDark: Color(red: 0x1E/255.0, green: 0x5B/255.0, blue: 0xC4/255.0),
-                     gradientStart: Color(red: 0x7F/255.0, green: 0xB5/255.0, blue: 0xFF/255.0)),
-        // 玫粉
-        BrandPalette(primary: Color(red: 0xE0/255.0, green: 0x45/255.0, blue: 0x7B/255.0),
-                     primaryDark: Color(red: 0xB0/255.0, green: 0x2E/255.0, blue: 0x5C/255.0),
-                     gradientStart: Color(red: 0xF5/255.0, green: 0x8F/255.0, blue: 0xB0/255.0)),
-        // 暖橙
-        BrandPalette(primary: Color(red: 0xF0/255.0, green: 0x7B/255.0, blue: 0x2F/255.0),
-                     primaryDark: Color(red: 0xC0/255.0, green: 0x5A/255.0, blue: 0x16/255.0),
-                     gradientStart: Color(red: 0xF7/255.0, green: 0xB2/255.0, blue: 0x7D/255.0)),
-        // 森林绿
-        BrandPalette(primary: Color(red: 0x2E/255.0, green: 0x9E/255.0, blue: 0x5B/255.0),
-                     primaryDark: Color(red: 0x1D/255.0, green: 0x7A/255.0, blue: 0x42/255.0),
-                     gradientStart: Color(red: 0x74/255.0, green: 0xC9/255.0, blue: 0x9B/255.0)),
-        // 深空蓝紫
-        BrandPalette(primary: Color(red: 0x6C/255.0, green: 0x5C/255.0, blue: 0xE7/255.0),
-                     primaryDark: Color(red: 0x4A/255.0, green: 0x3F/255.0, blue: 0xB8/255.0),
-                     gradientStart: Color(red: 0xA6/255.0, green: 0x9C/255.0, blue: 0xF5/255.0))
+        BrandPalette(primary: Color(hex: 0x159A9C), primaryDark: Color(hex: 0x0E6E70),
+                     gradientStart: Color(hex: 0x4DB6AC), container: Color(hex: 0xB2EBE4)),
+        BrandPalette(primary: Color(hex: 0x3B82F6), primaryDark: Color(hex: 0x1E5BC4),
+                     gradientStart: Color(hex: 0x7FB5FF), container: Color(hex: 0xC9E0FF)),
+        BrandPalette(primary: Color(hex: 0xE0457B), primaryDark: Color(hex: 0xB02E5C),
+                     gradientStart: Color(hex: 0xF58FB0), container: Color(hex: 0xFCD3E1)),
+        BrandPalette(primary: Color(hex: 0xF07B2F), primaryDark: Color(hex: 0xC05A16),
+                     gradientStart: Color(hex: 0xF7B27D), container: Color(hex: 0xFDE3CC)),
+        BrandPalette(primary: Color(hex: 0x2E9E5B), primaryDark: Color(hex: 0x1D7A42),
+                     gradientStart: Color(hex: 0x74C99B), container: Color(hex: 0xD1F0DE)),
+        BrandPalette(primary: Color(hex: 0x6C5CE7), primaryDark: Color(hex: 0x4A3FB8),
+                     gradientStart: Color(hex: 0xA69CF5), container: Color(hex: 0xE1DDFC))
     ]
 
-    /// 当前色板（设置页选择；UserDefaults 持久化）
     static var palette: BrandPalette {
         let i = UserDefaults.standard.integer(forKey: "theme_color_index")
         return palettes.indices.contains(i) ? palettes[i] : palettes[0]
     }
 
-    /// 主色
     static var brandPrimary: Color { palette.primary }
-    /// 品牌深色主色（渐变末端）
     static var brandPrimaryDark: Color { palette.primaryDark }
-    /// 品牌渐变起点
     static var brandGradientStart: Color { palette.gradientStart }
+    static var brandContainer: Color { palette.container }
+    /// `--strong`
+    static var strong: Color { palette.primary }
+    static var onStrong: Color { .white }
 
-    // MARK: 状态色（与 Android 一致）
-    static let statusReminding = Color(red: 0xE7 / 255.0, green: 0x4C / 255.0, blue: 0x3C / 255.0)
-    static let statusWaiting = Color(red: 0x34 / 255.0, green: 0x98 / 255.0, blue: 0xDB / 255.0)
-    static let statusCompleted = Color(red: 0x27 / 255.0, green: 0xAE / 255.0, blue: 0x60 / 255.0)
-    /// v1.9.8: 逾期（递增重试到上限，比提醒中更深一档的红色，与 Android StatusOverdue 一致）
-    static let statusOverdue = Color(red: 0xC0 / 255.0, green: 0x39 / 255.0, blue: 0x2B / 255.0)
-    /// v2.1.0: 稍后/已推迟（原各 View 硬编码 .orange，统一令牌，与 Android StatusSnoozed #F39C12 一致）
-    static let statusSnoozed = Color(red: 0xF3 / 255.0, green: 0x9C / 255.0, blue: 0x12 / 255.0)
+    // MARK: 状态色
 
-    // MARK: 节假日「休/班」
+    static let statusReminding = Color(hex: 0xE74C3C)
+    static let statusWaiting = Color(hex: 0x3498DB)
+    static let statusCompleted = Color(hex: 0x27AE60)
+    static let statusOverdue = Color(hex: 0xC0392B)
+    static let statusSnoozed = Color(hex: 0xF39C12)
 
-    /// 休（放假）红
-    static let holidayRest = Color(red: 0xD3 / 255.0, green: 0x2F / 255.0, blue: 0x2F / 255.0)
-    /// 班（调休上班）橙
-    static let holidayWork = Color(red: 0xEF / 255.0, green: 0x6C / 255.0, blue: 0x00 / 255.0)
+    static let holidayRest = Color(hex: 0xD32F2F)
+    static let holidayWork = Color(hex: 0xEF6C00)
 
-    // MARK: 热力图色阶（统计页，与 Android 一致；v2.1.0 由冷蓝统一为品牌紫系）
+    // MARK: 热力（仅统计页）
+
+    static func heat(_ level: Int, scheme: ColorScheme) -> Color {
+        let clamped = min(max(level, 0), 4)
+        if scheme == .dark {
+            let hex: [UInt32] = [0x252422, 0x0E3D28, 0x0A6B38, 0x22A34A, 0x3DD15F]
+            return Color(hex: hex[clamped])
+        } else {
+            let hex: [UInt32] = [0xE8E4DC, 0xC8EBD4, 0x86D4A4, 0x3AAD72, 0x1B7A4C]
+            return Color(hex: hex[clamped])
+        }
+    }
 
     static let heatmap0 = Color.gray.opacity(0.12)
     static let heatmap1 = brandPrimary.opacity(0.25)
     static let heatmap2 = brandPrimary.opacity(0.55)
     static let heatmap3 = brandPrimary
 
-    // MARK: 圆角
+    // MARK: 圆角 / 尺寸
+
+    static let radiusShallow: CGFloat = 12
+    static let radiusCard: CGFloat = 16
+    static let radiusElevated: CGFloat = 18
+    static let radiusChip: CGFloat = 16
+    static let radiusFull: CGFloat = 999
+    static let btnCircle: CGFloat = 44
+    static let btnInner: CGFloat = 6
+    static let chipH: CGFloat = 32
+    static let rowBadge: CGFloat = 44
+    static let gutter: CGFloat = 16
+    static let cardPad: CGFloat = 14
+    static let cardGap: CGFloat = 8
 
     static let cardRadius: CGFloat = 16
     static let cellRadius: CGFloat = 6
-    /// v2.1.0: 圆角梯度（替换各 View 硬编码 10/12/20/24）
     static let radiusSmall: CGFloat = 10
     static let radiusMedium: CGFloat = 12
-    static let radiusLarge: CGFloat = 20
+    static let radiusLarge: CGFloat = 18
     static let radiusXLarge: CGFloat = 24
-
-    // MARK: 字号（pt，与 Android FontTiny 9sp / FontMicro 8sp 对齐）
 
     static let fontTiny: CGFloat = 9
     static let fontMicro: CGFloat = 8
+
+    static let titleSize: CGFloat = 22
+    static let titleLine: CGFloat = 28
+    static let sectionSize: CGFloat = 19
+    static let sectionLine: CGFloat = 24
+    static let bodySize: CGFloat = 14.5
+    static let bodyLine: CGFloat = 18
+}
+
+// MARK: - Soft 语义色（浅纸 / 深抬升）
+
+struct SoftPalette {
+    let canvas: Color
+    let surface: Color
+    let elevated: Color
+    let text: Color
+    let muted: Color
+    let track: Color
+    let warn: Color
+    let ok: Color
+    let danger: Color
+    let isDark: Bool
+
+    static func of(_ scheme: ColorScheme) -> SoftPalette {
+        if scheme == .dark {
+            return SoftPalette(
+                canvas: Color(hex: 0x12121A),
+                surface: Color(hex: 0x1C1C26),
+                elevated: Color(hex: 0x23232E),
+                text: Color(hex: 0xEDEDF0),
+                muted: Color(hex: 0x8E8E9A),
+                track: Color.white.opacity(0.08),
+                warn: Color(hex: 0xF39C12),
+                ok: Color(hex: 0x27AE60),
+                danger: Color(hex: 0xE74C3C),
+                isDark: true
+            )
+        }
+        return SoftPalette(
+            canvas: Color(hex: 0xF5F5F3),
+            surface: Color(hex: 0xFBFBFA),
+            elevated: Color.white,
+            text: Color(hex: 0x1A1A1C),
+            muted: Color(hex: 0x5E5E66),
+            track: Color(red: 26/255, green: 26/255, blue: 28/255).opacity(0.08),
+            warn: Color(hex: 0xC47A12),
+            ok: Color(hex: 0x1F8A4C),
+            danger: Color(hex: 0xC0392B),
+            isDark: false
+        )
+    }
+}
+
+private struct SoftPaletteKey: EnvironmentKey {
+    static let defaultValue = SoftPalette.of(.light)
+}
+
+extension EnvironmentValues {
+    var soft: SoftPalette {
+        get { self[SoftPaletteKey.self] }
+        set { self[SoftPaletteKey.self] = newValue }
+    }
+}
+
+// MARK: - 锁死字号
+
+enum SoftType {
+    /// 22/28 −0.7（仅拉丁/数字加 tracking）
+    static var title: Font { .system(size: 22, weight: .semibold) }
+    /// 19/24 +0.6
+    static var section: Font { .system(size: 19, weight: .semibold) }
+    /// 14.5/18 +0.3
+    static var body: Font { .system(size: 14.5, weight: .regular) }
+    static var bodyMedium: Font { .system(size: 14.5, weight: .medium) }
+    static var chip: Font { .system(size: 13, weight: .medium) }
+    static var caption: Font { .system(size: 11, weight: .regular) }
+    static var retry: Font { .system(size: 12.5, weight: .regular) }
+    static var tab: Font { .system(size: 10, weight: .medium) }
+    static var calendarLunar: Font { .system(size: 9, weight: .regular) }
+    static var confirm: Font { .system(size: 14.5, weight: .semibold) }
+    static var meter: Font { .system(size: 22, weight: .semibold) }
+}
+
+extension View {
+    func titleTracking() -> some View { tracking(-0.7) }
+    func sectionTracking() -> some View { tracking(0.6) }
+    func bodyTracking() -> some View { tracking(0.3) }
+    func meterTracking() -> some View { tracking(-0.7) }
 }
