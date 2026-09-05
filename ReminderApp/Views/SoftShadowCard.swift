@@ -599,13 +599,10 @@ struct SoftTabDock: View {
 // MARK: - 自定义顶栏
 
 /// 隐藏 List/NavigationLink 系统 `>`。确认行必须无箭头；等待中行用自定义 chevron。
+/// 不调用 iOS 26 才有的 NavLink 指示器 API：CI 的 Xcode 16 SDK 没有该符号。
 struct HideNavLinkChevron: ViewModifier {
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.navigationLinkIndicatorVisibility(.hidden)
-        } else {
-            content
-        }
+        content
     }
 }
 
