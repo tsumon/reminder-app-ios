@@ -212,6 +212,39 @@ actor AIService {
         return (result.content ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// OpenAI 兼容 `GET {base}/models`。base 已含 `/v1` 时只拼 `/models`，不重复 `/v1`。
+    /// 无 API Key（本地 Ollama）时省略 Authorization。
+    func fetchModels(base: String, key: String) async throws -> [String] {
+        guard let url = AIModelsAPI.modelsURL(from: base) else {
+            throw AIError.emptyEndpoint
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedKey.isEmpty {
+            req.setValue("Bearer \(trimmedKey)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await session.data(for: req)
+        guard let httpResp = response as? HTTPURLResponse else {
+            throw AIError.invalidResponse
+        }
+        if !(200...299).contains(httpResp.statusCode) {
+            throw AIError.modelsHTTP(httpResp.statusCode, AIModelsAPI.summarizeBody(String(data: data, encoding: .utf8) ?? ""))
+        }
+
+        let ids: [String]
+        do {
+            ids = try AIModelsAPI.parseModelIDs(from: data)
+        } catch {
+            let summary = AIModelsAPI.summarizeBody(String(data: data, encoding: .utf8) ?? "")
+            throw AIError.modelsHTTP(httpResp.statusCode, summary.isEmpty ? "响应格式错误" : "响应格式错误 \(summary)")
+        }
+        guard !ids.isEmpty else { throw AIError.emptyModelList }
+        return ids
+    }
+
     // MARK: - 非流式请求
 
     private func send(
@@ -441,14 +474,22 @@ enum AIError: LocalizedError {
     case unauthorized
     case httpError(Int, String)
     case emptyResponse
+    case emptyEndpoint
+    case emptyModelList
+    /// 模型列表 / 测连通：原始 HTTP status + body 摘要
+    case modelsHTTP(Int, String)
 
     var errorDescription: String? {
         switch self {
         case .unauthorized: return "API Key 无效，请检查设置"
         case .httpError(let code, let body):
             return Localized("API 错误 %d: %@", code, String(body.prefix(200)))
+        case .modelsHTTP(let code, let body):
+            return AIModelsAPI.formatHTTPError(status: code, body: body)
         case .emptyResponse: return "AI 返回为空"
         case .invalidResponse: return "响应格式错误"
+        case .emptyEndpoint: return "请先填写接口地址"
+        case .emptyModelList: return "未返回模型列表"
         }
     }
 }

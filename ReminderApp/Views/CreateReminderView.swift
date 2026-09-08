@@ -89,6 +89,9 @@ struct CreateReminderView: View {
                 // MARK: 自然语言快速创建
                 naturalLanguageSection
 
+                // MARK: 模板
+                templateSection
+
                 // MARK: 基本信息
                 Section("提醒内容".localized) {
                     TextField("提醒标题".localized, text: $title)
@@ -172,6 +175,47 @@ struct CreateReminderView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
+        }
+    }
+
+    // MARK: - 模板
+
+    private var templateSection: some View {
+        Section {
+            ForEach(ReminderTemplate.all) { tpl in
+                Button {
+                    applyTemplate(tpl)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tpl.title)
+                            .foregroundStyle(.primary)
+                        Text(tpl.subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityIdentifier("reminder-template-\(tpl.id)")
+            }
+        } header: {
+            Text("从模板开始".localized)
+        } footer: {
+            Text("一键填入标题和周期，保存前仍可改。".localized)
+        }
+    }
+
+    private func applyTemplate(_ tpl: ReminderTemplate) {
+        title = tpl.title
+        note = tpl.note
+        holidayAware = tpl.holidayAware
+        switch tpl.kind {
+        case .cycle:
+            kind = .cycle
+            cycle = tpl.cycle == .yearly ? .yearly : .monthly
+            showCustomDaysField = false
+        case .date:
+            kind = .date
+            dateType = tpl.dateType == .lunarBirthday ? .lunarBirthday : .solarBirthday
+            advanceDays = Double(tpl.advanceDays)
         }
     }
 
@@ -458,7 +502,7 @@ struct CreateReminderView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(Localized("提前 %d 天开始提醒", Int(advanceDays)))
                         .font(.subheadline)
-                    Slider(value: $advanceDays, in: 0...14, step: 1)
+                    Slider(value: $advanceDays, in: 0...90, step: 1)
                     Text("到期前每天上午发送预告通知，到期当天转为正式提醒".localized)
                         .font(.caption)
                         .foregroundStyle(.tertiary)

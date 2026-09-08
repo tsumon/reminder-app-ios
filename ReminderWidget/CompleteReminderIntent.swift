@@ -9,6 +9,8 @@ import WidgetKit
 struct CompleteReminderIntent: AppIntent {
     static var title: LocalizedStringResource = "完成提醒"
     static var description = IntentDescription(LocalizedStringResource("将该提醒标记为已完成并安排下一次"))
+    /// 打开 App 立刻走 confirm + 重排（App Group 标记在扩展里写，主 App 落库）。
+    static var openAppWhenRun: Bool { true }
 
     @Parameter(title: "提醒 ID")
     var reminderID: String
@@ -21,6 +23,7 @@ struct CompleteReminderIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         WidgetSnapshot.markCompleted(reminderID: reminderID)
+        WidgetSnapshot.markOpenDetail(reminderID: reminderID, highlightConfirm: true)
         // 刷新小组件：完成后的下一次提醒立即可见
         WidgetCenter.shared.reloadAllTimelines()
         return .result()

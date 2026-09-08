@@ -89,6 +89,33 @@ struct DiagnosticsView: View {
                 }
             }
 
+            Section("调试：模拟通知动作".localized) {
+                let target = reminders
+                    .filter { $0.isEnabled && $0.status != .confirmed }
+                    .sorted { $0.nextTriggerAt < $1.nextTriggerAt }
+                    .first
+                if let r = target {
+                    Button {
+                        NotificationManager.shared.simulateNotificationAction(.confirm, reminderID: r.id)
+                    } label: {
+                        Label(Localized("模拟确认：%@", r.title), systemImage: "checkmark.circle")
+                    }
+                    .accessibilityIdentifier("debug-sim-confirm")
+                    Button {
+                        NotificationManager.shared.simulateNotificationAction(.snooze, reminderID: r.id)
+                    } label: {
+                        Label(Localized("模拟稍后：%@", r.title), systemImage: "clock")
+                    }
+                    .accessibilityIdentifier("debug-sim-snooze")
+                    Text("走与通知按钮相同的入队 → ReminderEngine.confirm / snooze。真机通知仍需在系统通知里点。".localized)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("没有可模拟的未完成提醒".localized)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section {
                 Button {
                     refresh()

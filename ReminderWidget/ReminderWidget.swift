@@ -100,6 +100,7 @@ struct ReminderWidgetEntryView: View {
         }
         .padding(12)
         .containerBackground(.fill.tertiary, for: .widget)
+        .widgetURL(detailURL)
     }
 
     // MARK: 大尺寸布局（systemLarge，v1.8.7）
@@ -169,6 +170,7 @@ struct ReminderWidgetEntryView: View {
         }
         .padding(16)
         .containerBackground(.fill.tertiary, for: .widget)
+        .widgetURL(detailURL)
     }
 
     // MARK: 完成/稍后按钮（v1.8.7 完成 / v2.0.16 稍后，iOS 17 widget 交互）
@@ -208,6 +210,11 @@ struct ReminderWidgetEntryView: View {
                 }
             }
         }
+    }
+
+    private var detailURL: URL? {
+        guard let id = entry.data.nextReminderID, !id.isEmpty else { return nil }
+        return URL(string: "reminder://detail/\(id)")
     }
 
     // MARK: - 农历

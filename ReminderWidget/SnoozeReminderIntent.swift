@@ -9,6 +9,7 @@ import WidgetKit
 struct SnoozeReminderIntent: AppIntent {
     static var title: LocalizedStringResource = "稍后提醒"
     static var description = IntentDescription(LocalizedStringResource("将该提醒推迟 15 分钟再提醒"))
+    static var openAppWhenRun: Bool { true }
 
     @Parameter(title: "提醒 ID")
     var reminderID: String
@@ -21,6 +22,7 @@ struct SnoozeReminderIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         WidgetSnapshot.markSnoozed(reminderID: reminderID)
+        WidgetSnapshot.markOpenDetail(reminderID: reminderID, highlightConfirm: true)
         // 刷新小组件：推迟后的下次提醒立即可见
         WidgetCenter.shared.reloadAllTimelines()
         return .result()
