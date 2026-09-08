@@ -89,6 +89,9 @@ struct ReminderApp: App {
                     // v1.8.7 任务⑥: 崩溃监控 + 埋点（启动最先安装）
                     TelemetryService.install()
                 }
+                .onOpenURL { url in
+                    handleReminderURL(url)
+                }
                 // v1.9.6 fix: 回前台时同步小组件完成标记 + 清零通知角标。
                 // 原实现只在启动 .task 同步——App 驻留/后台时点小组件「完成」永不落库
                 .onChange(of: scenePhase) { _, phase in
@@ -153,6 +156,23 @@ struct ReminderApp: App {
         let descriptor = FetchDescriptor<ReminderRecord>()
         let records = (try? Self.sharedModelContainer.mainContext.fetch(descriptor)) ?? []
         await WeeklyReportService.schedule(records: records)
+    }
+
+    /// 小组件 / 深链：`reminder://detail/{uuid}` 打开详情；`reminder://confirm/{uuid}` 打开并确认。
+    @MainActor
+    private func handleReminderURL(_ url: URL) {
+        guard url.scheme == "reminder", let host = url.host else { return }
+        let id = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !id.isEmpty else { return }
+        NotificationManager.savePendingDetailID(id)
+        NotificationManager.savePendingHighlightConfirm(true)
+        if host == "confirm", let uuid = UUID(uuidString: id) {
+            NotificationManager.shared.enqueueNotificationAction(.confirm, uuid)
+            if reminderEngine.isConfigured {
+                reminderEngine.drainPendingNotificationActions()
+            }
+        }
+        NotificationCenter.default.post(name: .openReminderDetail, object: id)
     }
 
     /// 把用户在小组件上点「完成」的提醒同步到数据库

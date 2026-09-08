@@ -10,14 +10,14 @@ final class NotificationManager: NSObject, ObservableObject {
     @Published var isAuthorized = false
 
     /// 通知分类 ID（注册到 iOS 系统，关联确认/稍后按钮）
-    static let categoryIdentifier = "REMINDER_CATEGORY"
+    static let categoryIdentifier = NotificationActionIDs.category
 
     /// 预告通知分类（无操作按钮，仅信息展示）
     static let advanceCategoryID = "REMINDER_ADVANCE"
 
     /// Action 标识符
-    static let confirmActionID = "CONFIRM_ACTION"
-    static let snoozeActionID = "SNOOZE_ACTION"
+    static let confirmActionID = NotificationActionIDs.confirm
+    static let snoozeActionID = NotificationActionIDs.snooze
 
     private override init() {
         super.init()
@@ -362,8 +362,16 @@ final class NotificationManager: NSObject, ObservableObject {
 
     private static let pendingActionsKey = "pendingNotificationActions"
 
+    /// 调试 / 测试：模拟通知动作（与 didReceive 同一入队 + 排空路径）。
+    func simulateNotificationAction(_ action: NotificationActionType, reminderID: UUID) {
+        enqueueNotificationAction(action, reminderID)
+        if ReminderEngine.shared.isConfigured {
+            ReminderEngine.shared.drainPendingNotificationActions()
+        }
+    }
+
     /// 入队一条通知动作（持久化到 UserDefaults，App 启动后排空）
-    private func enqueueNotificationAction(_ action: NotificationActionType, _ reminderID: UUID) {
+    func enqueueNotificationAction(_ action: NotificationActionType, _ reminderID: UUID) {
         var list = Self.loadPendingActions()
         list.append(PendingNotificationAction(action: action, reminderID: reminderID.uuidString, enqueuedAt: Date()))
         Self.savePendingActions(list)
@@ -403,6 +411,18 @@ final class NotificationManager: NSObject, ObservableObject {
     static func takePendingDetailID() -> String? {
         let v = UserDefaults.standard.string(forKey: pendingDetailKey)
         if v != nil { UserDefaults.standard.removeObject(forKey: pendingDetailKey) }
+        return v
+    }
+
+    private static let pendingHighlightKey = "pendingHighlightConfirm"
+
+    static func savePendingHighlightConfirm(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: pendingHighlightKey)
+    }
+
+    static func takePendingHighlightConfirm() -> Bool {
+        let v = UserDefaults.standard.bool(forKey: pendingHighlightKey)
+        UserDefaults.standard.removeObject(forKey: pendingHighlightKey)
         return v
     }
 }

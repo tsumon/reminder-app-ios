@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.7.1</string>
+	<string>2.7.2</string>
 	<key>CFBundleVersion</key>
-	<string>68</string>
+	<string>69</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
@@ -56,6 +56,17 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
+	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.reminder.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>reminder</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>

@@ -1,10 +1,44 @@
 import SwiftUI
 
+/// Child screens (AI chat / AI settings) increment this so MainTabView can
+/// hide the overlay dock. Count, not Bool: pushing AI settings from chat
+/// would otherwise `onDisappear` the chat page and flash the dock back.
+private struct HideTabDockCountKey: EnvironmentKey {
+    static let defaultValue: Binding<Int> = .constant(0)
+}
+
+extension EnvironmentValues {
+    var hideTabDockCount: Binding<Int> {
+        get { self[HideTabDockCountKey.self] }
+        set { self[HideTabDockCountKey.self] = newValue }
+    }
+}
+
+private struct HidesSoftTabDock: ViewModifier {
+    @Environment(\.hideTabDockCount) private var hideTabDockCount
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { hideTabDockCount.wrappedValue += 1 }
+            .onDisappear { hideTabDockCount.wrappedValue = max(0, hideTabDockCount.wrappedValue - 1) }
+    }
+}
+
+extension View {
+    /// Hide the floating SoftTabDock while this screen is visible.
+    func hidesSoftTabDock() -> some View {
+        modifier(HidesSoftTabDock())
+    }
+}
+
 /// 四 Tab + 悬浮 pill dock。iOS 无 FAB。
 struct MainTabView: View {
     @State private var selectedTab: Int
+    @State private var hideTabDockCount = 0
     @Environment(\.colorScheme) private var scheme
     @AppStorage(ThemeStore.key) private var themeMode = 0
+
+    private var hideTabDock: Bool { hideTabDockCount > 0 }
 
     private var resolvedScheme: ColorScheme {
         switch themeMode {
@@ -49,6 +83,8 @@ struct MainTabView: View {
         // ZStack to the physical bottom so the icon row can sit 4pt above the
         // indicator pill. TabView / safeAreaInset would park the row above the
         // whole 34pt safe area and leave icons hanging in the upper half of the fill.
+        // AI chat hides the dock: skip overlay + reserve, and restore the
+        // system bottom safe area so the input bar sits above the home indicator.
         ZStack(alignment: .bottom) {
             Group {
                 switch selectedTab {
@@ -59,21 +95,28 @@ struct MainTabView: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                Color.clear.frame(height: dockReserve)
+                if hideTabDock {
+                    Color.clear.frame(height: 0)
+                } else {
+                    Color.clear.frame(height: dockReserve)
+                }
             }
 
-            SoftTabDock(
-                selection: $selectedTab,
-                items: dockItems,
-                bottomPad: contentBottomPad
-            )
-            .padding(.bottom, ThemeTokens.dockBottomGap)
-            .environment(\.soft, SoftPalette.of(resolvedScheme))
+            if !hideTabDock {
+                SoftTabDock(
+                    selection: $selectedTab,
+                    items: dockItems,
+                    bottomPad: contentBottomPad
+                )
+                .padding(.bottom, ThemeTokens.dockBottomGap)
+                .environment(\.soft, SoftPalette.of(resolvedScheme))
+            }
         }
         .tint(ThemeTokens.brandPrimary)
         .environment(\.soft, SoftPalette.of(resolvedScheme))
+        .environment(\.hideTabDockCount, $hideTabDockCount)
         .preferredColorScheme(themeMode == 1 ? .light : themeMode == 2 ? .dark : nil)
-        .ignoresSafeArea(edges: .bottom)
+        .ignoresSafeArea(edges: hideTabDock ? [] : .bottom)
         .onReceive(NotificationCenter.default.publisher(for: .openReminderDetail)) { _ in
             selectedTab = 0
         }

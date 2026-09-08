@@ -150,6 +150,7 @@ struct AIChatView: View {
                 } label: {
                     Image(systemName: "gearshape")
                 }
+                .accessibilityIdentifier("ai-settings-entry")
             }
         }
         .onAppear {
@@ -173,6 +174,7 @@ struct AIChatView: View {
         .sheet(item: $importPreview) { preview in
             importPreviewSheet(preview)
         }
+        .hidesSoftTabDock()
     }
 
     // MARK: - 批量导入预览
@@ -280,6 +282,7 @@ struct AIChatView: View {
                     .background(Color(.systemGray6))
                     .clipShape(RoundedRectangle(cornerRadius: 18))
                     .disabled(isLoading)
+                    .accessibilityIdentifier("ai-input")
 
                 // 发送按钮
                 Button {

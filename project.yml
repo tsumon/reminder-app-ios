@@ -123,6 +123,22 @@ targets:
         PRODUCT_NAME: "BackupProtocolCheck"
         GENERATE_INFOPLIST_FILE: "YES"
 
+  SixFeaturesCheck:
+    type: tool
+    platform: macOS
+    sources:
+      - path: ReminderApp/Services/AIModelsAPI.swift
+      - path: ReminderApp/Services/ReminderTemplates.swift
+      - path: ReminderApp/Services/ReminderShare.swift
+      - path: ReminderApp/Services/NotificationActionIDs.swift
+      - path: ReminderAppTests/SixFeaturesCheckMain.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.reminder.sixchk
+        PRODUCT_NAME: "SixFeaturesCheck"
+        GENERATE_INFOPLIST_FILE: "YES"
+    scheme: {}
+
   ReminderWidget:
     type: app-extension
     platform: iOS
@@ -158,7 +174,7 @@ targets:
       path: ReminderWidget/Info.plist
       properties:
         CFBundleDisplayName: 循环提醒小组件
-        CFBundleShortVersionString: "2.7.1"
-        CFBundleVersion: "68"
+        CFBundleShortVersionString: "2.7.2"
+        CFBundleVersion: "69"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension

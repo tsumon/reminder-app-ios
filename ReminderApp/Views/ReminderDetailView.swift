@@ -7,7 +7,9 @@ struct ReminderDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     let reminder: Reminder
+    var highlightConfirm: Bool = false
     @State private var showDeleteAlert = false
+    @State private var showShareSheet = false
     @State private var appeared = false
     // v2.0.22: 删除保存失败提示（不直接关页面）
     @State private var deleteErrorMessage: String?
@@ -64,11 +66,16 @@ struct ReminderDetailView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                // 批次3 功能6: 单条提醒分享卡片（导出为 JSON 经系统分享面板发出）
-                ShareLink(item: BackupHelper.exportSingle(reminder)) {
+                Button {
+                    showShareSheet = true
+                } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
+                .accessibilityIdentifier("share-reminder")
             }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ActivityShareSheet(items: shareItems)
         }
         .alert("确认删除".localized, isPresented: $showDeleteAlert) {
             Button("取消".localized, role: .cancel) {}
@@ -255,6 +262,13 @@ struct ReminderDetailView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(ThemeTokens.statusCompleted)
+                    .overlay {
+                        if highlightConfirm {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(ThemeTokens.brandPrimary, lineWidth: 3)
+                        }
+                    }
+                    .accessibilityIdentifier("detail-confirm")
 
                     // v2.1.0: 统一稍后选项（15 分钟 / 1 小时 / 明天 / 自定义分钟）
                     Menu {
@@ -293,6 +307,18 @@ struct ReminderDetailView: View {
             }
             .controlSize(.large)
         }
+    }
+
+    private var shareItems: [Any] {
+        let text = ReminderShare.plainText(
+            title: reminder.title,
+            cycleLabel: reminder.dateDisplayText,
+            nextTrigger: reminder.nextTriggerAt,
+            note: reminder.note
+        )
+        let ics = IcsExporter.generateICS(reminders: [reminder])
+        let url = ReminderShare.writeICSFile(named: reminder.title, contents: ics)
+        return [text, url]
     }
 
     /// 打卡（确认完成 / 补打今天共用）：确认 + 弹正向反馈卡片

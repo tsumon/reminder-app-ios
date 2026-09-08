@@ -365,6 +365,12 @@ struct ReminderListView: View {
                 if let pending = NotificationManager.takePendingDetailID(),
                    let uuid = UUID(uuidString: pending) {
                     pendingDetailID = uuid
+                } else if let widgetID = WidgetSnapshot.takeOpenDetailID(),
+                          let uuid = UUID(uuidString: widgetID) {
+                    pendingDetailID = uuid
+                    if WidgetSnapshot.takeHighlightConfirm() {
+                        NotificationManager.savePendingHighlightConfirm(true)
+                    }
                 }
                 // 自动同步（限频 5 分钟）
                 if SyncStore.autoSync && SyncStore.isConfigured &&
@@ -394,7 +400,10 @@ struct ReminderListView: View {
             // navigationDestination(item:) 需 Hashable → 用 UUID（SwiftData 模型非 Hashable，规避）
             .navigationDestination(item: $pendingDetailID) { id in
                 if let reminder = reminders.first(where: { $0.id == id }) {
-                    ReminderDetailView(reminder: reminder)
+                    ReminderDetailView(
+                        reminder: reminder,
+                        highlightConfirm: NotificationManager.takePendingHighlightConfirm()
+                    )
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .openReminderDetail)) { note in

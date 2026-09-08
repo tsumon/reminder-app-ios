@@ -32,6 +32,40 @@ final class ChatHistoryUITests: XCTestCase {
         sparkles.tap()
     }
 
+    /// Dock overlay used to cover the AI input (Joe device screenshot).
+    /// Chat is full-screen: input hittable, SoftTabDock gone, pop restores dock.
+    func testChatInputNotCoveredByTabDock() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-uitest_skip_permission", "1"]
+        app.launch()
+
+        openAIPage(app)
+
+        let input = app.textFields["ai-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 8), "AI 输入框未出现")
+        XCTAssertTrue(input.isHittable, "AI 输入框不可点——仍被 SoftTabDock 盖住")
+
+        let dock = app.otherElements["soft-tab-dock"]
+        XCTAssertFalse(dock.exists, "AI 对话页不应显示 SoftTabDock")
+        Self.saveDesktopShot("ios-ai-chat.png")
+
+        input.tap()
+        input.typeText("dock-fix")
+        XCTAssertTrue(app.buttons["send-button"].isHittable, "发送按钮不可点")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["ai-entry"].waitForExistence(timeout: 5), "返回首页失败")
+        XCTAssertTrue(dock.waitForExistence(timeout: 5), "返回首页后 SoftTabDock 未恢复")
+        Self.saveDesktopShot("ios-home-dock.png")
+    }
+
+    static func saveDesktopShot(_ name: String) {
+        let dir = URL(fileURLWithPath: "/Users/mac/Desktop/循环提醒-ai-dock-fix")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let data = XCUIScreen.main.screenshot().pngRepresentation
+        try? data.write(to: dir.appendingPathComponent(name))
+    }
+
     func testHistorySurvivesAppRestart() throws {
         let app = XCUIApplication()
         app.launchArguments += ["-uitest_ai_fixture", "1", "-uitest_skip_permission", "1"]
@@ -155,6 +189,61 @@ final class MultiTurnHistoryUITests: XCTestCase {
         openAIPage(app)
         let c4 = historyCount(app)
         XCTAssertTrue(c4 >= c2, "杀 App 重进后历史条数下降: \(c2) -> \(c4)")
+    }
+
+    /// AI 设置：空地址提示；OpenAI 兼容 GET /v1/models 列出并写入模型字段。
+    func testFetchModelsListAndSelect() throws {
+        let shotDir = URL(fileURLWithPath: "/Users/mac/Desktop/循环提醒-ai-models")
+        try? FileManager.default.createDirectory(at: shotDir, withIntermediateDirectories: true)
+        func shot(_ name: String) {
+            let data = XCUIScreen.main.screenshot().pngRepresentation
+            try? data.write(to: shotDir.appendingPathComponent(name))
+        }
+
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-uitest_skip_permission", "1",
+            "-ai_endpoint", "http://127.0.0.1:8898/v1",
+            "-ai_is_local", "1",
+        ]
+        app.launch()
+
+        openAIPage(app)
+        let gear = app.buttons["ai-settings-entry"]
+        XCTAssertTrue(gear.waitForExistence(timeout: 8), "AI 设置入口未找到")
+        gear.tap()
+
+        let fetch = app.buttons["fetch-models-primary"]
+        XCTAssertTrue(fetch.waitForExistence(timeout: 8), "获取模型列表按钮未出现")
+
+        // 空地址：清掉接口再点，应弹提示
+        let endpoint = app.textFields["ai-endpoint"]
+        XCTAssertTrue(endpoint.waitForExistence(timeout: 5))
+        endpoint.tap()
+        endpoint.press(forDuration: 1.0)
+        if app.menuItems["全选"].waitForExistence(timeout: 2) {
+            app.menuItems["全选"].tap()
+        } else if app.menuItems["Select All"].waitForExistence(timeout: 1) {
+            app.menuItems["Select All"].tap()
+        }
+        endpoint.typeText(XCUIKeyboardKey.delete.rawValue)
+        fetch.tap()
+        XCTAssertTrue(app.alerts.element.waitForExistence(timeout: 4), "空地址应弹出提示")
+        shot("ios-empty-endpoint.png")
+        app.alerts.buttons.firstMatch.tap()
+
+        // 填 mock 端点，拉列表并选中
+        endpoint.tap()
+        endpoint.typeText("http://127.0.0.1:8898/v1")
+        fetch.tap()
+        let choice = app.buttons["model-choice-llama3.2"]
+        XCTAssertTrue(choice.waitForExistence(timeout: 10), "未弹出模型列表")
+        shot("ios-model-picker.png")
+        choice.tap()
+        let modelField = app.textFields["ai-model"]
+        XCTAssertTrue(modelField.waitForExistence(timeout: 3))
+        XCTAssertEqual(modelField.value as? String, "llama3.2")
+        shot("ios-model-selected.png")
     }
 }
 

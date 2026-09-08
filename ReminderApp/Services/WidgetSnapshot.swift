@@ -88,5 +88,27 @@ enum WidgetSnapshot {
         let remaining = Set(existing).subtracting(ids)
         defaults?.set(Array(remaining), forKey: snoozedIDsKey)
     }
+
+    // MARK: - 小组件点进详情（深链）
+
+    private static let openDetailIDKey = "widget_open_detail_id"
+    private static let highlightConfirmKey = "widget_highlight_confirm"
+
+    static func markOpenDetail(reminderID: String, highlightConfirm: Bool = true) {
+        defaults?.set(reminderID, forKey: openDetailIDKey)
+        defaults?.set(highlightConfirm, forKey: highlightConfirmKey)
+    }
+
+    static func takeOpenDetailID() -> String? {
+        let v = defaults?.string(forKey: openDetailIDKey)
+        defaults?.removeObject(forKey: openDetailIDKey)
+        return v
+    }
+
+    static func takeHighlightConfirm() -> Bool {
+        let v = defaults?.bool(forKey: highlightConfirmKey) ?? false
+        defaults?.removeObject(forKey: highlightConfirmKey)
+        return v
+    }
 }
 

@@ -178,6 +178,7 @@ If the user does nothing (swipes it away), it enters escalating retry:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| v2.7.2 | 2026-09 | AI dock 修复；模型列表/测连通；模板；分享 ICS；小组件确认 |
 | v2.7.1 | 2026-09 | soft-ui chrome: hammer 3D soft-shadow, dock fill to physical bottom (DockH 48 / selected 32), settings row 52 |
 | v2.7.0 | 2026-09 | soft-ui paper elevation; today card + pending ring; stats donut + monthly heatmap |
 | v2.6.0 | 2026-09 | In-row confirm, calendar day tasks, empty completion rate shows 0% |

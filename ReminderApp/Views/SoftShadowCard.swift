@@ -660,6 +660,8 @@ struct SoftTabDock: View {
         .padding(.top, ThemeTokens.dockPadTop)
         .padding(.bottom, bottomPad)
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("soft-tab-dock")
         .background(alignment: .top) {
             // Full-width elevated fill to the physical bottom (home-indicator sits on --elevated).
             // Icon row uses a small top pad — not vertically centered in this skirt.
