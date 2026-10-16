@@ -86,6 +86,7 @@ import SwiftData
         SyncStore.setLocalVersion(100)
         let android = Reminder(title: "Android 100", firstTriggerAt: now, nextTriggerAt: now.addingTimeInterval(86400))
         var server = BackupHelper.exportJSON([android]); var puts = 0
+        let android100 = server
         var transport = WebDavSync.Transport(download: { WebDavSync.Remote(json: server, etag: "v1") },
             upload: { json, _ in server = json; puts += 1 }, restore: {})
         SyncStore.setLocalVersion(0); SyncStore.setLastSyncVersion(0)
@@ -98,20 +99,21 @@ import SwiftData
         precondition(BackupHelper.dataVersion(of: server) > 100 && puts == 1)
         precondition(BackupHelper.importJSON(server)!.first!.title == "iOS edit survives")
         try server.write(toFile: "ios-sync-edit-v3.json", atomically: true, encoding: .utf8)
-        let iosEdited = server
         for localChoice in [true, false] {
-            server = iosEdited
+            server = android100
+            pulled.title = "Local alternative"
+            precondition(ReminderActions.changed(pulled, context: c))
             SyncStore.setLocalVersion(200); SyncStore.setLastSyncVersion(199)
-            UserDefaults.standard.set("unseen", forKey: "sync_remote_stamp_v3")
             let before = puts
             guard case .conflict = await WebDavSync.syncNow(reminders: [pulled], modelContext: c, transport: transport) else { fatalError("Concurrent conflict") }
             precondition(puts == before)
             guard case .success = await WebDavSync.resolve(localChoice ? .local : .remote, context: c, transport: transport) else { fatalError("Explicit resolution") }
             precondition(BackupHelper.dataVersion(of: server) > 200 && puts == before + 1)
+            precondition(BackupHelper.importJSON(server)!.first!.title == (localChoice ? "Local alternative" : "Android 100"))
         }
         let only = Reminder(title: "Local only", firstTriggerAt: now, nextTriggerAt: now.addingTimeInterval(172800))
         c.insert(only); try c.save(); SyncStore.touchLocalChange()
-        UserDefaults.standard.set("changed", forKey: "sync_remote_stamp_v3")
+        server = android100
         guard case .conflict = await WebDavSync.syncNow(reminders: [pulled, only], modelContext: c, transport: transport) else { fatalError("Local-only conflict") }
         guard case .success = await WebDavSync.resolve(.remote, context: c, transport: transport) else { fatalError("Retained merge") }
         precondition(BackupHelper.importJSON(server)!.contains { $0.stableID == only.id })
