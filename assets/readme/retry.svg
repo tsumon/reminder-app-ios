@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">递增重试引擎</title>
+  <desc id="desc">到期未确认后按 1 小时、4 小时、12 小时、24 小时递增再响。第五次标逾期并停止自动再响。重试期间周期不前进；确认后按首次触发锚点计算下一循环。稍后 15 分钟重推，不计入阶段。</desc>
+
+  <defs>
+    <linearGradient id="retry-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0B1114"/>
+      <stop offset="1" stop-color="#121C20"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="520" rx="24" fill="url(#retry-bg)"/>
+
+  <g id="heading" transform="translate(56 48)">
+    <text x="0" y="0" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" fill="#159A9C" letter-spacing="1.8">RETRY SCHEDULE</text>
+    <text x="0" y="44" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="40" font-weight="700" fill="#F3F7F7">没确认就加间隔，确认才推进周期</text>
+    <text x="0" y="78" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="20" fill="#8B96A3">双端同一时间表 · 从 D-day 起 T → T+1h → T+5h → T+17h → T+41h</text>
+  </g>
+
+  <!-- five stages -->
+  <g id="stages" transform="translate(40 160)">
+    <g id="stage-1">
+      <rect x="0" y="0" width="208" height="168" rx="18" fill="#171E24"/>
+      <text x="20" y="36" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" fill="#159A9C">T</text>
+      <text x="20" y="78" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="24" font-weight="700" fill="#F3F7F7">到期</text>
+      <text x="20" y="110" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="18" fill="#8B96A3">第 1 次响起</text>
+      <text x="20" y="142" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="18" fill="#E74C3C">提醒中</text>
+    </g>
+    <g id="stage-2" transform="translate(228 0)">
+      <rect x="0" y="0" width="208" height="168" rx="18" fill="#171E24"/>
+      <text x="20" y="36" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" fill="#159A9C">T+1h</text>
+      <text x="20" y="78" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="24" font-weight="700" fill="#F3F7F7">+ 1 小时</text>
+      <text x="20" y="110" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="18" fill="#8B96A3">第 2 次</text>
+      <text x="20" y="142" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="18" fill="#E74C3C">仍提醒中</text>
+    </g>
+    <g id="stage-3" transform="translate(456 0)">
+      <rect x="0" y="0" width="208" height="168" rx="18" fill="#171E24"/>
+      <text x="20" y="36" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" fill="#159A9C">T+5h</text>
+      <text x="20" y="78" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="24" font-weight="700" fill="#F3F7F7">+ 4 小时</text>
+      <text x="20" y="110" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="18" fill="#8B96A3">第 3 次</text>
+      <text x="20" y="142" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="18" fill="#E74C3C">仍提醒中</text>
+    </g>
+    <g id="stage-4" transform="translate(684 0)">
+      <rect x="0" y="0" width="208" height="168" rx="18" fill="#171E24"/>
+      <text x="20" y="36" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" fill="#159A9C">T+17h</text>
+      <text x="20" y="78" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="24" font-weight="700" fill="#F3F7F7">+ 12 小时</text>
+      <text x="20" y="110" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="18" fill="#8B96A3">第 4 次</text>
+      <text x="20" y="142" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="18" fill="#E74C3C">仍提醒中</text>
+    </g>
+    <g id="stage-5" transform="translate(912 0)">
+      <rect x="0" y="0" width="208" height="168" rx="18" fill="#2A1614"/>
+      <text x="20" y="36" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" fill="#E7A39C">T+41h</text>
+      <text x="20" y="78" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="24" font-weight="700" fill="#F3F7F7">+ 24 小时</text>
+      <text x="20" y="110" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="18" fill="#E7B0AA">第 5 次</text>
+      <text x="20" y="142" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif" font-size="18" font-weight="700" fill="#C0392B">逾期 · 停响</text>
+    </g>
+  </g>
+
+  <!-- three exits -->
+  <g id="exits" transform="translate(40 356)" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif">
+    <g>
+      <rect x="0" y="0" width="360" height="124" rx="18" fill="#132422"/>
+      <text x="24" y="40" font-size="22" font-weight="700" fill="#4DB6AC">确认</text>
+      <text x="24" y="72" font-size="18" fill="#D5DDE2">周期前进，下次按首次触发锚点</text>
+      <text x="24" y="100" font-size="18" fill="#8B96A3">月末对齐 · 闰年正确</text>
+    </g>
+    <g transform="translate(380 0)">
+      <rect x="0" y="0" width="360" height="124" rx="18" fill="#171E24"/>
+      <text x="24" y="40" font-size="22" font-weight="700" fill="#F39C12">稍后</text>
+      <text x="24" y="72" font-size="18" fill="#D5DDE2">15 分钟后再推一次</text>
+      <text x="24" y="100" font-size="18" fill="#8B96A3">不计入重试阶段</text>
+    </g>
+    <g transform="translate(760 0)">
+      <rect x="0" y="0" width="360" height="124" rx="18" fill="#171E24"/>
+      <text x="24" y="40" font-size="22" font-weight="700" fill="#C0392B">逾期</text>
+      <text x="24" y="72" font-size="18" fill="#D5DDE2">停止自动再响，留在列表</text>
+      <text x="24" y="100" font-size="18" fill="#8B96A3">等手动确认或重新打开</text>
+    </g>
+  </g>
+</svg>
