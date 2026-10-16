@@ -86,8 +86,8 @@ struct ReminderListView: View {
         // v1.9.8: NavigationStack 由 MainTabView 的 Tab 提供，避免嵌套双层导航栏
         mainContentWrapped
             .confirmationDialog("同步冲突：两边都有修改，已停止写入。选择前将保存本地快照。删除不会跨设备同步。", isPresented: $showSyncConflict) {
-                Button("使用本地并上传") { Task { _ = await WebDavSync.resolve(.local, context: modelContext) } }
-                Button("使用远程并保留本机独有提醒") { Task { _ = await WebDavSync.resolve(.remote, context: modelContext) } }
+                Button("使用本地并上传") { resolveSync(.local) }
+                Button("使用远程并保留本机独有提醒") { resolveSync(.remote) }
                 Button("取消", role: .cancel) {}
             }
     }
@@ -602,6 +602,16 @@ struct ReminderListView: View {
 
     // MARK: - 同步
 
+    private func resolveSync(_ choice: WebDavSync.ConflictChoice) {
+        Task {
+            switch await WebDavSync.resolve(choice, context: modelContext) {
+            case .success: syncMessage = "同步完成；本机独有提醒已保留。删除暂不跨设备同步。"
+            case .conflict: showSyncConflict = true
+            case .failure(let message): syncMessage = message
+            }
+        }
+    }
+
     private func syncNow() {
         Task {
             let result = await WebDavSync.syncNow(reminders: reminders, modelContext: modelContext)
@@ -1086,6 +1096,7 @@ struct ReminderListView: View {
             r.firstTriggerAt = target
             r.nextTriggerAt = target
             r.updatedAt = Date()
+            r.actionRevision += 1; r.undoCompletion = nil
         }
         try? modelContext.save()
         SyncStore.touchLocalChange()

@@ -491,16 +491,22 @@ final class ReminderEngine: ObservableObject {
             let all = ReminderPolicy.allocate(reminders, now: now, limit: Int.max)
             let reserved = await NotificationManager.shared.unmanagedPendingCount()
             if generation != SyncStore.localVersion { replanRequested = true; continue }
-            let queue = Array(all.prefix(max(0, 64 - reserved)))
-            eligiblePrimaryCount = all.filter { $0.kind == .primary }.count
-            scheduledPrimaryCount = queue.filter { $0.kind == .primary }.count
             let tokens = Dictionary(uniqueKeysWithValues: reminders.map { ($0.id.uuidString, $0.actionToken) })
             if #available(iOS 26.0, *) { await ImportantAlarmService.shared.removeStale(validTokens: tokens) }
+            var alarmCovered = Set<String>()
+            if #available(iOS 26.0, *) {
+                for delivery in all where delivery.important {
+                    if generation != SyncStore.localVersion { replanRequested = true; break }
+                    if await ImportantAlarmService.shared.schedule(delivery) { alarmCovered.insert(delivery.identifier) }
+                }
+            }
+            if generation != SyncStore.localVersion { replanRequested = true; continue }
+            let queue = Array(all.filter { !alarmCovered.contains($0.identifier) }.prefix(max(0, 64 - reserved)))
+            eligiblePrimaryCount = all.filter { $0.kind == .primary }.count
+            scheduledPrimaryCount = all.filter { $0.kind == .primary && alarmCovered.contains($0.identifier) }.count + queue.filter { $0.kind == .primary }.count
             await NotificationManager.shared.removeManagedRequests()
             for delivery in queue {
                 if generation != SyncStore.localVersion { replanRequested = true; break }
-                if #available(iOS 26.0, *), delivery.important,
-                   await ImportantAlarmService.shared.schedule(delivery) { continue }
                 await NotificationManager.shared.addDelivery(delivery, badgeCount: eligiblePrimaryCount)
             }
             if generation != SyncStore.localVersion { replanRequested = true }
@@ -526,13 +532,7 @@ final class ReminderEngine: ObservableObject {
             guard reminder.nextTriggerAt <= now else { continue }
 
             // 每错过一次触发就前进一个重试阶段，直到下次触发落在未来或达到上限
-            let policy = reminder.policy
-            let cap = reminder.reminderStyle == "gentle" ? 1 : policy.attempts
-            var s = reminder.retryStage
-            var d = policy.adjust(reminder.nextTriggerAt)
-            if reminder.status == .snoozed && s >= cap && d <= now { s = cap - 1 }
-            while d <= now && s < cap { s += 1; d = policy.adjust(d.addingTimeInterval(policy.delay(after: s))) }
-            let caught = (stage: s, dueAt: d, isOverdue: s >= cap)
+            let caught = ReminderPolicy.catchUp(reminder, now: now)
             let stage = caught.stage
             let due = caught.dueAt
 

@@ -190,6 +190,8 @@ targets:
       - path: ReminderApp/Services/LunarCalendar.swift
       - path: ReminderApp/Services/ReminderActions.swift
       - path: ReminderApp/Services/ReminderEdits.swift
+      - path: ReminderApp/Services/SyncRevisionSnapshot.swift
+      - path: ReminderApp/Services/ReminderMerge.swift
       - path: ReminderApp/Services/BackupHelper.swift
       - path: ReminderApp/Services/SyncStore.swift
       - path: ReminderAppTests/UpgradeCheckMain.swift

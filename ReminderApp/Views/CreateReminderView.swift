@@ -12,6 +12,7 @@ struct CreateReminderView: View {
     @State private var expectedToken = ""
     @State private var initialSchedule = ""
     @State private var saving = false
+    @State private var didSave = false
     @State private var recurrenceMode = "fixed"
     @State private var reminderStyle = "persistent"
     @State private var intervalsText = "60,240,720,1440"
@@ -574,10 +575,10 @@ struct CreateReminderView: View {
     // MARK: - 保存
 
     private func saveReminder() {
-        guard !saving else { return }
+        guard !saving && !didSave else { return }
         guard let intervals = PolicyFields.parsed(intervalsText) else { errorMessage = "请填写有效重试间隔：1–10080 分钟，最多 10 个"; return }
         saving = true
-        defer { saving = false }
+        defer { if !didSave { saving = false } }
         let calendar = Calendar.current
 
         let reminder: Reminder
@@ -754,7 +755,11 @@ struct CreateReminderView: View {
                 calculate: ReminderEngine.shared.calculateNextTrigger) else {
                 errorMessage = "提醒已被其他操作修改，请关闭后重新编辑"; return
             }
-            Task { await ReminderEngine.shared.scheduleAllNotifications(for: editing) }
+            Task {
+                if #available(iOS 26.0, *), editing.useAlarmKit { _ = await ImportantAlarmService.shared.requestAuthorization() }
+                await ReminderEngine.shared.scheduleAllNotifications(for: editing)
+            }
+            didSave = true
             dismiss(); return
         }
         if reminder.holidayAware {
@@ -769,12 +774,14 @@ struct CreateReminderView: View {
             errorMessage = Localized("保存失败，请重试：%@", error.localizedDescription)
             return
         }
+        didSave = true
         SyncStore.touchLocalChange()
 
         // 批次3 功能5: 关键提醒标记落 UserDefaults 侧存（避免改 SwiftData schema）
         onCreated?(reminder)
 
         Task {
+            if #available(iOS 26.0, *), reminder.useAlarmKit { _ = await ImportantAlarmService.shared.requestAuthorization() }
             await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
         }
 

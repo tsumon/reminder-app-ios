@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import SwiftData
 import WidgetKit
 
@@ -24,7 +25,7 @@ enum WebDavSync {
 
     static func stamp(_ json: String?) -> String {
         guard let json else { return "missing" }
-        return "\(BackupHelper.exportedAt(of: json) ?? 0):\(BackupHelper.dataVersion(of: json))"
+        return SHA256.hash(data: Data(json.utf8)).map { String(format: "%02x", $0) }.joined()
     }
     static func syncNow(reminders: [Reminder], modelContext: ModelContext) async -> SyncResult {
         guard SyncStore.isConfigured else { return .failure("请先配置 WebDAV 服务器") }
@@ -73,9 +74,11 @@ enum WebDavSync {
     }
     private static func uploadSnapshot(_ current: [Reminder], generation: Int, remote: Remote) async throws -> SyncResult {
         // Serialize values and capture the generation on this actor before suspending.
-        let json = BackupHelper.exportJSON(current)
+        let snapshot = SyncRevisionSnapshot(reminders: current)
+        guard snapshot.generation == generation else { return .failure("本地数据已变化，请重新同步") }
+        let json = snapshot.json
         try await upload(json, replacing: remote)
-        SyncStore.setLastSyncVersion(generation)
+        snapshot.acknowledge()
         UserDefaults.standard.set(stamp(json), forKey: remoteStampKey)
         SyncStore.setLastSync(); SyncStore.setHasSyncedOnce()
         return .success(conflict: false)
@@ -254,81 +257,11 @@ enum WebDavSync {
         items: [BackupHelper.BackupItem],
         in context: ModelContext
     ) -> Bool {
-        // 阶段2: 覆盖前自动存本地快照（可恢复）
-        // Snapshot is persisted by the transaction before any mutation.
-
-        // 先清空旧通知，避免被删提醒的「幽灵通知」继续到点弹出（保留的条目下面会重排）
-        // All surviving local-only reminders are replanned globally after save.
-
-        let existingByID = Dictionary(uniqueKeysWithValues: current.map { ($0.id, $0) })
-        var upserted: [Reminder] = []
-
-        for item in items {
-            let fresh = BackupHelper.makeReminder(from: item)
-            let fingerprint = "\(fresh.title)|\(Int(fresh.nextTriggerAt.timeIntervalSince1970))"
-            // 匹配优先级：id（协议 v2）→ 指纹（旧协议文件无 id 时，识别上轮已导入的条目）
-            let existing = existingByID[fresh.id] ?? (item.stableID == nil ? current.first { "\($0.title)|\(Int($0.nextTriggerAt.timeIntervalSince1970))" == fingerprint } : nil)
-
-            if let existing {
-                // 已存在：逐属性更新（保留对象 id → 通知/小组件/操作记录引用不失效；records 保留）
-                apply(fresh, to: existing)
-                // 阶段2: 状态随同步保留（makeReminder 已映射合法值；未知回落 pending）
-                upserted.append(existing)
-            } else {
-                // 新条目
-                context.insert(fresh)
-                upserted.append(fresh)
-            }
-        }
-
-        // 保存失败必须让调用方知道：否则版本号已对齐、本地又是旧数据，后续永远无法恢复
         do {
-            try context.save()
-        } catch {
-            context.rollback()
-            print("[WebDAV] 合并保存失败: \(error)")
-            return false
-        }
-
-        WidgetCenter.shared.reloadAllTimelines()
-        return true
-    }
-
-    /// 把 fresh（makeReminder 产物，id 与 existing 相同）的持久化属性复制到 existing。
-    /// 不拷贝：id（必须相同）、retryStage/lastRetryAt/createdAt/records（协议无此字段，保留本地值）。
-    private static func apply(_ fresh: Reminder, to existing: Reminder) {
-        existing.title = fresh.title
-        existing.note = fresh.note
-        existing.kind = fresh.kind
-        existing.cycle = fresh.cycle
-        existing.customDays = fresh.customDays
-        existing.dateType = fresh.dateType
-        existing.targetMonth = fresh.targetMonth
-        existing.targetDay = fresh.targetDay
-        existing.advanceDays = fresh.advanceDays
-        existing.reminderHour = fresh.reminderHour
-        existing.reminderMinute = fresh.reminderMinute
-        existing.holidayID = fresh.holidayID
-        existing.rulePeriod = fresh.rulePeriod
-        existing.ruleWeek = fresh.ruleWeek
-        existing.ruleWeekday = fresh.ruleWeekday
-        existing.firstTriggerAt = fresh.firstTriggerAt
-        existing.nextTriggerAt = fresh.nextTriggerAt
-        existing.status = fresh.status
-        existing.priority = fresh.priority
-        existing.isEnabled = fresh.isEnabled
-        existing.holidayAware = fresh.holidayAware
-        existing.recurrenceMode = fresh.recurrenceMode; existing.reminderStyle = fresh.reminderStyle
-        existing.retryIntervalsMinutes = fresh.retryIntervalsMinutes; existing.maxReminderAttempts = fresh.maxReminderAttempts
-        existing.quietStartMinute = fresh.quietStartMinute; existing.quietEndMinute = fresh.quietEndMinute
-        existing.policyMigrated = true
-        existing.retryStage = fresh.retryStage; existing.lastRetryAt = fresh.lastRetryAt
-        existing.lastCompletedAt = fresh.lastCompletedAt
-        // Preserve local history; imported record IDs are merged exactly once.
-        let ids = Set(existing.records.map(\.id))
-        existing.records.append(contentsOf: fresh.records.filter { !ids.contains($0.id) })
-        existing.undoCompletion = nil; existing.actionRevision += 1
-        existing.updatedAt = fresh.updatedAt
+            try ReminderMerge.apply(items, current: current, context: context)
+            WidgetCenter.shared.reloadAllTimelines()
+            return true
+        } catch { return false }
     }
 
     /// 阶段2: 合并前把当前本地全量导出为 JSON 快照（可恢复；保留最近 5 份）

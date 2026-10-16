@@ -412,7 +412,7 @@ struct ReminderDetailView: View {
                             reminder: reminder
                         )
                     }
-                    try? modelContext.save()
+                    _ = ReminderActions.changed(reminder, context: modelContext)
 
                     if newValue {
                         Task {

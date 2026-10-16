@@ -30,6 +30,19 @@ struct ReminderPolicy: Equatable {
 
     func delay(after stage: Int) -> TimeInterval { Double(intervals[min(max(stage - 1, 0), intervals.count - 1)]) * 60 }
 
+    struct CatchUp { let stage: Int; let dueAt: Date; let isOverdue: Bool }
+    static func catchUp(_ r: Reminder, now: Date) -> CatchUp {
+        let policy = r.policy
+        let cap = r.reminderStyle == "gentle" ? 1 : policy.attempts
+        var stage = r.retryStage
+        var due = policy.adjust(r.nextTriggerAt)
+        if r.status == .snoozed && stage >= cap && due <= now { stage = cap - 1 }
+        while due <= now && stage < cap {
+            stage += 1; due = policy.adjust(due.addingTimeInterval(policy.delay(after: stage)))
+        }
+        return CatchUp(stage: stage, dueAt: due, isOverdue: stage >= cap)
+    }
+
     static func nextCycle(after date: Date, reminder: Reminder, calendar: Calendar = .current) -> Date {
         let relative = reminder.recurrenceMode == RecurrenceMode.afterCompletion.rawValue
         let anchor = relative ? date : reminder.firstTriggerAt
@@ -38,7 +51,9 @@ struct ReminderPolicy: Equatable {
         if let months {
             let anchorDay = calendar.component(.day, from: anchor)
             for step in 1...1200 {
-                let start = calendar.date(bySetting: .day, value: 1, of: anchor) ?? anchor
+                var components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: anchor)
+                components.day = 1
+                let start = calendar.date(from: components) ?? anchor
                 guard let month = calendar.date(byAdding: .month, value: months * step, to: start),
                       let range = calendar.range(of: .day, in: .month, for: month) else { continue }
                 if !relative && reminder.cycle == .yearly && calendar.component(.month, from: anchor) == 2 && anchorDay == 29 && range.count < 29 { continue }
