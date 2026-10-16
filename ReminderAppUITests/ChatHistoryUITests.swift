@@ -142,6 +142,11 @@ final class MultiTurnHistoryUITests: XCTestCase {
                        "上一轮请求结束后输入框未恢复")
         input.tap()
         input.typeText(text)
+        // Typing completion can precede the final SwiftUI/accessibility value update.
+        // Wait for exact committed text without retyping or sending a partial value.
+        let committedInput = NSPredicate(format: "value == %@", text)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: committedInput, object: input)], timeout: 5), .completed,
+                       "完整输入未提交到 AI 输入框")
         XCTAssertEqual(input.value as? String, text, "输入未进入 AI 输入框")
         let send = app.buttons["send-button"]
         XCTAssertTrue(send.waitForExistence(timeout: 5), "发送按钮未找到")
