@@ -29,7 +29,7 @@ struct ReminderRowView: View {
                     }
 
                     if reminder.retryStage > 0 && !isDone {
-                        Text("还没确认 · \(retryClock) 再响")
+                        Text(reminder.status == .overdue ? "已达提醒次数上限，等待手动处理".localized : Localized("还没确认 · %@ 再响", retryClock))
                             .font(SoftType.retry)
                             .foregroundStyle(soft.warn)
                     }

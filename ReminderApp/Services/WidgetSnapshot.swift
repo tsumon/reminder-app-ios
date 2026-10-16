@@ -25,6 +25,8 @@ enum WidgetSnapshot {
         }
     }
 
+    // Called by the app's global scheduler after every persisted action/import/edit.
+    // Kept outside the widget target because it uses SwiftData model values.
     static func load() -> WidgetReminderData {
         guard let data = defaults?.data(forKey: "widget_data"),
               let decoded = try? JSONDecoder().decode(WidgetReminderData.self, from: data) else {

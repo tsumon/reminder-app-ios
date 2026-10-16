@@ -63,7 +63,6 @@ struct CreateReminderView: View {
 
     // MARK: - 关键提醒（批次3 功能5）
 
-    @State private var isCritical = false
 
     // MARK: - v2.4.10 避开节假日/周末（报税等工作日事务自动顺延）
 
@@ -97,6 +96,8 @@ struct CreateReminderView: View {
     @State private var nlText = ""
     @State private var nlHint: String?
     @State private var nlError = false
+    @State private var needsRuleReview = false
+    @State private var reviewedRule = false
 
     let months = Array(1...12)
     let days = Array(1...31)
@@ -109,6 +110,13 @@ struct CreateReminderView: View {
                 // MARK: 自然语言快速创建
                 naturalLanguageSection
 
+                if needsRuleReview {
+                    Section("确认完整规则".localized) {
+                        Text("请先选择下方类型、周期和时间，再确认规则。".localized)
+                        Toggle("我已检查并确认下方规则".localized, isOn: $reviewedRule)
+                            .accessibilityIdentifier("confirm-complex-rule")
+                    }
+                }
                 // MARK: 模板
                 templateSection
 
@@ -147,8 +155,8 @@ struct CreateReminderView: View {
 
                 PolicyFields(recurrenceMode: $recurrenceMode, style: $reminderStyle, intervals: $intervalsText,
                     attempts: $maxAttempts, useAlarmKit: $useAlarmKit, repeatingCycle: kind == .cycle && cycle != .once)
-                Section("勿扰时段") {
-                    Toggle("启用每日勿扰", isOn: $quietEnabled)
+                Section("勿扰时段".localized) {
+                    Toggle("启用每日勿扰".localized, isOn: $quietEnabled)
                     if quietEnabled {
                         Stepper("开始：\(quietStart / 60):\(String(format: "%02d", quietStart % 60))", value: $quietStart, in: 0...1439, step: 15)
                         Stepper("结束：\(quietEnd / 60):\(String(format: "%02d", quietEnd % 60))", value: $quietEnd, in: 0...1439, step: 15)
@@ -187,7 +195,7 @@ struct CreateReminderView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存".localized) { saveReminder() }
                         .fontWeight(.semibold)
-                        .disabled(saving || title.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(saving || (needsRuleReview && !reviewedRule) || title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
             .alert("无法保存".localized, isPresented: errorAlertBinding) {
@@ -267,6 +275,7 @@ struct CreateReminderView: View {
 
     private func applyNaturalLanguage() {
         if nlText.range(of: "每季度|第[一二三四五1-5].*周|每隔|每[0-9]+[天周月]|(?:除了|排除|仅限|工作日|最后)", options: .regularExpression) != nil {
+            needsRuleReview = true; reviewedRule = false
             nlError = true; nlHint = "复杂规则请在下面完整表单中确认，或返回首页使用 AI。未自动猜测日期。"
             if title.isEmpty { title = nlText }
             return
@@ -276,7 +285,7 @@ struct CreateReminderView: View {
             nlHint = "没听懂，换个说法试试～"
             return
         }
-        nlError = false
+        nlError = false; needsRuleReview = false; reviewedRule = false
 
         // 标题
         if title.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -373,7 +382,7 @@ struct CreateReminderView: View {
                     suggestionText = s.reason
                 }
             } label: {
-                Label("智能建议频率", systemImage: "wand.and.stars")
+                Label("智能建议频率".localized, systemImage: "wand.and.stars")
             }
 
             if let tip = suggestionText {
@@ -575,7 +584,7 @@ struct CreateReminderView: View {
     // MARK: - 保存
 
     private func saveReminder() {
-        guard !saving && !didSave else { return }
+        guard !saving && !didSave && (!needsRuleReview || reviewedRule) else { return }
         guard let intervals = PolicyFields.parsed(intervalsText) else { errorMessage = "请填写有效重试间隔：1–10080 分钟，最多 10 个"; return }
         saving = true
         defer { if !didSave { saving = false } }

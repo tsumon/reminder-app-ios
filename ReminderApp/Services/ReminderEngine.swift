@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import WidgetKit
 
 /// 提醒引擎：周期/日期计算、确认/稍后逻辑、递增重试、提前预告
 @MainActor
@@ -488,6 +489,11 @@ final class ReminderEngine: ObservableObject {
             let generation = SyncStore.localVersion
             let reminders = (try? context.fetch(FetchDescriptor<Reminder>())) ?? []
             let now = Date()
+            let next = reminders.filter { $0.isEnabled && $0.status != .confirmed }.min { $0.nextTriggerAt < $1.nextTriggerAt }
+            let unhandled = reminders.filter { $0.isEnabled && ($0.status == .active || $0.status == .snoozed || $0.status == .overdue || $0.nextTriggerAt <= now) }.count
+            WidgetSnapshot.save(WidgetReminderData(unhandledCount: unhandled, nextTitle: next?.title ?? "暂无提醒",
+                nextTime: next?.nextTriggerAt, updatedAt: now, nextReminderID: next?.id.uuidString, nextActionToken: next?.actionToken))
+            WidgetCenter.shared.reloadAllTimelines()
             let all = ReminderPolicy.allocate(reminders, now: now, limit: Int.max)
             let reserved = await NotificationManager.shared.unmanagedPendingCount()
             if generation != SyncStore.localVersion { replanRequested = true; continue }

@@ -86,9 +86,9 @@ struct ReminderListView: View {
         // v1.9.8: NavigationStack 由 MainTabView 的 Tab 提供，避免嵌套双层导航栏
         mainContentWrapped
             .confirmationDialog("同步冲突：两边都有修改，已停止写入。选择前将保存本地快照。删除不会跨设备同步。", isPresented: $showSyncConflict) {
-                Button("使用本地并上传") { resolveSync(.local) }
-                Button("使用远程并保留本机独有提醒") { resolveSync(.remote) }
-                Button("取消", role: .cancel) {}
+                Button("使用本地并上传".localized) { resolveSync(.local) }
+                Button("使用远程并保留本机独有提醒".localized) { resolveSync(.remote) }
+                Button("取消".localized, role: .cancel) {}
             }
     }
 
@@ -96,12 +96,12 @@ struct ReminderListView: View {
         VStack(spacing: 0) {
             homeChromeHeader
             HStack {
-                TextField("输入一句话创建提醒", text: $quickSentence)
+                TextField("输入一句话创建提醒".localized, text: $quickSentence)
                     .textFieldStyle(.roundedBorder).accessibilityIdentifier("quick-reminder-input")
-                Button("检查规则") { showCreateSheet = true }
+                Button("检查规则".localized) { showCreateSheet = true }
             }.padding(.horizontal).padding(.bottom, 8)
             if let id = createdID {
-                Button("撤销刚创建的提醒") {
+                Button("撤销刚创建的提醒".localized) {
                     guard let r = reminders.first(where: { $0.id == id }), r.actionToken == createdToken, r.records.isEmpty else { createdID = nil; return }
                     modelContext.delete(r)
                     if ReminderActions.save(modelContext) { Task { await NotificationManager.shared.removePendingNotification(for: id); await ReminderEngine.shared.ensureRetryChains() } }
@@ -541,11 +541,11 @@ struct ReminderListView: View {
     private func saveWidgetSnapshot(_ reminders: [Reminder]) {
         let now = Date()
         let unhandled = reminders.filter {
-            $0.isEnabled && ($0.status == .active || $0.status == .snoozed ||
+            $0.isEnabled && ($0.status == .active || $0.status == .snoozed || $0.status == .overdue ||
                 ($0.status == .pending && $0.nextTriggerAt <= now))
         }
         let next = reminders
-            .filter { $0.isEnabled && $0.nextTriggerAt > now }
+            .filter { $0.isEnabled && $0.status != .confirmed }
             .min { $0.nextTriggerAt < $1.nextTriggerAt }
 
         WidgetSnapshot.save(WidgetReminderData(
@@ -796,7 +796,7 @@ struct ReminderListView: View {
                 HStack {
                     Text("待处理 \(reminders.filter { $0.isEnabled && $0.status != .confirmed }.count)")
                     Spacer()
-                    Text("按到期时间排列").foregroundStyle(.secondary)
+                    Text("按到期时间排列".localized).foregroundStyle(.secondary)
                 }.font(.caption).listRowBackground(Color.clear)
             }
 

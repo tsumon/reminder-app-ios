@@ -42,13 +42,13 @@ struct ReminderDetailView: View {
 
                 HStack {
                     if !(reminder.kind == .cycle && reminder.cycle == .once) {
-                        Button("跳过本次") { ReminderEngine.shared.skipReminder(reminder) }
+                        Button("跳过本次".localized) { ReminderEngine.shared.skipReminder(reminder) }
                     }
                     if reminder.undoCompletion != nil {
-                        Button("撤销完成") { ReminderEngine.shared.undoCompletion(reminder) }
+                        Button("撤销完成".localized) { ReminderEngine.shared.undoCompletion(reminder) }
                             .accessibilityIdentifier("undo-completion")
                     }
-                    Button("编辑完整规则") { showEdit = true }
+                    Button("编辑完整规则".localized) { showEdit = true }
                 }.buttonStyle(.bordered).padding(.horizontal)
                 // MARK: 信息卡片
                 infoCard

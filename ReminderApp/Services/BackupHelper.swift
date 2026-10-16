@@ -61,6 +61,7 @@ enum BackupHelper {
         /// H1: 关键提醒标记（iOS 存 UserDefaults CriticalStore，不动 schema；
         /// Optional 兼容旧文件缺 isCritical 键——旧协议是 is_critical snake_case，读取为 nil → false）
         var isCritical: Bool? = nil
+        var legacyCritical: Bool? = nil
         /// v2.4.10: 避开节假日/周末（缺省 false，旧备份兼容）
         var holidayAware: Bool? = nil
         var retryCount: Int? = nil
@@ -74,6 +75,7 @@ enum BackupHelper {
         var updatedAt: Double? = nil
         var lastRetryAt: Double? = nil
         var lastCompletedAt: Double? = nil
+        var lastConfirmedAt: Double? = nil
         var records: [RecordItem]? = nil
 
         var stableID: UUID? { syncId.flatMap(UUID.init(uuidString:)) ?? id?.stringValue.flatMap(UUID.init(uuidString:)) }
@@ -83,49 +85,51 @@ enum BackupHelper {
             case advanceDays, reminderHour, reminderMinute, rulePeriod, ruleWeek, ruleWeekday, priority
             case firstTriggerAt, nextTriggerAt, status, isActive, isCritical, holidayAware
             case retryCount, recurrenceMode, reminderStyle, retryIntervalsMinutes, maxReminderAttempts, quietStartMinute, quietEndMinute
-            case createdAt, updatedAt, lastRetryAt, lastCompletedAt, records
+            case createdAt, updatedAt, lastRetryAt, lastCompletedAt, lastConfirmedAt, records
+            case legacyCritical = "is_critical"
         }
         // Defaults must also apply while decoding minimal Android/legacy envelopes.
         init() { title = ""; note = ""; kind = "cycle"; cycle = "weekly"; firstTriggerAt = 0; nextTriggerAt = 0; status = "pending"; isActive = true }
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             syncId = try c.decodeIfPresent(String.self, forKey: .syncId)
-id = try c.decodeIfPresent(LooseID.self, forKey: .id)
+            id = try c.decodeIfPresent(LooseID.self, forKey: .id)
             title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
-note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
-kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "cycle"
-cycle = try c.decodeIfPresent(String.self, forKey: .cycle) ?? "weekly"
-customDays = try c.decodeIfPresent(Int.self, forKey: .customDays) ?? 0
-advanceDays = try c.decodeIfPresent(Int.self, forKey: .advanceDays) ?? 3
-reminderHour = try c.decodeIfPresent(Int.self, forKey: .reminderHour) ?? 9
-reminderMinute = try c.decodeIfPresent(Int.self, forKey: .reminderMinute) ?? 0
-priority = try c.decodeIfPresent(String.self, forKey: .priority) ?? "normal"
-firstTriggerAt = try c.decodeIfPresent(Double.self, forKey: .firstTriggerAt) ?? 0
-nextTriggerAt = try c.decodeIfPresent(Double.self, forKey: .nextTriggerAt) ?? 0
-status = try c.decodeIfPresent(String.self, forKey: .status) ?? "pending"
-isActive = try c.decodeIfPresent(Bool.self, forKey: .isActive) ?? true
+            note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+            kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "cycle"
+            cycle = try c.decodeIfPresent(String.self, forKey: .cycle) ?? "weekly"
+            customDays = try c.decodeIfPresent(Int.self, forKey: .customDays) ?? 0
+            advanceDays = try c.decodeIfPresent(Int.self, forKey: .advanceDays) ?? 3
+            reminderHour = try c.decodeIfPresent(Int.self, forKey: .reminderHour) ?? 9
+            reminderMinute = try c.decodeIfPresent(Int.self, forKey: .reminderMinute) ?? 0
+            priority = try c.decodeIfPresent(String.self, forKey: .priority) ?? "normal"
+            firstTriggerAt = try c.decodeIfPresent(Double.self, forKey: .firstTriggerAt) ?? 0
+            nextTriggerAt = try c.decodeIfPresent(Double.self, forKey: .nextTriggerAt) ?? 0
+            status = try c.decodeIfPresent(String.self, forKey: .status) ?? "pending"
+            isActive = try c.decodeIfPresent(Bool.self, forKey: .isActive) ?? true
             dateType = try c.decodeIfPresent(String.self, forKey: .dateType)
-targetMonth = try c.decodeIfPresent(Int.self, forKey: .targetMonth)
-targetDay = try c.decodeIfPresent(Int.self, forKey: .targetDay)
-holidayId = try c.decodeIfPresent(String.self, forKey: .holidayId)
-holidayName = try c.decodeIfPresent(String.self, forKey: .holidayName)
-rulePeriod = try c.decodeIfPresent(String.self, forKey: .rulePeriod)
-ruleWeek = try c.decodeIfPresent(Int.self, forKey: .ruleWeek)
-ruleWeekday = try c.decodeIfPresent(Int.self, forKey: .ruleWeekday)
-isCritical = try c.decodeIfPresent(Bool.self, forKey: .isCritical)
-holidayAware = try c.decodeIfPresent(Bool.self, forKey: .holidayAware)
-retryCount = try c.decodeIfPresent(Int.self, forKey: .retryCount)
-recurrenceMode = try c.decodeIfPresent(String.self, forKey: .recurrenceMode)
-reminderStyle = try c.decodeIfPresent(String.self, forKey: .reminderStyle)
-retryIntervalsMinutes = try c.decodeIfPresent([Int].self, forKey: .retryIntervalsMinutes)
-maxReminderAttempts = try c.decodeIfPresent(Int.self, forKey: .maxReminderAttempts)
-quietStartMinute = try c.decodeIfPresent(Int.self, forKey: .quietStartMinute)
-quietEndMinute = try c.decodeIfPresent(Int.self, forKey: .quietEndMinute)
-createdAt = try c.decodeIfPresent(Double.self, forKey: .createdAt)
-updatedAt = try c.decodeIfPresent(Double.self, forKey: .updatedAt)
-lastRetryAt = try c.decodeIfPresent(Double.self, forKey: .lastRetryAt)
-lastCompletedAt = try c.decodeIfPresent(Double.self, forKey: .lastCompletedAt)
-records = try c.decodeIfPresent([RecordItem].self, forKey: .records)
+            targetMonth = try c.decodeIfPresent(Int.self, forKey: .targetMonth)
+            targetDay = try c.decodeIfPresent(Int.self, forKey: .targetDay)
+            holidayId = try c.decodeIfPresent(String.self, forKey: .holidayId)
+            holidayName = try c.decodeIfPresent(String.self, forKey: .holidayName)
+            rulePeriod = try c.decodeIfPresent(String.self, forKey: .rulePeriod)
+            ruleWeek = try c.decodeIfPresent(Int.self, forKey: .ruleWeek)
+            ruleWeekday = try c.decodeIfPresent(Int.self, forKey: .ruleWeekday)
+            isCritical = try c.decodeIfPresent(Bool.self, forKey: .isCritical) ?? c.decodeIfPresent(Bool.self, forKey: .legacyCritical)
+            holidayAware = try c.decodeIfPresent(Bool.self, forKey: .holidayAware)
+            retryCount = try c.decodeIfPresent(Int.self, forKey: .retryCount)
+            recurrenceMode = try c.decodeIfPresent(String.self, forKey: .recurrenceMode)
+            reminderStyle = try c.decodeIfPresent(String.self, forKey: .reminderStyle)
+            retryIntervalsMinutes = try c.decodeIfPresent([Int].self, forKey: .retryIntervalsMinutes)
+            maxReminderAttempts = try c.decodeIfPresent(Int.self, forKey: .maxReminderAttempts)
+            quietStartMinute = try c.decodeIfPresent(Int.self, forKey: .quietStartMinute)
+            quietEndMinute = try c.decodeIfPresent(Int.self, forKey: .quietEndMinute)
+            createdAt = try c.decodeIfPresent(Double.self, forKey: .createdAt)
+            updatedAt = try c.decodeIfPresent(Double.self, forKey: .updatedAt)
+            lastRetryAt = try c.decodeIfPresent(Double.self, forKey: .lastRetryAt)
+            lastConfirmedAt = try c.decodeIfPresent(Double.self, forKey: .lastConfirmedAt)
+            lastCompletedAt = try c.decodeIfPresent(Double.self, forKey: .lastCompletedAt) ?? lastConfirmedAt
+            records = try c.decodeIfPresent([RecordItem].self, forKey: .records)
         }
     }
     struct RecordItem: Codable {
@@ -197,6 +201,7 @@ records = try c.decodeIfPresent([RecordItem].self, forKey: .records)
             item.updatedAt = r.updatedAt.timeIntervalSince1970 * 1000
             item.lastRetryAt = r.lastRetryAt.map { $0.timeIntervalSince1970 * 1000 }
             item.lastCompletedAt = r.lastCompletedAt.map { $0.timeIntervalSince1970 * 1000 }
+            item.lastConfirmedAt = item.lastCompletedAt
             item.records = r.records.map { RecordItem(id: $0.id, performedAt: $0.performedAt.timeIntervalSince1970 * 1000, type: $0.type, note: $0.note) }
             return item
         }
@@ -270,8 +275,6 @@ records = try c.decodeIfPresent([RecordItem].self, forKey: .records)
         var importedCount = 0
         var skippedCount = 0
         var inserted: [Reminder] = []
-        let now = Date()
-
         for item in items {
             let reminder = makeReminder(from: item)
             let fingerprint = "\(reminder.title)|\(Int(reminder.nextTriggerAt.timeIntervalSince1970))"
@@ -432,7 +435,9 @@ records = try c.decodeIfPresent([RecordItem].self, forKey: .records)
         if let date = item.updatedAt { reminder.updatedAt = Date(timeIntervalSince1970: date / 1000) }
         reminder.lastRetryAt = item.lastRetryAt.map { Date(timeIntervalSince1970: $0 / 1000) }
         reminder.lastCompletedAt = item.lastCompletedAt.map { Date(timeIntervalSince1970: $0 / 1000) }
+        var recordIDs = Set<UUID>()
         reminder.records = (item.records ?? []).compactMap { value in
+            guard recordIDs.insert(value.id).inserted else { return nil }
             guard let type = ReminderRecordType(rawValue: value.type) else { return nil }
             return ReminderRecord(id: value.id, performedAt: Date(timeIntervalSince1970: value.performedAt / 1000), type: type, note: value.note)
         }

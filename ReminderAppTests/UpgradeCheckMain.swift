@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 @main struct UpgradeCheck {
-    @MainActor static func main() throws {
+    @MainActor static func main() async throws {
         let container = try ModelContainer(for: Reminder.self, ReminderRecord.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true))
         let context = container.mainContext
@@ -68,7 +68,10 @@ import SwiftData
         precondition(ReminderActions.complete(once, now: now, context: context) != nil && once.status == .confirmed)
         precondition(ReminderActions.complete(once, now: now, context: context) == nil)
         let frozen = SyncRevisionSnapshot(reminders: [runtime])
-        runtime.title = "Edit during upload"; _ = ReminderActions.changed(runtime, context: context)
+        let concurrentEdit = Task { @MainActor in
+            runtime.title = "Edit during upload"; _ = ReminderActions.changed(runtime, context: context)
+        }
+        await concurrentEdit.value
         frozen.acknowledge()
         precondition(SyncStore.lastSyncVersion == frozen.generation && SyncStore.localVersion > frozen.generation)
         precondition(BackupHelper.importJSON(frozen.json)!.first!.title == "Renamed", "Snapshot must contain immutable values")
@@ -95,6 +98,19 @@ import SwiftData
         precondition(mergedLegacy.count == 4)
         try BackupHelper.exportJSON([roundtrip], exportedAt: 1_792_112_400).write(toFile: "ios-export-v3.json", atomically: true, encoding: .utf8)
         precondition(BackupHelper.importJSON(BackupHelper.exportJSON([imported]))!.first!.syncId == "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")
+        let legacyID = UUID()
+        let legacyRow = Reminder(id: legacyID, title: "Legacy preferences", firstTriggerAt: now, nextTriggerAt: now)
+        LegacyPolicyStore.setCritical(true, for: legacyID)
+        UserDefaults.standard.set(1320, forKey: "quiet_hours_\(legacyID.uuidString)_start")
+        UserDefaults.standard.set(480, forKey: "quiet_hours_\(legacyID.uuidString)_end")
+        LegacyPolicyStore.migrate(legacyRow)
+        precondition(legacyRow.reminderStyle == "important" && legacyRow.quietStartMinute == 1320 && legacyRow.quietEndMinute == 480)
+        legacyRow.reminderStyle = "gentle"; legacyRow.quietStartMinute = nil; legacyRow.quietEndMinute = nil
+        LegacyPolicyStore.migrate(legacyRow)
+        precondition(legacyRow.reminderStyle == "gentle" && legacyRow.quietStartMinute == nil, "One-time migration cannot overwrite imported/edited policy")
+        LegacyPolicyStore.setCritical(false, for: legacyID)
+        UserDefaults.standard.removeObject(forKey: "quiet_hours_\(legacyID.uuidString)_start")
+        UserDefaults.standard.removeObject(forKey: "quiet_hours_\(legacyID.uuidString)_end")
         print("Upgrade policy/actions/global allocation/v3 checks passed")
     }
 }

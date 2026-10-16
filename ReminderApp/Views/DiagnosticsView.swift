@@ -32,18 +32,18 @@ struct DiagnosticsView: View {
                 }
             }
 
-            Section("权限与提醒自检") {
-                Text("普通通知受静音、专注模式和系统设置影响。iOS 26+ 可为重要事项单独启用 AlarmKit。")
+            Section("权限与提醒自检".localized) {
+                Text("普通通知受静音、专注模式和系统设置影响。iOS 26+ 可为重要事项单独启用 AlarmKit。".localized)
                 Text("AlarmKit：\(alarmStatus)")
                 Text(coverage)
-                Button("申请通知权限") { Task { _ = await NotificationManager.shared.requestAuthorization(); refresh() } }
-                Button("允许重要提醒使用 AlarmKit") {
+                Button("申请通知权限".localized) { Task { _ = await NotificationManager.shared.requestAuthorization(); refresh() } }
+                Button("允许重要提醒使用 AlarmKit".localized) {
                     Task {
                         if #available(iOS 26.0, *) { _ = await ImportantAlarmService.shared.requestAuthorization(); await ReminderEngine.shared.ensureRetryChains() }
                         refresh()
                     }
                 }
-                Button("发送10秒测试提醒") {
+                Button("发送10秒测试提醒".localized) {
                     Task {
                         guard await NotificationManager.shared.requestAuthorization() else { testResult = "请在系统设置中允许通知"; return }
                         let content = UNMutableNotificationContent(); content.title = "提醒自检"; content.body = "测试通知已送达"; content.sound = .default
@@ -55,8 +55,8 @@ struct DiagnosticsView: View {
                 }
                 if !testResult.isEmpty { Text(testResult).font(.caption) }
             }
-            Section("隐私") {
-                Text("提醒和历史保存在此设备。使用 AI 时，对话与相关提醒会发送到你配置的服务地址；请检查供应商隐私政策。API 密钥和 WebDAV 密码保存在 Keychain。启用 WebDAV 后，备份会上传到你选择的服务器。附近分享和导出的备份也包含提醒内容，请只分享给信任的人。删除提醒暂不跨设备同步。")
+            Section("隐私".localized) {
+                Text("提醒和历史保存在此设备。使用 AI 时，对话与相关提醒会发送到你配置的服务地址；请检查供应商隐私政策。API 密钥和 WebDAV 密码保存在 Keychain。启用 WebDAV 后，备份会上传到你选择的服务器。附近分享和导出的备份也包含提醒内容，请只分享给信任的人。删除提醒暂不跨设备同步。".localized)
             }
             Section("数据".localized) {
                 row("提醒总数".localized, "\(reminders.count)")

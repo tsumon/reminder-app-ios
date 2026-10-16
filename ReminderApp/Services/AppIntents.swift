@@ -50,6 +50,7 @@ struct AddReminderIntent: AppIntent {
             nextTriggerAt: trigger
         )
         let context = ReminderApp.sharedModelContainer.mainContext
+        ReminderEngine.shared.configure(with: context)
         context.insert(reminder)
         try context.save()
         SyncStore.touchLocalChange()

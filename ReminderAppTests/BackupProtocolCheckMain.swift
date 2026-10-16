@@ -86,11 +86,16 @@ struct BackupProtocolCheck {
         check("v1 fixture 解析出 2 条 (得 \(v1Items.count))", v1Items.count == 2)
         check("v1 无 syncId → nil（导入时重新生成 UUID）",
               v1Items[0].syncId == nil)
-        check("v1 缺 isCritical 键 → nil（旧协议 is_critical 不被读取）",
-              v1Items[0].isCritical == nil)
+        check("v1 旧协议 is_critical 保留",
+              v1Items[0].isCritical == true)
         check("v1 旧 iOS 导出 holidayName 塞 ID → makeReminder holidayID 兜底 (得 \(BackupHelper.makeReminder(from: v1Items[1]).holidayID ?? "nil"))",
               BackupHelper.makeReminder(from: v1Items[1]).holidayID == "zhongqiu")
         let v1New = BackupHelper.makeReminder(from: v1Items[0])
+        check("v1 legacy critical becomes important", v1New.reminderStyle == "important")
+        let confirmed = BackupHelper.makeReminder(from: items[2])
+        check("v2 lastConfirmedAt retained", confirmed.lastCompletedAt?.timeIntervalSince1970 == 1_755_200_000)
+        let confirmedWire = BackupHelper.importJSON(BackupHelper.exportJSON([confirmed]))!.first!
+        check("lastConfirmedAt exported for Android", confirmedWire.lastConfirmedAt == 1_755_200_000_000)
         check("v1 无 id → makeReminder 生成新 UUID (\(v1New.id.uuidString))",
               UUID(uuidString: v1New.id.uuidString) != nil)
 
