@@ -92,8 +92,7 @@ final class NotificationManager: NSObject, ObservableObject {
     /// 为指定提醒安排本地通知（会先移除旧通知，避免竞态把刚加的也删掉）
     func scheduleNotification(for reminder: Reminder, badgeCount: Int = 1) async {
         // 等待旧通知移除完成后再添加，避免「异步删除晚于添加」把新通知也删掉
-        await removePendingNotification(for: reminder.id)
-        try? await addDdayNotification(for: reminder, badgeCount: badgeCount)
+        await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
     }
 
     /// 真正添加 D-day 通知（不含移除逻辑，供 scheduleAllNotifications 在统一移除后调用）
