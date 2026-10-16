@@ -388,16 +388,25 @@ final class ReminderEngine: ObservableObject {
               ReminderActions.complete(reminder, context: context, next: calculateNextTrigger, source: source) != nil else { return }
         HolidayAdjustStore.setNote(nil, for: reminder.id)
         NotificationCenter.default.post(name: .reminderConfirmed, object: reminder)
-        Task { await self.scheduleAllNotifications(for: reminder) }
+        Task {
+            await NotificationManager.shared.removePendingNotification(for: reminder.id)
+            await self.scheduleAllNotifications(for: reminder)
+        }
     }
 
     func skipReminder(_ reminder: Reminder) {
         guard let context = modelContext, ReminderActions.skip(reminder, context: context, next: calculateNextTrigger) else { return }
-        Task { await self.scheduleAllNotifications(for: reminder) }
+        Task {
+            await NotificationManager.shared.removePendingNotification(for: reminder.id)
+            await self.scheduleAllNotifications(for: reminder)
+        }
     }
     func undoCompletion(_ reminder: Reminder) {
         guard let context = modelContext, ReminderActions.undo(reminder, context: context) else { return }
-        Task { await self.scheduleAllNotifications(for: reminder) }
+        Task {
+            await NotificationManager.shared.removePendingNotification(for: reminder.id)
+            await self.scheduleAllNotifications(for: reminder)
+        }
     }
 
     // MARK: - 重新打开（已完成 → 等待中）
@@ -453,7 +462,10 @@ final class ReminderEngine: ObservableObject {
     private func snoozeTo(_ reminder: Reminder, at snoozeAt: Date, note: String) {
         guard let context = modelContext,
               ReminderActions.snooze(reminder, until: snoozeAt, context: context) else { return }
-        Task { await self.scheduleAllNotifications(for: reminder) }
+        Task {
+            await NotificationManager.shared.removePendingNotification(for: reminder.id)
+            await self.scheduleAllNotifications(for: reminder)
+        }
     }
 
     // MARK: - 递增重试

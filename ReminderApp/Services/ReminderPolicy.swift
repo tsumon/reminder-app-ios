@@ -57,7 +57,9 @@ struct ReminderPolicy: Equatable {
                 guard let month = calendar.date(byAdding: .month, value: months * step, to: start),
                       let range = calendar.range(of: .day, in: .month, for: month) else { continue }
                 if !relative && reminder.cycle == .yearly && calendar.component(.month, from: anchor) == 2 && anchorDay == 29 && range.count < 29 { continue }
-                let next = calendar.date(bySetting: .day, value: min(anchorDay, range.count), of: month) ?? month
+                var target = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: month)
+                target.day = min(anchorDay, range.count)
+                let next = calendar.date(from: target) ?? month
                 if next > date { return next }
             }
         }
