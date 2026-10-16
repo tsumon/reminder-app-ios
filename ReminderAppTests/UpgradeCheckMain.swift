@@ -43,6 +43,17 @@ import SwiftData
         precondition(ReminderActions.complete(retryFuture, expectedToken: retryFuture.actionToken, now: now, context: context) != nil)
         precondition(Calendar.current.dateComponents([.day], from: now, to: retryFuture.nextTriggerAt).day == 1,
             "A future retry timestamp must not skip the next normal fixed anchor")
+        for status in [ReminderStatus.active, .snoozed, .pending] {
+            let skip = Reminder(title: "Skip state", cycle: .daily, firstTriggerAt: now,
+                nextTriggerAt: now.addingTimeInterval(86400 * 7), status: status,
+                retryStage: status == .pending ? 0 : 3)
+            context.insert(skip); try context.save()
+            let token = skip.actionToken
+            precondition(ReminderActions.skip(skip, expectedToken: token, now: now, context: context))
+            let expected = Calendar.current.date(byAdding: .day, value: status == .pending ? 8 : 1, to: now)!
+            precondition(skip.nextTriggerAt == expected && skip.records.isEmpty)
+            precondition(!ReminderActions.skip(skip, expectedToken: token, now: now, context: context))
+        }
         r.reminderStyle = "gentle"; r.retryStage = 1; r.status = .snoozed
         precondition(ReminderPolicy.deliveryDates(for: r, now: now.addingTimeInterval(-1)).count == 1)
         let many = (0..<80).map { i in
@@ -77,6 +88,20 @@ import SwiftData
             calculate: { _, _ in fatalError("Metadata edit must never recalculate") }))
         precondition(runtime.nextTriggerAt == date(2, 2) && runtime.firstTriggerAt == date(1, 31))
         precondition(runtime.retryStage == 2 && runtime.status == .snoozed && runtime.lastCompletedAt == date(1, 1))
+        let advanceOnlyToken = runtime.actionToken
+        precondition(ReminderEdits.applyMetadata(to: runtime, expectedToken: advanceOnlyToken, advanceDays: 7, context: context))
+        precondition(runtime.advanceDays == 7 && runtime.nextTriggerAt == date(2, 2) && runtime.firstTriggerAt == date(1, 31)
+            && runtime.retryStage == 2 && runtime.status == .snoozed && runtime.actionToken != advanceOnlyToken)
+        let advanceWithMetadata = runtime.actionToken
+        precondition(ReminderEdits.applyMetadata(to: runtime, expectedToken: advanceWithMetadata, title: "Renamed", note: "AI note", advanceDays: 9, context: context))
+        precondition(runtime.advanceDays == 9 && runtime.note == "AI note" && runtime.nextTriggerAt == date(2, 2)
+            && runtime.firstTriggerAt == date(1, 31) && runtime.retryStage == 2 && runtime.status == .snoozed)
+        let advanceRow = Reminder(title: "Advance queue", kind: .date, firstTriggerAt: now,
+            nextTriggerAt: now.addingTimeInterval(20 * 86400))
+        advanceRow.advanceDays = 0; context.insert(advanceRow); try context.save()
+        precondition(ReminderPolicy.allocate([advanceRow], now: now).filter { $0.kind == .advance }.isEmpty)
+        precondition(ReminderEdits.applyMetadata(to: advanceRow, expectedToken: advanceRow.actionToken, advanceDays: 7, context: context))
+        precondition(ReminderPolicy.allocate([advanceRow], now: now).filter { $0.kind == .advance }.count == 7)
         precondition(!ReminderEdits.apply(draft, to: runtime, expectedToken: editToken, scheduleChanged: false, context: context, calculate: { date, r in ReminderPolicy.nextCycle(after: date, reminder: r) }))
         let chainToken = runtime.actionToken
         let caught = ReminderPolicy.catchUp(runtime, now: runtime.nextTriggerAt.addingTimeInterval(60))
@@ -91,6 +116,34 @@ import SwiftData
         precondition(!ReminderActions.skip(once, expectedToken: once.actionToken, context: context))
         precondition(ReminderActions.complete(once, expectedToken: once.actionToken, now: now, context: context) != nil && once.status == .confirmed)
         precondition(ReminderActions.complete(once, expectedToken: once.actionToken, now: now, context: context) == nil)
+        let holidayCacheKey = "remote_holiday_cache_2026"
+        let oldHolidayCache = UserDefaults.standard.dictionary(forKey: holidayCacheKey)
+        defer { UserDefaults.standard.set(oldHolidayCache, forKey: holidayCacheKey) }
+        let holidayCache: [String: [String: Any]] = ["2026-10-01": ["holiday": true, "name": "国庆节"],
+                                                       "2026-09-30": ["holiday": false, "name": "工作日"]]
+        UserDefaults.standard.set(holidayCache, forKey: holidayCacheKey)
+        let holidayNow = Calendar.current.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 9))!
+        let holidayExpected = Calendar.current.date(from: DateComponents(year: 2026, month: 9, day: 30, hour: 9))!
+        let holiday = Reminder(title: "Holiday completion", cycle: .weekly, firstTriggerAt: holidayNow, nextTriggerAt: holidayNow)
+        context.insert(holiday); try context.save()
+        HolidayNoteStore.setNote("Old occurrence note", for: holiday.id)
+        precondition(ReminderActions.complete(holiday, expectedToken: holiday.actionToken, now: holidayNow, context: context) != nil)
+        let holidayToken = holiday.actionToken; let nominalHoliday = holiday.nextTriggerAt
+        let adjusted = await HolidayPrecheck.adjust(holiday, expectedToken: holidayToken, expectedDue: nominalHoliday,
+            now: holidayNow, context: context, refresh: { _ in })
+        precondition(adjusted && holiday.nextTriggerAt == holidayExpected && holiday.firstTriggerAt == holidayNow)
+        precondition(holiday.actionToken == holidayToken && holiday.undoCompletion != nil)
+        precondition(ReminderActions.undo(holiday, expectedToken: holidayToken, context: context))
+        precondition(holiday.nextTriggerAt == holidayNow && holiday.records.isEmpty && HolidayNoteStore.note(for: holiday.id) == "Old occurrence note")
+        HolidayNoteStore.setNote(nil, for: holiday.id)
+        precondition(ReminderActions.complete(holiday, expectedToken: holiday.actionToken, now: holidayNow, context: context) != nil)
+        let staleHolidayToken = holiday.actionToken; let staleHolidayDue = holiday.nextTriggerAt
+        let staleAdjusted = await HolidayPrecheck.adjust(holiday, expectedToken: staleHolidayToken, expectedDue: staleHolidayDue,
+            now: holidayNow, context: context, refresh: { _ in
+                _ = ReminderActions.snooze(holiday, until: holidayNow.addingTimeInterval(3600), expectedToken: staleHolidayToken, context: context)
+                await Task.yield()
+            })
+        precondition(!staleAdjusted && holiday.status == .snoozed && holiday.nextTriggerAt == holidayNow.addingTimeInterval(3600))
         let frozen = SyncRevisionSnapshot(reminders: [runtime])
         let concurrentEdit = Task { @MainActor in
             runtime.title = "Edit during upload"; _ = ReminderActions.changed(runtime, context: context)

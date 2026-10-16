@@ -951,9 +951,10 @@ struct AIChatView: View {
         let updatedTitle: String? = await MainActor.run {
             guard match.actionToken == expectedToken else { return nil }
             if !scheduleChanged {
-                if let title = args["new_title"] as? String { match.title = title }
-                if let note = args["note"] as? String { match.note = note }
-                _ = ReminderActions.changed(match, context: modelContext)
+                let advance = (args["advance_days"] as? Int) ?? (args["advance_days"] as? Double).map(Int.init)
+                guard ReminderEdits.applyMetadata(to: match, expectedToken: expectedToken,
+                    title: args["new_title"] as? String, note: args["note"] as? String,
+                    advanceDays: advance, context: modelContext) else { return nil }
                 return match.title
             }
             // 字符串字段

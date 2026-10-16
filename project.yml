@@ -63,6 +63,13 @@ targets:
     platform: iOS
     sources:
       - path: ReminderAppUITests
+        excludes:
+          - "Info.plist"
+    info:
+      path: ReminderAppUITests/Info.plist
+      properties:
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
     dependencies:
       - target: ReminderApp
     settings:
@@ -189,6 +196,8 @@ targets:
       - path: ReminderApp/Services/HolidayService.swift
       - path: ReminderApp/Services/LunarCalendar.swift
       - path: ReminderApp/Services/ReminderActions.swift
+      - path: ReminderApp/Services/HolidayPrecheck.swift
+      - path: ReminderApp/Services/HolidayRemoteService.swift
       - path: ReminderApp/Services/ReminderEdits.swift
       - path: ReminderApp/Services/SyncRevisionSnapshot.swift
       - path: ReminderApp/Services/ReminderMerge.swift

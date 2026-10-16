@@ -16,6 +16,19 @@ struct ReminderApp: App {
     /// （原方案由测试进程写容器 plist，但 UI 测试跑在模拟器 iOS 内无法执行宿主命令，
     ///   改由 App 侧在启动时自注入，测试只需加 launchArguments）
     init() {
+        if ProcessInfo.processInfo.arguments.contains("-uitest_auto_sync_conflict") || ProcessInfo.processInfo.arguments.contains("-uitest_clear_sync_fixture") {
+            let context = Self.sharedModelContainer.mainContext
+            let id = UUID(uuidString: "dddddddd-bbbb-4ccc-8ddd-eeeeeeeeeeee")!
+            let row = (try? context.fetch(FetchDescriptor<Reminder>()))?.first { $0.id == id }
+            if ProcessInfo.processInfo.arguments.contains("-uitest_clear_sync_fixture") {
+                if let row { context.delete(row); try? context.save(); SyncStore.touchLocalChange() }
+            } else if row == nil {
+                let trigger = Date().addingTimeInterval(86400)
+                context.insert(Reminder(id: id, title: "Automatic sync local revision", firstTriggerAt: trigger, nextTriggerAt: trigger))
+                try? context.save(); SyncStore.touchLocalChange()
+            }
+        }
+
         // mock 按请求序号应答——AskUser 用例启动前归零计数器（测试进程 ATS 拦 http，由 App 代发）
         if ProcessInfo.processInfo.arguments.contains("-uitest_reset_mock") {
             var request = URLRequest(url: URL(string: "http://127.0.0.1:8899/reset")!)

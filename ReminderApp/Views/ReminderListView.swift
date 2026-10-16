@@ -399,7 +399,7 @@ struct ReminderListView: View {
                 if SyncStore.autoSync && SyncStore.isConfigured &&
                     Date().timeIntervalSince1970 - SyncStore.lastSyncAt > 300 {
                     Task {
-                        _ = await WebDavSync.syncNow(reminders: reminders, modelContext: modelContext)
+                        handleSyncResult(await WebDavSync.syncNow(reminders: reminders, modelContext: modelContext))
                     }
                 }
             }
@@ -613,19 +613,16 @@ struct ReminderListView: View {
         }
     }
 
-    private func syncNow() {
-        Task {
-            let result = await WebDavSync.syncNow(reminders: reminders, modelContext: modelContext)
-            switch result {
-            case .success(let conflict):
-                // v2.0.16: 双端都改过 → 提示已按版本覆盖
-                syncMessage = conflict ? "已用最新版本覆盖（检测到双端都有修改，未合并）" : "同步完成"
-            case .conflict:
-                showSyncConflict = true
-            case .failure(let msg):
-                syncMessage = msg
-            }
+    private func handleSyncResult(_ result: WebDavSync.SyncResult) {
+        switch result {
+        case .success: syncMessage = "同步完成"
+        case .conflict: showSyncConflict = true
+        case .failure(let message): syncMessage = message
         }
+    }
+
+    private func syncNow() {
+        Task { handleSyncResult(await WebDavSync.syncNow(reminders: reminders, modelContext: modelContext)) }
     }
 
     private func importBackup(_ result: Result<URL, Error>) {

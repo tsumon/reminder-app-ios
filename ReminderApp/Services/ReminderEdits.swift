@@ -2,6 +2,16 @@ import Foundation
 import SwiftData
 
 @MainActor enum ReminderEdits {
+    /// AI metadata/advance-window updates deliberately preserve the current occurrence and retry state.
+    static func applyMetadata(to r: Reminder, expectedToken: String, title: String? = nil, note: String? = nil,
+                              advanceDays: Int? = nil, context: ModelContext) -> Bool {
+        guard r.actionToken == expectedToken else { return false }
+        if let title { r.title = title }
+        if let note { r.note = note }
+        if let advanceDays { r.advanceDays = max(0, advanceDays) }
+        return ReminderActions.changed(r, context: context)
+    }
+
     /// Draft is detached. Compare and save happen without an await, so an external action cannot be overwritten.
     static func apply(_ draft: Reminder, to r: Reminder, expectedToken: String, scheduleChanged: Bool,
                       context: ModelContext, calculate: (Date, Reminder) -> Date) -> Bool {
