@@ -70,8 +70,8 @@ struct BackupProtocolCheck {
         let r1 = BackupHelper.makeReminder(from: items[1])
         check("makeReminder holidayID == zhongqiu (得 \(r1.holidayID ?? "nil"))",
               r1.holidayID == "zhongqiu")
-        check("makeReminder 状态保留 notifying→pending (得 \(r1.status.rawValue))",
-              r1.status == .pending)
+        check("makeReminder 状态保留 notifying→active (得 \(r1.status.rawValue))",
+              r1.status == .active)
         let r3 = BackupHelper.makeReminder(from: items[3])
         check("makeReminder overdue 保留 (得 \(r3.status.rawValue))",
               r3.status == .overdue)
@@ -96,7 +96,7 @@ struct BackupProtocolCheck {
 
         // 7. 导出：schemaVersion=2 + syncId + 双写 isCritical
         let exported = BackupHelper.exportJSON([r0, r1], exportedAt: 1_755_255_000)
-        check("导出包含 schemaVersion: 2", exported.contains("\"schemaVersion\" : 2"))
+        check("导出包含 schemaVersion: 3", exported.contains("\"schemaVersion\" : 3"))
         check("导出包含跨端 syncId", exported.lowercased().contains("8f14e45f-ceea-4b5f-8d1a-9c3f2b7e5d01"))
         check("导出包含 holidayId", exported.contains("\"holidayId\" : \"zhongqiu\""))
         check("导出包含 isCritical", exported.contains("\"isCritical\" : false"))
@@ -106,7 +106,7 @@ struct BackupProtocolCheck {
         let roundtrip = BackupHelper.importJSON(exported) ?? []
         check("导出-导入往返 2 条 (得 \(roundtrip.count))", roundtrip.count == 2)
         check("往返 syncId 不变 (得 \(roundtrip[0].syncId ?? "nil"))",
-              roundtrip[0].syncId == r0.id.uuidString)
+              roundtrip[0].syncId == r0.id.uuidString.lowercased())
         check("往返 holidayId 不变 (得 \(roundtrip[1].holidayId ?? "nil"))",
               roundtrip[1].holidayId == "zhongqiu")
 

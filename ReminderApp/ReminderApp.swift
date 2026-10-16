@@ -8,17 +8,6 @@ import SwiftData
 // 为未来的 v2 迁移铺路，是最便宜的保险。
 
 /// Schema v1：当前模型（Reminder + ReminderRecord），字段与既有持久化数据完全一致
-enum ReminderSchemaV1: VersionedSchema {
-    static var versionIdentifier: Schema.Version { .init(1, 0, 0) }
-    static var models: [any PersistentModel.Type] { [Reminder.self, ReminderRecord.self] }
-}
-
-/// 迁移计划：v1 为唯一 schema，无迁移阶段
-enum ReminderMigrationPlan: SchemaMigrationPlan {
-    static var schemas: [any VersionedSchema.Type] { [ReminderSchemaV1.self] }
-    static var stages: [MigrationStage] { [] }
-}
-
 @main
 struct ReminderApp: App {
 
@@ -72,7 +61,7 @@ struct ReminderApp: App {
                 configurations: [config]
             )
         } catch {
-            fatalError("SwiftData 初始化失败: \(error.localizedDescription)。若为升级后首次打开导致，请备份数据后重装 App。")
+            fatalError("SwiftData 初始化失败: \(error.localizedDescription)。原始数据已保留，请导出诊断并联系维护者。")
         }
     }()
 
@@ -177,42 +166,18 @@ struct ReminderApp: App {
 
     /// 把用户在小组件上点「完成」的提醒同步到数据库
     /// （AppIntent 只写 App Group 标记，这里做真正的 confirm + 通知重排）
-    private func syncWidgetCompletedReminders() async {        let ids = WidgetSnapshot.completedReminderIDs()
-        guard !ids.isEmpty else { return }
-
-        let context = Self.sharedModelContainer.mainContext
-        for id in ids {
-            guard let uuid = UUID(uuidString: id) else { continue }
-            let descriptor = FetchDescriptor<Reminder>(predicate: #Predicate { $0.id == uuid })
-            guard let reminder = try? context.fetch(descriptor).first else { continue }
-            // .task 继承 MainActor 上下文，confirmReminder（@MainActor）可直接调用
-            reminderEngine.confirmReminder(reminder)
-            print("[WidgetSync] 小组件完成已落库: \(reminder.title)")
+    private func syncWidgetCompletedReminders() async {        for action in WidgetSnapshot.takeActions() {
+            guard let uuid = UUID(uuidString: action.reminderID) else { continue }
+            let all = (try? Self.sharedModelContainer.mainContext.fetch(FetchDescriptor<Reminder>())) ?? []
+            guard let r = all.first(where: { $0.id == uuid }), ReminderActions.accepts(r, token: action.token) else { continue }
+            if action.snooze { reminderEngine.snoozeReminder(r, afterMinutes: 15) }
+            else { reminderEngine.confirmReminder(r, source: "Widget") }
         }
-
-        // 全部处理完再清空标记，避免 App 启动后遗留脏数据
-        WidgetSnapshot.clearCompletedReminderIDs(ids)
+        // Old ID-only widget actions cannot identify the occurrence safely after upgrading.
+        WidgetSnapshot.clearCompletedReminderIDs(WidgetSnapshot.completedReminderIDs())
+        WidgetSnapshot.clearSnoozedReminderIDs(WidgetSnapshot.snoozedReminderIDs())
     }
-
-    /// 把用户在小组件上点「稍后」的提醒同步到数据库
-    /// （v2.0.16：AppIntent 只写 App Group 标记，这里做真正的 snooze + 通知重排）
-    private func syncWidgetSnoozedReminders() async {
-        let ids = WidgetSnapshot.snoozedReminderIDs()
-        guard !ids.isEmpty else { return }
-
-        let context = Self.sharedModelContainer.mainContext
-        for id in ids {
-            guard let uuid = UUID(uuidString: id) else { continue }
-            let descriptor = FetchDescriptor<Reminder>(predicate: #Predicate { $0.id == uuid })
-            guard let reminder = try? context.fetch(descriptor).first else { continue }
-            // .task 继承 MainActor 上下文，snoozeReminder（引擎方法）可直接调用
-            reminderEngine.snoozeReminder(reminder, afterMinutes: 15)
-            print("[WidgetSync] 小组件稍后已落库: \(reminder.title)")
-        }
-
-        // 全部处理完再清空标记，避免 App 启动后遗留脏数据
-        WidgetSnapshot.clearSnoozedReminderIDs(ids)
-    }
+    private func syncWidgetSnoozedReminders() async { await syncWidgetCompletedReminders() }
 
 #if DEBUG
     /// v1.9.8: 模拟器截图验证用演示数据（仅 Debug 构建，首次启动插入，模拟 README 设计图示例）

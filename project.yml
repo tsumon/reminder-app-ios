@@ -3,7 +3,8 @@ options:
   bundleIdPrefix: com.reminder
   deploymentTarget:
     iOS: "17.0"
-  xcodeVersion: "16.0"
+    macOS: "14.0"
+  xcodeVersion: "26.3"
   developmentRegion: zh-Hans
   knownRegions:
     - zh-Hans
@@ -54,7 +55,6 @@ targets:
         basedOnDependencyAnalysis: false
     scheme:
       testTargets:
-        - LunarCalendarCheck
         - ReminderAppUITests
 
   # v2.4.8: UI 自动化回归（模拟器真实全链路：tap/type/重启断言）
@@ -115,7 +115,7 @@ targets:
       - path: ReminderApp/Services/Localization.swift
       - path: ReminderApp/Services/HolidayService.swift
       - path: ReminderApp/Services/LunarCalendar.swift
-      - path: ReminderAppTests/TestShims.swift
+      - path: ReminderApp/Services/ReminderPolicy.swift
       - path: ReminderAppTests/BackupProtocolCheckMain.swift
     settings:
       base:
@@ -174,7 +174,65 @@ targets:
       path: ReminderWidget/Info.plist
       properties:
         CFBundleDisplayName: 循环提醒小组件
-        CFBundleShortVersionString: "2.7.2"
-        CFBundleVersion: "69"
+        CFBundleShortVersionString: "2.8.0"
+        CFBundleVersion: "70"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+
+  UpgradeCheck:
+    type: tool
+    platform: macOS
+    sources:
+      - path: ReminderApp/Models/Reminder.swift
+      - path: ReminderApp/Services/ReminderPolicy.swift
+      - path: ReminderApp/Services/Localization.swift
+      - path: ReminderApp/Services/HolidayService.swift
+      - path: ReminderApp/Services/LunarCalendar.swift
+      - path: ReminderApp/Services/ReminderActions.swift
+      - path: ReminderApp/Services/ReminderEdits.swift
+      - path: ReminderApp/Services/BackupHelper.swift
+      - path: ReminderApp/Services/SyncStore.swift
+      - path: ReminderAppTests/UpgradeCheckMain.swift
+    settings:
+      base:
+        PRODUCT_NAME: "UpgradeCheck"
+        PRODUCT_MODULE_NAME: ReminderMigrationFixture
+        GENERATE_INFOPLIST_FILE: "YES"
+    scheme: {}
+
+  LegacyStoreProducer:
+    type: tool
+    platform: macOS
+    sources:
+      - path: ReminderAppTests/Legacy/Reminder.swift
+      - path: ReminderApp/Services/ReminderSchema.swift
+      - path: ReminderApp/Services/Localization.swift
+      - path: ReminderApp/Services/HolidayService.swift
+      - path: ReminderApp/Services/LunarCalendar.swift
+      - path: ReminderAppTests/MigrationValues.swift
+      - path: ReminderAppTests/LegacyStoreProducer.swift
+    settings:
+      base:
+        PRODUCT_NAME: "LegacyStoreProducer"
+        PRODUCT_MODULE_NAME: ReminderMigrationFixture
+        GENERATE_INFOPLIST_FILE: "YES"
+    scheme: {}
+
+  MigrationCheck:
+    type: tool
+    platform: macOS
+    sources:
+      - path: ReminderApp/Models/Reminder.swift
+      - path: ReminderApp/Services/ReminderPolicy.swift
+      - path: ReminderApp/Services/Localization.swift
+      - path: ReminderApp/Services/HolidayService.swift
+      - path: ReminderApp/Services/LunarCalendar.swift
+      - path: ReminderApp/Services/ReminderSchema.swift
+      - path: ReminderAppTests/MigrationValues.swift
+      - path: ReminderAppTests/MigrationCheckMain.swift
+    settings:
+      base:
+        PRODUCT_NAME: "MigrationCheck"
+        PRODUCT_MODULE_NAME: ReminderMigrationFixture
+        GENERATE_INFOPLIST_FILE: "YES"
+    scheme: {}

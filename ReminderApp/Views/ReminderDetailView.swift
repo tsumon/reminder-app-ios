@@ -8,6 +8,7 @@ struct ReminderDetailView: View {
 
     let reminder: Reminder
     var highlightConfirm: Bool = false
+    @State private var showEdit = false
     @State private var showDeleteAlert = false
     @State private var showShareSheet = false
     @State private var appeared = false
@@ -39,6 +40,16 @@ struct ReminderDetailView: View {
                 actionButtons
                     .padding(.horizontal)
 
+                HStack {
+                    if !(reminder.kind == .cycle && reminder.cycle == .once) {
+                        Button("跳过本次") { ReminderEngine.shared.skipReminder(reminder) }
+                    }
+                    if reminder.undoCompletion != nil {
+                        Button("撤销完成") { ReminderEngine.shared.undoCompletion(reminder) }
+                            .accessibilityIdentifier("undo-completion")
+                    }
+                    Button("编辑完整规则") { showEdit = true }
+                }.buttonStyle(.bordered).padding(.horizontal)
                 // MARK: 信息卡片
                 infoCard
                     .padding(.horizontal)
@@ -74,6 +85,7 @@ struct ReminderDetailView: View {
                 .accessibilityIdentifier("share-reminder")
             }
         }
+        .sheet(isPresented: $showEdit) { CreateReminderView(editing: reminder) }
         .sheet(isPresented: $showShareSheet) {
             ActivityShareSheet(items: shareItems)
         }
@@ -107,8 +119,8 @@ struct ReminderDetailView: View {
             ReminderEngine.shared.configure(with: modelContext)
             appeared = true
             // v2.1.1: 从 QuietHoursStore 恢复勿扰时段
-            if let start = QuietHoursStore.startMinute(for: reminder.id),
-               let end = QuietHoursStore.endMinute(for: reminder.id) {
+            if let start = reminder.quietStartMinute,
+               let end = reminder.quietEndMinute {
                 quietHoursEnabled = true
                 quietStart = Calendar.current.date(
                     bySettingHour: start / 60, minute: start % 60, second: 0, of: Date()) ?? quietStart
@@ -241,7 +253,8 @@ struct ReminderDetailView: View {
             + Calendar.current.component(.minute, from: quietStart)
         let end = Calendar.current.component(.hour, from: quietEnd) * 60
             + Calendar.current.component(.minute, from: quietEnd)
-        QuietHoursStore.set(start: start, end: end, for: reminder.id)
+        reminder.quietStartMinute = start; reminder.quietEndMinute = end
+        _ = ReminderActions.changed(reminder, context: modelContext)
         if reminder.isEnabled {
             Task {
                 await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
@@ -421,9 +434,10 @@ struct ReminderDetailView: View {
 
             // 批次3 功能5: 关键提醒开关（触发更激进的重复 alert 脉冲）
             Toggle(isOn: Binding(
-                get: { ReminderEngine.CriticalStore.isCritical(reminder.id) },
+                get: { reminder.reminderStyle == "important" },
                 set: { newValue in
-                    ReminderEngine.CriticalStore.setCritical(newValue, for: reminder.id)
+                    reminder.reminderStyle = newValue ? "important" : "persistent"
+                    _ = ReminderActions.changed(reminder, context: modelContext)
                     if reminder.isEnabled {
                         Task {
                             await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
@@ -434,7 +448,7 @@ struct ReminderDetailView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("关键提醒".localized)
                         .font(.subheadline)
-                    Text("重要事项，错过会重复提醒直到确认".localized)
+                    Text("重要事项按所选间隔重试，达到上限后停止".localized)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -450,9 +464,11 @@ struct ReminderDetailView: View {
                             + Calendar.current.component(.minute, from: quietStart)
                         let end = Calendar.current.component(.hour, from: quietEnd) * 60
                             + Calendar.current.component(.minute, from: quietEnd)
-                        QuietHoursStore.set(start: start, end: end, for: reminder.id)
+                        reminder.quietStartMinute = start; reminder.quietEndMinute = end
+        _ = ReminderActions.changed(reminder, context: modelContext)
                     } else {
-                        QuietHoursStore.set(start: nil, end: nil, for: reminder.id)
+                        reminder.quietStartMinute = nil; reminder.quietEndMinute = nil
+                        _ = ReminderActions.changed(reminder, context: modelContext)
                     }
                     if reminder.isEnabled {
                         Task {

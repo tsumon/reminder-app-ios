@@ -8,6 +8,7 @@ struct WidgetReminderData: Codable {
     var updatedAt: Date
     /// 下一次提醒的 ID（UUID 字符串），供小组件「完成」按钮定位（v1.8.7）
     var nextReminderID: String?
+    var nextActionToken: String? = nil
 }
 
 /// App 与 Widget 之间通过 App Group 共享数据
@@ -40,6 +41,19 @@ enum WidgetSnapshot {
     // MARK: - 小组件「完成」标记（v1.8.7）
     // 点击小组件完成按钮 → AppIntent 把提醒 ID 记到 App Group；
     // App 下次启动时读取并同步到数据库（confirm + 重排），然后清空。
+
+    struct Action: Codable { let reminderID: String; let token: String; let snooze: Bool }
+    static func queue(reminderID: String, token: String, snooze: Bool) {
+        var actions = pendingActions()
+        actions.append(Action(reminderID: reminderID, token: token, snooze: snooze))
+        defaults?.set(try? JSONEncoder().encode(actions), forKey: "widget_actions_v3")
+    }
+    static func pendingActions() -> [Action] {
+        defaults?.data(forKey: "widget_actions_v3").flatMap { try? JSONDecoder().decode([Action].self, from: $0) } ?? []
+    }
+    static func takeActions() -> [Action] {
+        let actions = pendingActions(); defaults?.removeObject(forKey: "widget_actions_v3"); return actions
+    }
 
     private static let completedIDsKey = "widget_completed_ids"
 

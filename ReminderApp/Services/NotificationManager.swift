@@ -98,234 +98,37 @@ final class NotificationManager: NSObject, ObservableObject {
 
     /// 真正添加 D-day 通知（不含移除逻辑，供 scheduleAllNotifications 在统一移除后调用）
     /// 排 D-day 通知；at 缺省用 reminder.nextTriggerAt（v2.1.1: 勿扰时段顺延后的触发时间）
-    func addDdayNotification(for reminder: Reminder, at triggerDate: Date? = nil, badgeCount: Int = 1) async throws {
-        // 计算触发时间
-        let triggerDate = triggerDate ?? reminder.nextTriggerAt
-        // v2.0.22: 触发时间已过去时直接跳过——UNCalendarNotificationTrigger
-        // 对过去时间的处理行为不定，且会与「启动遗漏检查」双重弹通知
-        guard triggerDate > Date() else {
-            print("[NotificationManager] 触发时间已过去，跳过排期: \(reminder.title) @ \(triggerDate)")
-            return
-        }
+    func unmanagedPendingCount() async -> Int {
+        let requests = await UNUserNotificationCenter.current().pendingNotificationRequests()
+        return requests.filter { $0.content.userInfo["reminderID"] == nil }.count
+    }
+    func pendingNotificationCount() async -> Int { await UNUserNotificationCenter.current().pendingNotificationRequests().count }
+    func removeManagedRequests() async {
+        let requests = await UNUserNotificationCenter.current().pendingNotificationRequests()
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers:
+            requests.filter { $0.content.userInfo["reminderID"] != nil }.map(\.identifier))
+    }
+    func addDelivery(_ delivery: ReminderPolicy.Delivery, badgeCount: Int) async {
         let content = UNMutableNotificationContent()
-        content.title = "⏰ \(reminder.title)"
-        content.body = reminder.note.isEmpty
-            ? "该完成了，点确认或稍后"
-            : reminder.note
-        content.sound = .default
+        content.title = delivery.title; content.body = delivery.body; content.sound = .default
         content.badge = NSNumber(value: badgeCount)
-        content.categoryIdentifier = Self.categoryIdentifier
-        content.userInfo = [
-            "reminderID": reminder.id.uuidString,
-            "reminderTitle": reminder.title
-        ]
-        // 功能7 轻量手表伴侣：按提醒 ID 分组，watchOS / 锁屏只保留最新一张卡片，不刷屏
-        // （watchOS 自动镜像 iPhone 通知，确认/稍后按钮本就可点；真正表盘复杂功能需独立 Watch App target，属「完整原生」范畴，未做）
-        content.threadIdentifier = reminder.id.uuidString
-
-        let components = Calendar.current.dateComponents(
-            [.year, .month, .day, .hour, .minute, .second],
-            from: triggerDate
-        )
-        let trigger = UNCalendarNotificationTrigger(
-            dateMatching: components,
-            repeats: false
-        )
-
-        let request = UNNotificationRequest(
-            identifier: "reminder-\(reminder.id.uuidString)-\(Date().timeIntervalSince1970)",
-            content: content,
-            trigger: trigger
-        )
-
-        do {
-            try await UNUserNotificationCenter.current().add(request)
-            print("[NotificationManager] 通知已安排: \(reminder.title) @ \(triggerDate)")
-        } catch {
-            print("[NotificationManager] 安排通知失败: \(error.localizedDescription)")
-        }
-
-        // 批次3 功能5: 关键提醒 → 重复 alert 脉冲。
-        // iOS 无 Critical Alert 授权时无法穿透静音/勿扰，改用「D-day 后每 60s 再响一次」的脉冲，
-        // 连续若干次直到用户打开确认（确认时 removePendingNotification 按 reminderID 一并清除）。
-        if ReminderEngine.CriticalStore.isCritical(reminder.id) {
-            let now = Date()
-            for i in 1...Self.criticalBurstCount {
-                let fireAt = triggerDate.addingTimeInterval(TimeInterval(Self.criticalBurstInterval * i))
-                if fireAt > now {
-                    await addCriticalRepeat(for: reminder, at: fireAt, index: i, badgeCount: badgeCount)
-                }
-            }
-        }
-    }
-
-    /// 关键提醒重复脉冲参数
-    private static let criticalBurstCount = 5
-    private static let criticalBurstInterval = 60 // 秒
-
-    /// 单条关键提醒重复通知（与 D-day 同分类、同 userInfo.reminderID，确认时一并清除）
-    private func addCriticalRepeat(for reminder: Reminder, at date: Date, index: Int, badgeCount: Int) async {
-        let content = UNMutableNotificationContent()
-        content.title = "⚠️ " + Localized("重要提醒：%@", reminder.title)
-        content.body = reminder.note.isEmpty
-            ? Localized("请尽快处理（第 %d 次提醒）", index)
-            : Localized("请尽快处理（第 %d 次提醒）：%@", index, reminder.note)
-        content.sound = .default
-        content.badge = NSNumber(value: badgeCount)
-        content.categoryIdentifier = Self.categoryIdentifier
-        content.userInfo = [
-            "reminderID": reminder.id.uuidString,
-            "reminderTitle": reminder.title,
-            "type": "critical",
-            "criticalIndex": index
-        ]
-        // 功能7 轻量手表伴侣：与 D-day 同分组，手表只显示最新一张
-        content.threadIdentifier = reminder.id.uuidString
-
-        let components = Calendar.current.dateComponents(
-            [.year, .month, .day, .hour, .minute, .second],
-            from: date
-        )
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-        let request = UNNotificationRequest(
-            identifier: "reminder-\(reminder.id.uuidString)-critical-\(index)",
-            content: content,
-            trigger: trigger
-        )
-
-        do {
-            try await UNUserNotificationCenter.current().add(request)
-        } catch {
-            print("[NotificationManager] 关键提醒脉冲安排失败: \(error.localizedDescription)")
-        }
-    }
-
-    // MARK: - 递增重试链（P1-2：对齐 Android WorkManager 自动重试）
-
-    /// 当前 pending 通知数量（v2.0.22：全局预算用——预告/脉冲/重试共享 iOS 64 条上限）
-    func pendingNotificationCount() async -> Int {
-        await withCheckedContinuation { (cont: CheckedContinuation<Int, Never>) in
-            UNUserNotificationCenter.current().getPendingNotificationRequests { cont.resume(returning: $0.count) }
-        }
-    }
-
-    /// 预排「递增重试」通知链。
-    ///
-    /// iOS 没有 WorkManager —— App 被杀后无法在到期那一刻动态排下一次重试，
-    /// 因此排 D-day 通知时就把后续几次重试一次性交给系统持有。
-    /// 重试通知使用固定标识符 `reminder-<id>-retry-<stage>`，重复调用只会覆盖、不会堆积。
-    ///
-    /// - Parameters:
-    ///   - anchor: 下一次通知（即第 `currentStage + 1` 次触发）的时间
-    ///   - currentStage: 当前已完成的重试阶段（0 表示还没触发过）
-    func addRetryNotifications(for reminder: Reminder, anchor: Date, currentStage: Int, badgeCount: Int) async {
-        guard currentStage < RetrySchedule.maxStage else { return }
-
-        // 配额保护：iOS 单 App pending 通知上限 64 条，超出后新通知会被系统静默丢弃。
-        // 留出余量给 D-day / 预告通知，避免重试链把正主挤掉。
-        let pending = await withCheckedContinuation { (cont: CheckedContinuation<[UNNotificationRequest], Never>) in
-            UNUserNotificationCenter.current().getPendingNotificationRequests { cont.resume(returning: $0) }
-        }
-        guard pending.count < 50 else {
-            print("[NotificationManager] pending 已达 \(pending.count) 条，跳过重试链预排")
-            TelemetryService.logEvent("retry_chain_quota_exhausted", params: ["pending": "\(pending.count)"])
-            return
-        }
-
-        let now = Date()
-        var offset: TimeInterval = 0
-        // anchor 处触发的是第 currentStage+1 次，所以重试链从第 currentStage+2 次开始预排
-        var previousStage = currentStage + 1
-        var stage = currentStage + 2
-
-        while stage <= RetrySchedule.maxStage {
-            offset += RetrySchedule.delay(afterStage: previousStage)
-            let fireAt = anchor.addingTimeInterval(offset)
-            if fireAt > now {
-                await addRetryNotification(for: reminder, at: fireAt, stage: stage, badgeCount: badgeCount)
-            }
-            previousStage += 1
-            stage += 1
-        }
-    }
-
-    /// 单条重试通知（带确认/稍后按钮，与 D-day 通知同一分类）
-    private func addRetryNotification(for reminder: Reminder, at date: Date, stage: Int, badgeCount: Int) async {
-        let content = UNMutableNotificationContent()
-        content.title = "⏰ \(reminder.title)"
-        content.body = reminder.note.isEmpty
-            ? Localized("还没确认哦，这是第 %d 次提醒", stage)
-            : Localized("还没确认哦（第 %d 次提醒）：%@", stage, reminder.note)
-        content.sound = .default
-        content.badge = NSNumber(value: badgeCount)
-        content.categoryIdentifier = Self.categoryIdentifier
-        content.userInfo = [
-            "reminderID": reminder.id.uuidString,
-            "reminderTitle": reminder.title,
-            "type": "retry",
-            "retryStage": stage
-        ]
-        // 功能7 轻量手表伴侣：与 D-day 同分组，手表只显示最新一张
-        content.threadIdentifier = reminder.id.uuidString
-
-        let components = Calendar.current.dateComponents(
-            [.year, .month, .day, .hour, .minute, .second],
-            from: date
-        )
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-
-        // 固定标识符：同一提醒同一阶段重复排期时覆盖旧的，避免重复轰炸
-        let request = UNNotificationRequest(
-            identifier: "reminder-\(reminder.id.uuidString)-retry-\(stage)",
-            content: content,
-            trigger: trigger
-        )
-
-        do {
-            try await UNUserNotificationCenter.current().add(request)
-            print("[NotificationManager] 重试通知已安排: \(reminder.title) 阶段 \(stage) @ \(date)")
-        } catch {
-            print("[NotificationManager] 重试通知安排失败: \(error.localizedDescription)")
-        }
-    }
-
-    // MARK: - 预告通知（无操作按钮）
-
-    func scheduleAdvanceNotification(for reminder: Reminder, at date: Date, daysBefore: Int, body: String) async {
-        let content = UNMutableNotificationContent()
-        content.title = "📅 \(reminder.title)"
-        content.body = body
-        content.sound = .default
-        content.categoryIdentifier = Self.advanceCategoryID
-        content.userInfo = [
-            "reminderID": reminder.id.uuidString,
-            "type": "advance",
-            "daysBefore": daysBefore
-        ]
-        // I14: 预告通知也按提醒 ID 分组（功能7），避免手表/锁屏单独成组
-        content.threadIdentifier = reminder.id.uuidString
-
-        let components = Calendar.current.dateComponents(
-            [.year, .month, .day, .hour, .minute],
-            from: date
-        )
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-
-        let request = UNNotificationRequest(
-            identifier: "reminder-\(reminder.id.uuidString)-advance-\(daysBefore)",
-            content: content,
-            trigger: trigger
-        )
-
-        do {
-            try await UNUserNotificationCenter.current().add(request)
-        } catch {
-            print("[NotificationManager] 预告通知安排失败: \(error.localizedDescription)")
-        }
+        content.categoryIdentifier = delivery.kind == .advance ? Self.advanceCategoryID : Self.categoryIdentifier
+        content.threadIdentifier = delivery.reminderID.uuidString
+        content.userInfo = ["reminderID": delivery.reminderID.uuidString, "token": delivery.token,
+                            "type": delivery.kind == .advance ? "advance" : "reminder"]
+        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: delivery.date)
+        let request = UNNotificationRequest(identifier: delivery.identifier, content: content,
+            trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false))
+        do { try await UNUserNotificationCenter.current().add(request) }
+        catch { print("[Notifications] \(error)") }
     }
 
     /// 取消该提醒的所有待发送通知（异步：先等查询返回，再移除，保证调用方 await 后已生效）
     func removePendingNotification(for reminderID: UUID) async {
+        if #available(iOS 26.0, *) { ImportantAlarmService.shared.cancel(reminderID: reminderID) }
+        let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers:
+            delivered.filter { $0.request.content.userInfo["reminderID"] as? String == reminderID.uuidString }.map { $0.request.identifier })
         let requests = await withCheckedContinuation { (cont: CheckedContinuation<[UNNotificationRequest], Never>) in
             UNUserNotificationCenter.current().getPendingNotificationRequests { cont.resume(returning: $0) }
         }
@@ -358,6 +161,7 @@ final class NotificationManager: NSObject, ObservableObject {
         let action: NotificationActionType
         let reminderID: String
         let enqueuedAt: Date
+        let token: String?
     }
 
     private static let pendingActionsKey = "pendingNotificationActions"
@@ -371,9 +175,9 @@ final class NotificationManager: NSObject, ObservableObject {
     }
 
     /// 入队一条通知动作（持久化到 UserDefaults，App 启动后排空）
-    func enqueueNotificationAction(_ action: NotificationActionType, _ reminderID: UUID) {
+    func enqueueNotificationAction(_ action: NotificationActionType, _ reminderID: UUID, token: String? = nil) {
         var list = Self.loadPendingActions()
-        list.append(PendingNotificationAction(action: action, reminderID: reminderID.uuidString, enqueuedAt: Date()))
+        list.append(PendingNotificationAction(action: action, reminderID: reminderID.uuidString, enqueuedAt: Date(), token: token ?? ReminderEngine.shared.token(for: reminderID)))
         Self.savePendingActions(list)
         print("[NotificationManager] 入队通知动作: \(action.rawValue) \(reminderID.uuidString)")
     }
@@ -460,14 +264,16 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             return
         }
 
+        guard let token = userInfo["token"] as? String else { completionHandler(); return }
+        _ = token
         switch response.actionIdentifier {
         case Self.confirmActionID:
-            enqueueNotificationAction(.confirm, reminderID)
+            enqueueNotificationAction(.confirm, reminderID, token: userInfo["token"] as? String)
         case Self.snoozeActionID:
-            enqueueNotificationAction(.snooze, reminderID)
+            enqueueNotificationAction(.snooze, reminderID, token: userInfo["token"] as? String)
         case UNNotificationDismissActionIdentifier:
             // 用户滑动消除 → 进入递增重试（1h→4h→12h→24h），并写入 trigger 记录供统计
-            enqueueNotificationAction(.dismiss, reminderID)
+            enqueueNotificationAction(.dismiss, reminderID, token: userInfo["token"] as? String)
         default:
             // 批次2 功能1: 点击通知本体（非操作按钮）→ 直达该提醒的确认面板
             // （ReminderListView 监听后程序化 push ReminderDetailView）

@@ -944,7 +944,17 @@ struct AIChatView: View {
             }
         }
 
+        let expectedToken = await MainActor.run { match.actionToken }
+        let scheduleKeys = ["cycle", "custom_days", "rule_period", "rule_week", "rule_weekday", "date_type", "target_month", "target_day", "holiday_name", "reminder_hour", "reminder_minute", "weekday", "holiday_aware"]
+        let scheduleChanged = scheduleKeys.contains { args[$0] != nil }
         let updatedTitle = await MainActor.run {
+            guard match.actionToken == expectedToken else { return "提醒已变化，请重试" }
+            if !scheduleChanged {
+                if let title = args["new_title"] as? String { match.title = title }
+                if let note = args["note"] as? String { match.note = note }
+                _ = ReminderActions.changed(match, context: modelContext)
+                return match.title
+            }
             // 字符串字段
             if let nt = args["new_title"] as? String { match.title = nt }
             if let n = args["note"] as? String { match.note = n }
@@ -1061,8 +1071,7 @@ struct AIChatView: View {
             match.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(after: Date(), reminder: match)
             // Item 2: 参数变更后清空旧的前移备注（避免误显示）
             ReminderEngine.HolidayAdjustStore.setNote(nil, for: match.id)
-            try? modelContext.save()
-            SyncStore.touchLocalChange()
+            _ = ReminderActions.changed(match, context: modelContext)
             return match.title
         }
 

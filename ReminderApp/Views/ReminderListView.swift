@@ -25,11 +25,15 @@ struct ReminderBackupDocument: FileDocument {
 
 /// 首页：提醒列表
 struct ReminderListView: View {
+    @State private var showSyncConflict = false
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Reminder.nextTriggerAt) private var reminders: [Reminder]
     // v2.3.0: 今日完成数（hero 完成率环）
     @Query(sort: \ReminderRecord.performedAt) private var records: [ReminderRecord]
     @State private var showCreateSheet = false
+    @State private var quickSentence = ""
+    @State private var createdID: UUID?
+    @State private var createdToken: String?
 
     // 智能清单筛选
     @State private var smartList: SmartList = .all
@@ -81,11 +85,29 @@ struct ReminderListView: View {
     var body: some View {
         // v1.9.8: NavigationStack 由 MainTabView 的 Tab 提供，避免嵌套双层导航栏
         mainContentWrapped
+            .confirmationDialog("同步冲突：两边都有修改，已停止写入。选择前将保存本地快照。删除不会跨设备同步。", isPresented: $showSyncConflict) {
+                Button("使用本地并上传") { Task { _ = await WebDavSync.resolve(.local, context: modelContext) } }
+                Button("使用远程并保留本机独有提醒") { Task { _ = await WebDavSync.resolve(.remote, context: modelContext) } }
+                Button("取消", role: .cancel) {}
+            }
     }
 
     private var mainContent: some View {
         VStack(spacing: 0) {
             homeChromeHeader
+            HStack {
+                TextField("输入一句话创建提醒", text: $quickSentence)
+                    .textFieldStyle(.roundedBorder).accessibilityIdentifier("quick-reminder-input")
+                Button("检查规则") { showCreateSheet = true }
+            }.padding(.horizontal).padding(.bottom, 8)
+            if let id = createdID {
+                Button("撤销刚创建的提醒") {
+                    guard let r = reminders.first(where: { $0.id == id }), r.actionToken == createdToken, r.records.isEmpty else { createdID = nil; return }
+                    modelContext.delete(r)
+                    if ReminderActions.save(modelContext) { Task { await NotificationManager.shared.removePendingNotification(for: id); await ReminderEngine.shared.ensureRetryChains() } }
+                    createdID = nil
+                }.buttonStyle(.bordered)
+            }
             Group {
                 if reminders.isEmpty {
                     emptyView
@@ -447,7 +469,9 @@ struct ReminderListView: View {
     private var sheetsWrapped: some View {
         mainContent
             .sheet(isPresented: $showCreateSheet) {
-                CreateReminderView()
+                CreateReminderView(initialSentence: quickSentence, onCreated: { r in
+                    createdID = r.id; createdToken = r.actionToken; quickSentence = ""
+                })
             }
             // 近场传输: 同一局域网互传提醒
             .sheet(isPresented: $showNearbyShare) {
@@ -530,7 +554,8 @@ struct ReminderListView: View {
             nextTime: next?.nextTriggerAt,
             updatedAt: now,
             // v1.8.7: 供小组件「完成」按钮定位提醒
-            nextReminderID: next?.id.uuidString
+            nextReminderID: next?.id.uuidString,
+            nextActionToken: next?.actionToken
         ))
 
         // 主动刷新已添加的小组件
@@ -584,6 +609,8 @@ struct ReminderListView: View {
             case .success(let conflict):
                 // v2.0.16: 双端都改过 → 提示已按版本覆盖
                 syncMessage = conflict ? "已用最新版本覆盖（检测到双端都有修改，未合并）" : "同步完成"
+            case .conflict:
+                showSyncConflict = true
             case .failure(let msg):
                 syncMessage = msg
             }
@@ -755,14 +782,12 @@ struct ReminderListView: View {
                     .listRowSeparator(.hidden)
             }
 
-            let unhandled = reminders.filter { $0.isEnabled && $0.status != .confirmed }.count
-            let enabledCount = max(reminders.filter(\.isEnabled).count, 1)
-            let doneShare = Double(max(enabledCount - unhandled, 0)) / Double(enabledCount)
             Section {
-                OverviewCard(unhandledCount: unhandled, progress: doneShare)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+                HStack {
+                    Text("待处理 \(reminders.filter { $0.isEnabled && $0.status != .confirmed }.count)")
+                    Spacer()
+                    Text("按到期时间排列").foregroundStyle(.secondary)
+                }.font(.caption).listRowBackground(Color.clear)
             }
 
             // v1.9.8: 日历卡片移到「日历」Tab（CalendarPageView），首页只保留列表

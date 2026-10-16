@@ -10,9 +10,16 @@ final class ReminderEngine: ObservableObject {
 
     func configure(with context: ModelContext) {
         self.modelContext = context
+        for r in (try? context.fetch(FetchDescriptor<Reminder>())) ?? [] { LegacyPolicyStore.migrate(r) }
+        try? context.save()
     }
 
     /// 引擎是否已就绪（modelContext 已注入）。冷启动期间 didReceive 据此决定是否立即排空动作队列。
+    func token(for id: UUID) -> String? {
+        let all = (try? modelContext?.fetch(FetchDescriptor<Reminder>())) ?? []
+        return all.first { $0.id == id }?.actionToken
+    }
+
     var isConfigured: Bool { modelContext != nil }
 
     // MARK: - 冷启动通知动作排空
@@ -31,6 +38,7 @@ final class ReminderEngine: ObservableObject {
                 print("[ReminderEngine] 排空动作时未找到提醒 \(item.reminderID)，跳过")
                 continue
             }
+            guard let token = item.token, ReminderActions.accepts(reminder, token: token) else { continue }
             switch item.action {
             case .confirm: confirmReminder(reminder)
             case .snooze:  snoozeReminder(reminder, afterMinutes: 15)
@@ -122,7 +130,7 @@ final class ReminderEngine: ObservableObject {
 
     private nonisolated func occursOnCycle(_ r: Reminder, year: Int, month: Int, day: Int) -> Bool {
         guard let target = startOfDay(year, month, day) else { return false }
-        let anchor = r.firstTriggerAt
+        let anchor = r.recurrenceMode == "afterCompletion" ? (r.lastCompletedAt ?? r.firstTriggerAt) : r.firstTriggerAt
         let aY = Calendar.current.component(.year, from: anchor)
         let aM = Calendar.current.component(.month, from: anchor)
         let aD = Calendar.current.component(.day, from: anchor)
@@ -287,79 +295,8 @@ final class ReminderEngine: ObservableObject {
     // MARK: 周期类：锚点法
 
     private func calculateNextCycleTrigger(after confirmedDate: Date, reminder: Reminder) -> Date {
-        let anchor = reminder.firstTriggerAt
-        let days = reminder.effectiveDays
-        guard days > 0 else { return anchor }
-
-        switch reminder.cycle {
-        case .monthly, .quarterly, .yearly:
-            // 按日历月累加，但要把「锚点日号」保持在目标月内：
-            // 直接用 date(byAdding:.month) 会漂移（1/31→2/28→3/28 永久停在 28 号），
-            // 累加后回钳到「目标月第 anchorDay 天，超出取该月最后一天」。
-            // yearly + 2/29（闰日）例外：非闰年 2 月无 29 日 → 跳过该年，下个闰年再触发。
-            let amount = reminder.cycle == .monthly ? 1 : (reminder.cycle == .quarterly ? 3 : 12)
-            let anchorDay = Calendar.current.component(.day, from: anchor)
-            var cursor = anchor
-            var attempts = 0
-            while cursor <= confirmedDate {
-                guard let next = Calendar.current.date(byAdding: .month, value: amount, to: cursor) else { break }
-                let nextDay = Calendar.current.component(.day, from: next)
-                let maxDay = Calendar.current.range(of: .day, in: .month, for: next)?.count ?? nextDay
-                if anchorDay <= maxDay {
-                    // 目标月有 anchorDay 天（含 2/29 闰年）→ 设回锚点日
-                    cursor = Calendar.current.date(bySetting: .day, value: anchorDay, of: next) ?? next
-                } else if reminder.cycle == .yearly && anchorDay == 29 {
-                    // 非闰年 2 月没有 29 日 → 保留 2/28 继续累加（下轮跳 12 个月）
-                    cursor = next
-                } else {
-                    // 目标月不足 anchorDay 天（如 2 月）→ 钳到月末
-                    cursor = Calendar.current.date(bySetting: .day, value: maxDay, of: next) ?? next
-                }
-                attempts += 1
-                if attempts > 1200 { break } // 防御：最多推进 100 年
-            }
-            // yearly + 2/29：主循环可能停在「非闰年的 2/28」就退出（cursor > confirmed），
-            // 必须继续逐月 +12 找到下一个闰年 2/29，否则提醒永久漂移到 28 号
-            if reminder.cycle == .yearly && anchorDay == 29,
-               Calendar.current.component(.day, from: cursor) != 29 {
-                var leapCursor = cursor
-                var leapAttempts = 0
-                while Calendar.current.component(.day, from: leapCursor) != 29 {
-                    guard let nxt = Calendar.current.date(byAdding: .month, value: 12, to: leapCursor) else { break }
-                    leapCursor = nxt
-                    let maxD = Calendar.current.range(of: .day, in: .month, for: leapCursor)?.count ?? 28
-                    if maxD >= 29 {
-                        leapCursor = Calendar.current.date(bySetting: .day, value: 29, of: leapCursor) ?? leapCursor
-                        break
-                    }
-                    leapAttempts += 1
-                    if leapAttempts > 1200 { break }
-                }
-                cursor = leapCursor
-            }
-            return cursor
-        default:
-            // 时间戳 while 循环：从锚点逐周期推进直到超过 confirmedDate。
-            // 旧整数日公式 (elapsedDays/days+1) 在「锚点落在未来」时 elapsedDays 为负、
-            // cyclesPassed 恒为 1，会把首个触发多推一个整周期
-            // （daily 晚 1 天 / weekly 晚 7 天 / biweekly 晚 14 天…）。
-            // 与月/季/年分支、Android 端实现保持一致。
-            // 先用整数除法估算要跳过的整周期数（对齐 Android 的整数累加），
-            // 既不逐日 3650 次循环（主线程卡顿），也不会在极端锚点（早于 10 年，
-            // 如旧备份恢复 / WebDAV 异常锚点）被 3650 上限截断而返回过去时间。
-            let daySeconds = Double(days) * 86400
-            var cyclesPassed = 0
-            if anchor < confirmedDate {
-                cyclesPassed = max(0, Int((confirmedDate.timeIntervalSince(anchor) / daySeconds).rounded(.up)))
-            }
-            guard var next = Calendar.current.date(byAdding: .day, value: cyclesPassed * days, to: anchor) else { return anchor }
-            // 微调：确保严格落在 confirmedDate 之后（兼容时分边界）
-            while next <= confirmedDate {
-                guard let stepped = Calendar.current.date(byAdding: .day, value: days, to: next) else { break }
-                next = stepped
-            }
-            return next
-        }
+        if reminder.cycle == .once { return reminder.firstTriggerAt }
+        return ReminderPolicy.nextCycle(after: confirmedDate, reminder: reminder)
     }
 
     // MARK: 日期类：下一次目标日期
@@ -446,56 +383,20 @@ final class ReminderEngine: ObservableObject {
     /// - Parameter source: 记录备注来源。默认「手动确认」；补打卡入口传「补打卡」，
     ///   统计口径仍算 .confirm（计入完成 / 连续天数），只在历史里区分是不是事后补的。
     func confirmReminder(_ reminder: Reminder, source: String = "手动确认") {
-        guard let context = modelContext else { return }
-
-        let now = Date()
-
-        let record = ReminderRecord(type: .confirm, note: source)
-        reminder.records.append(record)
-
-        // v1.8.7 任务⑥: 埋点
-        TelemetryService.logEvent("confirm", params: ["kind": reminder.kind.rawValue, "cycle": reminder.cycle.rawValue])
-
-        // 一次性提醒：确认后直接归档为「已完成」，不再前进周期
-        if reminder.kind == .cycle && reminder.cycle == .once {
-            reminder.status = .confirmed
-            reminder.retryStage = 0
-            reminder.lastRetryAt = nil
-            reminder.updatedAt = now
-            try? context.save()
-            SyncStore.touchLocalChange()
-            Task { await NotificationManager.shared.removePendingNotification(for: reminder.id) }
-            // 批次2 功能2: 打卡成功 → 正向反馈卡片
-            NotificationCenter.default.post(name: .reminderConfirmed, object: reminder)
-            print("[ReminderEngine] 一次性提醒已完成: \(reminder.title)")
-            return
-        }
-
-        // 计算下一次触发
-        reminder.nextTriggerAt = calculateNextTrigger(after: now, reminder: reminder)
-
-        // 重置状态
-        reminder.status = .pending
-        reminder.retryStage = 0
-        reminder.lastRetryAt = nil
-        reminder.updatedAt = now
-
-        try? context.save()
-        SyncStore.touchLocalChange()
-
-        // Item 2: 本次已完成，清空前移备注；并预检下一次触发是否遇节假日
+        guard let context = modelContext,
+              ReminderActions.complete(reminder, context: context, next: calculateNextTrigger, source: source) != nil else { return }
         HolidayAdjustStore.setNote(nil, for: reminder.id)
-        Task { await runHolidayPreCheck() }
-
-        // 批次2 功能2: 打卡成功 → 正向反馈卡片（列表/详情页监听）
         NotificationCenter.default.post(name: .reminderConfirmed, object: reminder)
+        Task { await self.scheduleAllNotifications(for: reminder) }
+    }
 
-        // 重新调度通知
-        Task {
-            await scheduleAllNotifications(for: reminder)
-        }
-
-        print("[ReminderEngine] 已确认: \(reminder.title), 下次: \(reminder.nextTriggerAt)")
+    func skipReminder(_ reminder: Reminder) {
+        guard let context = modelContext, ReminderActions.skip(reminder, context: context, next: calculateNextTrigger) else { return }
+        Task { await self.scheduleAllNotifications(for: reminder) }
+    }
+    func undoCompletion(_ reminder: Reminder) {
+        guard let context = modelContext, ReminderActions.undo(reminder, context: context) else { return }
+        Task { await self.scheduleAllNotifications(for: reminder) }
     }
 
     // MARK: - 重新打开（已完成 → 等待中）
@@ -515,8 +416,7 @@ final class ReminderEngine: ObservableObject {
         reminder.lastRetryAt = nil
         reminder.updatedAt = now
 
-        try? context.save()
-        SyncStore.touchLocalChange()
+        _ = ReminderActions.changed(reminder, context: context)
 
         Task {
             await scheduleAllNotifications(for: reminder)
@@ -550,68 +450,16 @@ final class ReminderEngine: ObservableObject {
     }
 
     private func snoozeTo(_ reminder: Reminder, at snoozeAt: Date, note: String) {
-        guard let context = modelContext else { return }
-        let now = Date()
-
-        let record = ReminderRecord(type: .snooze, note: note)
-        reminder.records.append(record)
-
-        reminder.nextTriggerAt = snoozeAt
-        reminder.status = .snoozed
-        reminder.updatedAt = now
-
-        try? context.save()
-        SyncStore.touchLocalChange()
-
-        // P1-2: 走完整排期（含重试链）。稍后不改 retryStage，
-        // 到点那次通知仍然是「第 retryStage+1 次触发」，后续重试链接着往下走。
-        Task {
-            await self.scheduleAllNotifications(for: reminder)
-        }
-
-        print("[ReminderEngine] 已推迟: \(reminder.title) → \(snoozeAt)")
+        guard let context = modelContext,
+              ReminderActions.snooze(reminder, until: snoozeAt, context: context) else { return }
+        Task { await self.scheduleAllNotifications(for: reminder) }
     }
 
     // MARK: - 递增重试
 
     func escalateRetry(_ reminder: Reminder) {
-        guard let context = modelContext else { return }
-
-        let now = Date()
-        reminder.retryStage = min(reminder.retryStage + 1, RetrySchedule.maxStage)
-        reminder.lastRetryAt = now
-
-        // 间隔序列统一由 RetrySchedule 提供（1h/4h/12h/24h/24h），
-        // 与预排重试链、启动追赶三处共用同一张表，避免各自维护导致漂移。
-        let nextDelay = RetrySchedule.delay(afterStage: reminder.retryStage)
-        reminder.nextTriggerAt = Date(timeIntervalSinceNow: nextDelay)
-
-        if reminder.retryStage >= RetrySchedule.maxStage {
-            reminder.status = .overdue
-        } else {
-            reminder.status = .active
-        }
-
-        reminder.updatedAt = now
-
-        let record = ReminderRecord(type: .trigger, note: Localized("重试阶段 %d", reminder.retryStage))
-        reminder.records.append(record)
-
-        try? context.save()
-        SyncStore.touchLocalChange()
-
-        // P1-2: 达到上限直接清空待发通知（原实现仍会再排一条，导致 overdue 后还在响）；
-        // 未达上限则走完整排期，把后续重试链一并预排好。
-        let reachedLimit = reminder.status == .overdue
-        Task {
-            if reachedLimit {
-                await NotificationManager.shared.removePendingNotification(for: reminder.id)
-            } else {
-                await self.scheduleAllNotifications(for: reminder)
-            }
-        }
-
-        print("[ReminderEngine] 递增重试: \(reminder.title) 阶段 \(reminder.retryStage)")
+        // Dismissal does not create an extra retry. The system already holds this occurrence's chain.
+        Task { await self.checkMissedReminders(reminders: [reminder]) }
     }
 
     // MARK: - 安排全部通知（日期类：提前预告 + D-day）
@@ -623,109 +471,39 @@ final class ReminderEngine: ObservableObject {
         return all.filter { $0.status != .confirmed }.count
     }
 
-    func scheduleAllNotifications(for reminder: Reminder) async {
-        // 先清除旧通知（含预告 / D-day / 重试链，userInfo.reminderID 命中即移除）
-        await NotificationManager.shared.removePendingNotification(for: reminder.id)
+    private var replanning = false
+    private var replanRequested = false
+    @Published var scheduledPrimaryCount = 0
+    @Published var eligiblePrimaryCount = 0
 
-        guard reminder.isEnabled else { return }
-        // 幽灵通知防御（对齐 Android Worker）：已完成 / 已逾期不再排任何通知
-        guard reminder.status != .confirmed, reminder.status != .overdue else { return }
+    func scheduleAllNotifications(for reminder: Reminder) async { await ensureRetryChains() }
 
-        // v2.1.1: 勿扰时段——触发时间落在静默窗口内时顺延到窗口结束（仅影响排期，不动数据）
-        let trigger = QuietHoursStore.adjust(reminder.nextTriggerAt, for: reminder.id)
-
-        if reminder.kind == .date {
-            // 日期类：安排提前预告通知 + D-day 通知
-            await scheduleAdvanceNotifications(reminder: reminder)
-        }
-
-        // D-day 通知（带确认/稍后按钮）；角标用真实未确认数量
-        let count = unconfirmedCount()
-        try? await NotificationManager.shared.addDdayNotification(for: reminder, at: trigger, badgeCount: count)
-
-        // P1-2: 预排递增重试链。iOS 无 WorkManager，只能提前把后续重试交给系统持有。
-        // 给「近 31 天内到期」的月内周期（周/双周/月）预排；季/年等超长周期数量稀少、
-        // 且正是最需要到点重试的类型，豁免窗口直接预排（与 Android WorkManager 对齐）；
-        // 其余远期提醒会在用户回前台、进入窗口后由 ensureRetryChains() 补排。
-        let needsRetryChain = trigger.timeIntervalSinceNow <= Self.retryChainWindow
-            || reminder.cycle == .quarterly || reminder.cycle == .yearly
-        if needsRetryChain {
-            await NotificationManager.shared.addRetryNotifications(
-                for: reminder,
-                anchor: trigger,
-                currentStage: reminder.retryStage,
-                badgeCount: count
-            )
-        }
-    }
-
-    /// 重试链预排窗口：给 31 天内到期的提醒预排后续重试通知（覆盖周/双周/月周期；
-    /// 季/年超长周期不预排以省 64 条 pending 配额，回前台进入窗口后由 ensureRetryChains 补排）
-    private static let retryChainWindow: TimeInterval = 31 * 86400
-
-    /// P1-2: 启动时为「进入 31 天窗口（及季/年周期）」的提醒补排递增重试链。
-    ///
-    /// 重试通知使用固定标识符 `reminder-<id>-retry-<stage>`，
-    /// 重复调用只会覆盖同一条，不会重复轰炸，因此可以每次启动无脑跑一遍。
     func ensureRetryChains() async {
-        guard let context = modelContext else { return }
-        let now = Date()
-        let reminders = (try? context.fetch(
-            FetchDescriptor<Reminder>(sortBy: [SortDescriptor(\.nextTriggerAt)])
-        )) ?? []
-        let count = unconfirmedCount()
-
-        for r in reminders {
-            guard r.isEnabled, r.status != .confirmed, r.status != .overdue else { continue }
-            let delta = r.nextTriggerAt.timeIntervalSince(now)
-            // 季/年周期豁免窗口，直接预排（数量稀少，正是最需要重试的类型）
-            guard delta > 0, (delta <= Self.retryChainWindow || r.cycle == .quarterly || r.cycle == .yearly) else { continue }
-            await NotificationManager.shared.addRetryNotifications(
-                for: r,
-                anchor: r.nextTriggerAt,
-                currentStage: r.retryStage,
-                badgeCount: count
-            )
-        }
-    }
-
-    /// 日期类的提前预告通知
-    private func scheduleAdvanceNotifications(reminder: Reminder) async {
-        let calendar = Calendar.current
-        // v2.0.22: 全局预算——预告/脉冲/重试共享 iOS 单 App 64 条 pending 上限。
-        // 之前只有重试链检查配额，多提醒 + 长预告 + 关键提醒叠加时系统会静默丢弃。
-        // 预算分配：保留 1 条 D-day + 关键提醒脉冲，剩余给预告。
-        let pendingCount = await NotificationManager.shared.pendingNotificationCount()
-        let criticalReserve = ReminderEngine.CriticalStore.isCritical(reminder.id) ? 5 : 0
-        let budget = max(0, 64 - pendingCount - 1 - criticalReserve)
-        let advanceDays = min(max(reminder.advanceDays, 0), 14, budget)
-
-        guard advanceDays > 0 else { return }
-
-        // 从 D-day 往前推
-        var triggerComponents = calendar.dateComponents([.year, .month, .day], from: reminder.nextTriggerAt)
-        triggerComponents.hour = reminder.reminderHour
-        triggerComponents.minute = reminder.reminderMinute
-
-        guard let dDay = calendar.date(from: triggerComponents) else { return }
-
-        for daysBefore in 1...advanceDays {
-            guard let advanceDate = calendar.date(byAdding: .day, value: -daysBefore, to: dDay),
-                  advanceDate > Date() else { continue }
-
-            let content: String
-            if daysBefore == 1 {
-                content = Localized("提醒：明天就是「%@」了，别忘了提前准备哦！", reminder.title)
-            } else {
-                content = Localized("提醒：还有 %d 天就是「%@」了", daysBefore, reminder.title)
+        replanRequested = true
+        guard !replanning, let context = modelContext else { return }
+        replanning = true
+        defer { replanning = false }
+        while replanRequested {
+            replanRequested = false
+            let generation = SyncStore.localVersion
+            let reminders = (try? context.fetch(FetchDescriptor<Reminder>())) ?? []
+            let now = Date()
+            let all = ReminderPolicy.allocate(reminders, now: now, limit: Int.max)
+            let reserved = await NotificationManager.shared.unmanagedPendingCount()
+            if generation != SyncStore.localVersion { replanRequested = true; continue }
+            let queue = Array(all.prefix(max(0, 64 - reserved)))
+            eligiblePrimaryCount = all.filter { $0.kind == .primary }.count
+            scheduledPrimaryCount = queue.filter { $0.kind == .primary }.count
+            let tokens = Dictionary(uniqueKeysWithValues: reminders.map { ($0.id.uuidString, $0.actionToken) })
+            if #available(iOS 26.0, *) { await ImportantAlarmService.shared.removeStale(validTokens: tokens) }
+            await NotificationManager.shared.removeManagedRequests()
+            for delivery in queue {
+                if generation != SyncStore.localVersion { replanRequested = true; break }
+                if #available(iOS 26.0, *), delivery.important,
+                   await ImportantAlarmService.shared.schedule(delivery) { continue }
+                await NotificationManager.shared.addDelivery(delivery, badgeCount: eligiblePrimaryCount)
             }
-
-            await NotificationManager.shared.scheduleAdvanceNotification(
-                for: reminder,
-                at: advanceDate,
-                daysBefore: daysBefore,
-                body: content
-            )
+            if generation != SyncStore.localVersion { replanRequested = true }
         }
     }
 
@@ -748,12 +526,17 @@ final class ReminderEngine: ObservableObject {
             guard reminder.nextTriggerAt <= now else { continue }
 
             // 每错过一次触发就前进一个重试阶段，直到下次触发落在未来或达到上限
-            let caught = RetrySchedule.catchUp(stage: reminder.retryStage,
-                                               dueAt: reminder.nextTriggerAt,
-                                               now: now)
+            let policy = reminder.policy
+            let cap = reminder.reminderStyle == "gentle" ? 1 : policy.attempts
+            var s = reminder.retryStage
+            var d = policy.adjust(reminder.nextTriggerAt)
+            if reminder.status == .snoozed && s >= cap && d <= now { s = cap - 1 }
+            while d <= now && s < cap { s += 1; d = policy.adjust(d.addingTimeInterval(policy.delay(after: s))) }
+            let caught = (stage: s, dueAt: d, isOverdue: s >= cap)
             let stage = caught.stage
             let due = caught.dueAt
 
+            reminder.undoCompletion = nil
             reminder.retryStage = stage
             reminder.lastRetryAt = now
             reminder.updatedAt = now
@@ -809,21 +592,7 @@ final class ReminderEngine: ObservableObject {
     /// 与 HolidayAdjustStore 同理：为避免改动 SwiftData schema 引发无法本地验证的迁移崩溃，
     /// 把「是否为关键提醒」存到 UserDefaults（按提醒 UUID 索引）。
     /// 关键提醒用于触发更激进的提醒策略（重复 alert 脉冲），确保重要事项不被漏看。
-    struct CriticalStore {
-        private static let key = "critical_reminders"
-        static func isCritical(_ id: UUID) -> Bool {
-            UserDefaults.standard.dictionary(forKey: key)?[id.uuidString] as? Bool ?? false
-        }
-        static func setCritical(_ value: Bool, for id: UUID) {
-            var dict = UserDefaults.standard.dictionary(forKey: key) ?? [:]
-            if value {
-                dict[id.uuidString] = true
-            } else {
-                dict.removeValue(forKey: id.uuidString)
-            }
-            UserDefaults.standard.set(dict, forKey: key)
-        }
-    }
+    typealias CriticalStore = LegacyPolicyStore
 
     /// 节假日前移预检：对未完成的 cycle / rule 提醒，
     /// 若下次触发落在 ~31 天内且恰逢法定节假日，则前移到假期前最近工作日
