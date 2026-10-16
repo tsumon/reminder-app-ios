@@ -36,6 +36,7 @@ final class ChatHistoryUITests: XCTestCase {
     /// Chat is full-screen: input hittable, SoftTabDock gone, pop restores dock.
     func testChatInputNotCoveredByTabDock() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         app.launchArguments += ["-uitest_skip_permission", "1"]
         app.launch()
 
@@ -68,6 +69,7 @@ final class ChatHistoryUITests: XCTestCase {
 
     func testHistorySurvivesAppRestart() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         app.launchArguments += ["-uitest_ai_fixture", "1", "-uitest_skip_permission", "1"]
         app.launch()
 
@@ -172,6 +174,7 @@ final class MultiTurnHistoryUITests: XCTestCase {
 
     func testMultiTurnAccumulatesAcrossReentry() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         // 独立无状态服务，避免继承上一用例的失败端点/消费 ask_user 请求序列。
         app.launchArguments += ["-uitest_ai_fixture", "1", "-uitest_skip_permission", "1",
                                 "-ai_endpoint", "http://127.0.0.1:8898/v1",
@@ -216,6 +219,7 @@ final class MultiTurnHistoryUITests: XCTestCase {
         }
 
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         app.launchArguments += [
             "-uitest_skip_permission", "1",
             "-ai_endpoint", "http://127.0.0.1:8898/v1",

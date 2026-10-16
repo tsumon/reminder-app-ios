@@ -5,13 +5,14 @@ final class UpgradeUITests: XCTestCase {
         let server = URL(string: "http://127.0.0.1:8899")!
         _ = try await URLSession.shared.data(from: server.appendingPathComponent("dav-reset"))
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         app.launchArguments += ["-uitest_skip_permission", "1", "-uitest_auto_sync_conflict",
             "-sync_url", "http://127.0.0.1:8899/dav/", "-sync_user", "uitest", "-sync_auto", "YES",
             "-sync_last_sync", "0", "-sync_remote_stamp_v3", "uitest-unseen",
             "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         defer {
             app.terminate()
-            app.launchArguments = ["-uitest_skip_permission", "1", "-uitest_clear_sync_fixture"]
+            app.launchArguments = ["-uitest_isolate_notifications", "-uitest_skip_permission", "1", "-uitest_clear_sync_fixture"]
             app.launch(); app.terminate()
         }
         app.launch()
@@ -37,6 +38,7 @@ final class UpgradeUITests: XCTestCase {
 
     @MainActor func testHomeQuickEntryOpensEditableParserForm() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         app.launchArguments += ["-uitest_skip_permission", "1", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
         let input = app.textFields["quick-reminder-input"]
@@ -51,6 +53,7 @@ final class UpgradeUITests: XCTestCase {
 
     @MainActor func testComplexQuickEntryRequiresRuleReview() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         app.launchArguments += ["-uitest_skip_permission", "1", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
         let input = app.textFields["quick-reminder-input"]

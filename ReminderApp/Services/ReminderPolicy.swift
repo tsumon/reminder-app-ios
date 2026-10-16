@@ -24,8 +24,14 @@ struct ReminderPolicy: Equatable {
         let minute = calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date)
         let inside = s < e ? minute >= s && minute < e : minute >= s || minute < e
         guard inside else { return date }
-        let end = calendar.date(byAdding: .minute, value: e, to: calendar.startOfDay(for: date)) ?? date
-        return s > e && minute >= s ? calendar.date(byAdding: .day, value: 1, to: end) ?? end : end
+        let day = s > e && minute >= s ? calendar.date(byAdding: .day, value: 1, to: date) ?? date : date
+        // Nonexistent ends use next valid wall time; repeated ends use the first
+        // matching occurrence still ahead. Never treat wall minutes as elapsed time.
+        let end = calendar.date(bySettingHour: e / 60, minute: e % 60, second: 0, of: day,
+            matchingPolicy: .nextTime, repeatedTimePolicy: .first, direction: .forward) ?? date
+        if end >= date { return end }
+        return calendar.nextDate(after: date, matching: DateComponents(hour: e / 60, minute: e % 60),
+            matchingPolicy: .nextTime, repeatedTimePolicy: .last, direction: .forward) ?? date
     }
 
     func delay(after stage: Int) -> TimeInterval { Double(intervals[min(max(stage - 1, 0), intervals.count - 1)]) * 60 }
@@ -70,6 +76,79 @@ struct ReminderPolicy: Equatable {
         return next
     }
 
+    static func nextRuleDate(
+        period: RulePeriod,
+        week: Int,
+        weekday: Int,
+        hour: Int,
+        minute: Int,
+        from: Date = Date(), calendar: Calendar = .current
+    ) -> Date {
+        let comps = calendar.dateComponents([.year, .month], from: from)
+        let year = comps.year ?? 2026
+        let month = comps.month ?? 1
+
+        let monthStep: Int
+        switch period {
+        case .monthly: monthStep = 1
+        case .yearly: monthStep = 12
+        case .quarterly: monthStep = 3
+        }
+
+        // 当前周期单位的起始月
+        let startMonth: Int
+        switch period {
+        case .monthly: startMonth = month
+        case .yearly: startMonth = 1
+        case .quarterly: startMonth = ((month - 1) / 3) * 3 + 1 // 1/4/7/10 月
+        }
+
+        // 从当前周期开始向后找（最多 16 步）
+        for i in 0...16 {
+            let candMonthIndex = startMonth + i * monthStep
+            let candYear = year + (candMonthIndex - 1) / 12
+            let candMonth = (candMonthIndex - 1) % 12 + 1
+
+            guard let target = ruleDateInMonth(
+                year: candYear,
+                month: candMonth,
+                week: week,
+                weekday: weekday,
+                hour: hour,
+                minute: minute, calendar: calendar
+            ), target > from else { continue }
+
+            return target
+        }
+        // fallback：明天
+        return calendar.date(byAdding: .day, value: 1, to: from) ?? from
+    }
+
+    /// 计算某年某月「第 week 周的 weekday」的日期；该月无此周次则返回 nil
+    static func ruleDateInMonth(
+        year: Int, month: Int, week: Int, weekday: Int, hour: Int, minute: Int, calendar inputCalendar: Calendar = .current
+    ) -> Date? {
+        var calendar = inputCalendar
+        calendar.firstWeekday = 2 // 周一为一周开始
+
+        var comps = DateComponents()
+        comps.year = year
+        comps.month = month
+        comps.day = 1
+        comps.hour = hour
+        comps.minute = minute
+        guard let firstOfMonth = calendar.date(from: comps) else { return nil }
+
+        // Calendar.weekday: 1=周日...7=周六 → 转成 周一=1...周日=7
+        let firstDayWeek = (calendar.component(.weekday, from: firstOfMonth) + 5) % 7 + 1
+        let day = 1 + ((weekday - firstDayWeek + 7) % 7) + (week - 1) * 7
+
+        guard let range = calendar.range(of: .day, in: .month, for: firstOfMonth),
+              day <= range.count else { return nil }
+
+        return calendar.date(byAdding: .day, value: day - 1, to: firstOfMonth)
+    }
+
     enum DeliveryKind: Int { case primary, retry, advance }
     struct Delivery {
         let reminderID: UUID
@@ -83,15 +162,15 @@ struct ReminderPolicy: Equatable {
         var identifier: String { "reminder-\(reminderID)-\(kind.rawValue)-\(index)" }
     }
 
-    static func deliveryDates(for r: Reminder, now: Date) -> [Date] {
+    static func deliveryDates(for r: Reminder, now: Date, calendar: Calendar = .current) -> [Date] {
         guard r.isEnabled, r.status != .confirmed, r.status != .overdue else { return [] }
         let p = r.policy
         let cap = r.reminderStyle == "gentle" ? 1 : p.attempts
         // An explicit snooze is a requested delivery even after gentle's automatic attempt is used.
         guard r.retryStage < cap || r.status == .snoozed else { return [] }
-        var dates = [p.adjust(r.nextTriggerAt)]
+        var dates = [p.adjust(r.nextTriggerAt, calendar: calendar)]
         var stage = r.retryStage + 1
-        while stage < cap { dates.append(p.adjust(dates.last!.addingTimeInterval(p.delay(after: stage)))); stage += 1 }
+        while stage < cap { dates.append(p.adjust(dates.last!.addingTimeInterval(p.delay(after: stage)), calendar: calendar)); stage += 1 }
         return dates.filter { $0 > now }
     }
 

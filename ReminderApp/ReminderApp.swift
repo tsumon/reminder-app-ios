@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UserNotifications
 
 // MARK: - SwiftData 迁移（v2.0.15: 显式声明 schema v1 + 空迁移计划）
 // 之前容器用裸 `Schema([Reminder.self, ReminderRecord.self])`，无 VersionedSchema/MigrationPlan：
@@ -16,6 +17,12 @@ struct ReminderApp: App {
     /// （原方案由测试进程写容器 plist，但 UI 测试跑在模拟器 iOS 内无法执行宿主命令，
     ///   改由 App 侧在启动时自注入，测试只需加 launchArguments）
     init() {
+        if ProcessInfo.processInfo.arguments.contains("-uitest_isolate_notifications") {
+            // Only this app's test queue is cleared; persisted reminders and product scheduling remain live.
+            let center = UNUserNotificationCenter.current()
+            center.removeAllPendingNotificationRequests()
+            center.removeAllDeliveredNotifications()
+        }
         if ProcessInfo.processInfo.arguments.contains("-uitest_auto_sync_conflict") || ProcessInfo.processInfo.arguments.contains("-uitest_clear_sync_fixture") {
             let context = Self.sharedModelContainer.mainContext
             let id = UUID(uuidString: "dddddddd-bbbb-4ccc-8ddd-eeeeeeeeeeee")!

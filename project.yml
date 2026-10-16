@@ -204,6 +204,9 @@ targets:
       - path: ReminderApp/Services/ReminderMerge.swift
       - path: ReminderApp/Services/BackupHelper.swift
       - path: ReminderApp/Services/SyncStore.swift
+      - path: ReminderApp/Services/WebDavSync.swift
+      - path: ReminderApp/Services/IcsExporter.swift
+      - path: ReminderAppTests/FinalReviewChecks.swift
       - path: ReminderAppTests/UpgradeCheckMain.swift
     settings:
       base:

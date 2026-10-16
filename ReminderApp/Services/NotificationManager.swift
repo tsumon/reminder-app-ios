@@ -245,6 +245,12 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-uitest_isolate_notifications") {
+            completionHandler([])
+            return
+        }
+        #endif
         completionHandler([.banner, .sound, .badge])
     }
 

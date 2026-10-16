@@ -27,12 +27,25 @@ enum WebDavSync {
         guard let json else { return "missing" }
         return SHA256.hash(data: Data(json.utf8)).map { String(format: "%02x", $0) }.joined()
     }
-    static func syncNow(reminders: [Reminder], modelContext: ModelContext) async -> SyncResult {
-        guard SyncStore.isConfigured else { return .failure("请先配置 WebDAV 服务器") }
+    @MainActor struct Transport {
+        var download: () async throws -> Remote
+        var upload: (String, Remote) async throws -> Void
+        var restore: () async -> Void
+        var isConfigured: Bool = true
+        static var live: Transport { Transport(download: { try await WebDavSync.download() },
+            upload: { try await WebDavSync.upload($0, replacing: $1) }, restore: {
+                #if os(iOS)
+                await ReminderEngine.shared.ensureRetryChains()
+                #endif
+            }, isConfigured: SyncStore.isConfigured) }
+    }
+    static func syncNow(reminders: [Reminder], modelContext: ModelContext, transport: Transport? = nil) async -> SyncResult {
+        let transport = transport ?? .live
+        guard transport.isConfigured else { return .failure("请先配置 WebDAV 服务器") }
         guard !busy else { return .failure("同步正在进行") }
         busy = true; defer { busy = false }
         do {
-            let remote = try await download()
+            let remote = try await transport.download()
             let current = try modelContext.fetch(FetchDescriptor<Reminder>())
             let generation = SyncStore.localVersion
             let localChanged = generation != SyncStore.lastSyncVersion
@@ -44,20 +57,21 @@ enum WebDavSync {
                 return .conflict
             }
             if remote.json == nil || (localChanged && !remoteChanged) {
-                return try await uploadSnapshot(current, generation: generation, remote: remote)
+                return try await uploadSnapshot(current, generation: generation, remote: remote, transport: transport)
             }
             if remoteChanged, let json = remote.json {
-                return try await applyRemote(json, current: current, remote: remote, context: modelContext)
+                return try await applyRemote(json, current: current, remote: remote, context: modelContext, transport: transport)
             }
             SyncStore.setLastSync(); SyncStore.setHasSyncedOnce()
             return .success(conflict: false)
         } catch { return .failure(friendlyMessage(error)) }
     }
-    static func resolve(_ choice: ConflictChoice, context: ModelContext) async -> SyncResult {
+    static func resolve(_ choice: ConflictChoice, context: ModelContext, transport: Transport? = nil) async -> SyncResult {
+        let transport = transport ?? .live
         guard !busy, let conflict = pending else { return .failure("请重新同步以获取最新冲突") }
         busy = true; defer { busy = false }
         do {
-            let latest = try await download()
+            let latest = try await transport.download()
             guard SyncStore.localVersion == conflict.generation, stamp(latest.json) == stamp(conflict.remote.json), latest.etag == conflict.remote.etag else {
                 pending = nil; return .failure("数据在选择期间发生变化，请重新同步")
             }
@@ -65,36 +79,50 @@ enum WebDavSync {
             try snapshotLocal(current)
             pending = nil
             switch choice {
-            case .local: return try await uploadSnapshot(current, generation: conflict.generation, remote: latest)
+            case .local:
+                SyncStore.setLocalVersion(max(conflict.generation, BackupHelper.dataVersion(of: latest.json ?? "")) + 1)
+                return try await uploadSnapshot(current, generation: SyncStore.localVersion, remote: latest, transport: transport)
             case .remote:
                 guard let json = latest.json else { return .failure("远程备份已不存在，请重新同步") }
-                return try await applyRemote(json, current: current, remote: latest, context: context)
+                return try await applyRemote(json, current: current, remote: latest, context: context, transport: transport)
             }
         } catch { return .failure(friendlyMessage(error)) }
     }
-    private static func uploadSnapshot(_ current: [Reminder], generation: Int, remote: Remote) async throws -> SyncResult {
+    private static func uploadSnapshot(_ current: [Reminder], generation: Int, remote: Remote, transport: Transport) async throws -> SyncResult {
         // Serialize values and capture the generation on this actor before suspending.
         let snapshot = SyncRevisionSnapshot(reminders: current)
         guard snapshot.generation == generation else { return .failure("本地数据已变化，请重新同步") }
         let json = snapshot.json
-        try await upload(json, replacing: remote)
+        try await transport.upload(json, remote)
         snapshot.acknowledge()
         UserDefaults.standard.set(stamp(json), forKey: remoteStampKey)
         SyncStore.setLastSync(); SyncStore.setHasSyncedOnce()
         return .success(conflict: false)
     }
-    private static func applyRemote(_ json: String, current: [Reminder], remote: Remote, context: ModelContext) async throws -> SyncResult {
+    private static func applyRemote(_ json: String, current: [Reminder], remote: Remote, context: ModelContext, transport: Transport) async throws -> SyncResult {
         guard let items = BackupHelper.importJSON(json) else { return .failure("远程文件解析失败") }
         try snapshotLocal(current)
         guard mergeRemote(current, items: items, in: context) else { return .failure("本地写入失败，数据已回滚") }
-        SyncStore.touchLocalChange()
-        let mergedGeneration = SyncStore.localVersion
+        let incomingGeneration = BackupHelper.dataVersion(of: json)
+        let previousGeneration = SyncStore.localVersion
         let incomingIDs = Set(items.compactMap(\.stableID))
         let hasLocalOnly = current.contains { !incomingIDs.contains($0.id) }
-        SyncStore.setLastSyncVersion(hasLocalOnly ? max(0, mergedGeneration - 1) : mergedGeneration)
+        // A selected lower counter or retained local rows create a new shared revision.
+        let mustPublish = hasLocalOnly || incomingGeneration <= previousGeneration
+        let mergedGeneration = mustPublish ? max(previousGeneration, incomingGeneration) + 1 : incomingGeneration
+        SyncStore.setLocalVersion(mergedGeneration)
+        SyncStore.setLastSyncVersion(mustPublish ? max(0, mergedGeneration - 1) : mergedGeneration)
         UserDefaults.standard.set(stamp(json), forKey: remoteStampKey)
         SyncStore.setLastSync(); SyncStore.setHasSyncedOnce()
-        await ReminderEngine.shared.ensureRetryChains()
+        if mustPublish {
+            let merged = try context.fetch(FetchDescriptor<Reminder>())
+            do {
+                let result = try await uploadSnapshot(merged, generation: mergedGeneration, remote: remote, transport: transport)
+                await transport.restore()
+                return result
+            } catch { await transport.restore(); throw error }
+        }
+        await transport.restore()
         return .success(conflict: false)
     }
 

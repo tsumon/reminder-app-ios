@@ -594,22 +594,7 @@ struct CreateReminderView: View {
 
         switch kind {
         case .cycle:
-            let dateComponents = calendar.dateComponents([.year, .month, .day], from: triggerDate)
-            let timeComponents = calendar.dateComponents([.hour, .minute], from: triggerTime)
-
-            var merged = DateComponents()
-            merged.year = dateComponents.year
-            merged.month = dateComponents.month
-            merged.day = dateComponents.day
-            merged.hour = timeComponents.hour
-            merged.minute = timeComponents.minute
-
-            let firstTrigger = calendar.date(from: merged) ?? triggerDate
-            // v2.0.22: 保存前兜底——合并时间可能仍是过去（跨午夜/秒差），
-            // 统一顺延到下一分钟，避免「立即创建立即过期」的首个通知丢失
-            let finalTrigger = firstTrigger > Date()
-                ? firstTrigger
-                : (calendar.date(byAdding: .minute, value: 1, to: firstTrigger) ?? firstTrigger)
+            let finalTrigger = ReminderEdits.cycleAnchor(date: triggerDate, time: triggerTime, editing: editing != nil)
             // v2.0.22: 自定义周期留空/非法时禁止保存（原实现静默兜底成每天一次，
             // 用户没输入也会被高频打扰）；改成保存按钮直接拦截
             if cycle == .custom {
@@ -760,7 +745,7 @@ struct CreateReminderView: View {
         reminder.useAlarmKit = useAlarmKit; reminder.policyMigrated = true
         if let editing {
             guard ReminderEdits.apply(reminder, to: editing, expectedToken: expectedToken,
-                scheduleChanged: scheduleKey != initialSchedule, context: modelContext,
+                scheduleChanged: ReminderEdits.scheduleChanged(reminder, from: editing), context: modelContext,
                 calculate: ReminderEngine.shared.calculateNextTrigger) else {
                 errorMessage = "提醒已被其他操作修改，请关闭后重新编辑"; return
             }

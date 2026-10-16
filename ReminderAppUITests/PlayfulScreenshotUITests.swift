@@ -12,6 +12,7 @@ final class PlayfulScreenshotUITests: XCTestCase {
 
     func testCapturePlayfulScreens() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         // -appLanguage: UserDefaults 启动参数覆盖，强制中文文案（模拟器系统语言是英文）
         app.launchArguments += ["-tab", "0", "-appLanguage", "zh-Hans"]
 
@@ -48,6 +49,13 @@ final class PlayfulScreenshotUITests: XCTestCase {
 
         // 日历 Tab：热力密度 + 今日吉祥物 + 本周跑道
         selectDock(app, title: "日历")
+        let nextMonth = app.buttons["下一月"]
+        XCTAssertTrue(nextMonth.waitForExistence(timeout: 5))
+        XCTAssertTrue(nextMonth.isHittable)
+        // MainTabView animates its tab switch; allow the final opaque frame to commit.
+        let settled = expectation(description: "Calendar transition committed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { settled.fulfill() }
+        wait(for: [settled], timeout: 2)
         snap(app, "04-calendar")
 
         // 统计 Tab：打卡城堡 + 本周花园

@@ -32,6 +32,7 @@ final class AskUserCalendarUITests: XCTestCase {
 
     func testAmbiguousDateAskUserButtonFlow() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         app.launchArguments += [
             "-ai_endpoint", "http://127.0.0.1:8899/v1",
             "-ai_is_local", "1",

@@ -249,6 +249,7 @@ import SwiftData
         LegacyPolicyStore.setCritical(false, for: legacyID)
         UserDefaults.standard.removeObject(forKey: "quiet_hours_\(legacyID.uuidString)_start")
         UserDefaults.standard.removeObject(forKey: "quiet_hours_\(legacyID.uuidString)_end")
+        try await FinalReviewChecks.run(context: context)
         print("Upgrade policy/actions/global allocation/v3 checks passed")
     }
 }
