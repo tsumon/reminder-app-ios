@@ -35,15 +35,15 @@ import SwiftData
             precondition(rule.nextTriggerAt > now && (!future || rule.nextTriggerAt >= anchor))
             precondition(!ReminderPolicy.deliveryDates(for: rule, now: now).isEmpty)
         }
-        for relative in [false, true] {
-            let anchor = relative ? date(1, 1, 10) : date(12, 1, 10)
+        for (relative, future) in [(false, true), (true, false), (true, true)] {
+            let anchor = future ? date(12, 1, 10) : date(1, 1, 10)
             let row = Reminder(title: "Edited start", cycle: .daily, firstTriggerAt: anchor, nextTriggerAt: anchor)
             let draft = Reminder(title: "Edited start", cycle: .daily, firstTriggerAt: anchor, nextTriggerAt: anchor)
             draft.recurrenceMode = relative ? "afterCompletion" : "fixed"
             context.insert(row); try context.save()
             precondition(ReminderEdits.apply(draft, to: row, expectedToken: row.actionToken, scheduleChanged: true,
                 context: context, now: now, calculate: { after, r in ReminderPolicy.nextCycle(after: after, reminder: r, calendar: cal) }))
-            precondition(row.nextTriggerAt == (relative ? date(10, 17, 10) : anchor))
+            precondition(row.nextTriggerAt == (future ? anchor : date(10, 17, 10)))
             row.status = .snoozed; row.retryStage = 2; row.lastRetryAt = now; draft.advanceDays = 12
             precondition(!ReminderEdits.scheduleChanged(draft, from: row), "Advance window must preserve runtime")
             precondition(ReminderEdits.apply(draft, to: row, expectedToken: row.actionToken,

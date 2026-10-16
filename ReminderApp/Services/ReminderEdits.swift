@@ -54,7 +54,7 @@ import SwiftData
             r.holidayAware = draft.holidayAware; r.firstTriggerAt = draft.firstTriggerAt
             // Anchor and delivery boundary have separate roles during editing.
             let boundary = max(now, draft.firstTriggerAt.addingTimeInterval(-1))
-            if r.kind == .cycle && r.recurrenceMode == "afterCompletion" && r.firstTriggerAt <= now {
+            if r.kind == .cycle && r.recurrenceMode == "afterCompletion" {
                 r.recurrenceMode = "fixed"
                 r.nextTriggerAt = calculate(boundary, r)
                 r.recurrenceMode = draft.recurrenceMode
