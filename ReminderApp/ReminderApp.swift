@@ -170,8 +170,8 @@ struct ReminderApp: App {
             guard let uuid = UUID(uuidString: action.reminderID) else { continue }
             let all = (try? Self.sharedModelContainer.mainContext.fetch(FetchDescriptor<Reminder>())) ?? []
             guard let r = all.first(where: { $0.id == uuid }), ReminderActions.accepts(r, token: action.token) else { continue }
-            if action.snooze { reminderEngine.snoozeReminder(r, afterMinutes: 15) }
-            else { reminderEngine.confirmReminder(r, source: "Widget") }
+            if action.snooze { reminderEngine.snoozeReminder(r, afterMinutes: 15, expectedToken: action.token) }
+            else { reminderEngine.confirmReminder(r, source: "Widget", expectedToken: action.token) }
         }
         // Old ID-only widget actions cannot identify the occurrence safely after upgrading.
         WidgetSnapshot.clearCompletedReminderIDs(WidgetSnapshot.completedReminderIDs())

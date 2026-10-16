@@ -173,6 +173,7 @@ struct ReminderListView: View {
 
     @ToolbarContentBuilder
     private var homeToolbar: some ToolbarContent {
+        let batchTargets = reminders.filter { selectedIDs.contains($0.id) && $0.status != .confirmed }.map { ($0, $0.actionToken) }
         ToolbarItemGroup(placement: .bottomBar) {
             if editMode.isEditing {
                 Button {
@@ -182,7 +183,7 @@ struct ReminderListView: View {
                 }
                 Spacer()
                 Button {
-                    batchComplete()
+                    batchComplete(batchTargets)
                 } label: {
                     Label("完成".localized, systemImage: "checkmark")
                 }
@@ -818,11 +819,12 @@ struct ReminderListView: View {
             if !activeReminders.isEmpty {
                 Section {
                     ForEach(activeReminders) { reminder in
+                        let token = reminder.actionToken
                         Button {
                             pendingDetailID = reminder.id
                         } label: {
                             ReminderRowView(reminder: reminder) {
-                                ReminderEngine.shared.confirmReminder(reminder)
+                                ReminderEngine.shared.confirmReminder(reminder, expectedToken: token)
                             }
                         }
                         .buttonStyle(.plain)
@@ -971,8 +973,9 @@ struct ReminderListView: View {
     /// 右滑 → 完成。已逾期的额外给一个「补打今天」入口（记录备注区分为补打卡）
     @ViewBuilder
     private func completeSwipe(for reminder: Reminder) -> some View {
+        let token = reminder.actionToken
         Button {
-            ReminderEngine.shared.confirmReminder(reminder)
+            ReminderEngine.shared.confirmReminder(reminder, expectedToken: token)
         } label: {
             Label("完成".localized, systemImage: "checkmark")
         }
@@ -980,7 +983,7 @@ struct ReminderListView: View {
 
         if reminder.status == .overdue {
             Button {
-                ReminderEngine.shared.confirmReminder(reminder, source: "补打卡")
+                ReminderEngine.shared.confirmReminder(reminder, source: "补打卡", expectedToken: token)
             } label: {
                 Label("补打今天".localized, systemImage: "checkmark.circle.badge.questionmark")
             }
@@ -1110,10 +1113,9 @@ struct ReminderListView: View {
 
     // MARK: - 批量管理（v2.1.1）
 
-    private func batchComplete() {
-        let targets = reminders.filter { selectedIDs.contains($0.id) && $0.status != .confirmed }
-        for reminder in targets {
-            ReminderEngine.shared.confirmReminder(reminder)
+    private func batchComplete(_ targets: [(Reminder, String)]) {
+        for (reminder, token) in targets {
+            ReminderEngine.shared.confirmReminder(reminder, expectedToken: token)
         }
         finishBatch()
     }
@@ -1263,6 +1265,7 @@ struct TodayTimelineView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(reminders.enumerated()), id: \.offset) { index, reminder in
+                let token = reminder.actionToken
                 HStack(alignment: .top, spacing: 8) {
                     // 左侧时间 + 时间线
                     VStack(spacing: 0) {
@@ -1282,7 +1285,7 @@ struct TodayTimelineView: View {
 
                     // v2.5.0: 发光球打卡位（替代小圆点，点按即打卡 → 彩带庆祝）
                     OrbCheckButton(done: false) {
-                        ReminderEngine.shared.confirmReminder(reminder)
+                        ReminderEngine.shared.confirmReminder(reminder, expectedToken: token)
                     }
                     .padding(.top, 10)
 

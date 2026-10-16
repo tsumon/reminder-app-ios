@@ -71,8 +71,8 @@ struct ReminderAlarmMetadata: AlarmMetadata { var reminderID: String }
         ReminderEngine.shared.configure(with: context)
         let all = (try? context.fetch(FetchDescriptor<Reminder>())) ?? []
         guard let r = all.first(where: { $0.id == id }), ReminderActions.accepts(r, token: token) else { return }
-        if snooze { ReminderEngine.shared.snoozeReminder(r, afterMinutes: 15) }
-        else { ReminderEngine.shared.confirmReminder(r, source: "AlarmKit") }
+        if snooze { ReminderEngine.shared.snoozeReminder(r, afterMinutes: 15, expectedToken: token) }
+        else { ReminderEngine.shared.confirmReminder(r, source: "AlarmKit", expectedToken: token) }
         cancel(reminderID: id)
         await ReminderEngine.shared.ensureRetryChains()
     }

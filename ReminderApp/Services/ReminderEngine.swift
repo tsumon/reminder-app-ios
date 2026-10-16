@@ -41,8 +41,8 @@ final class ReminderEngine: ObservableObject {
             }
             guard let token = item.token, ReminderActions.accepts(reminder, token: token) else { continue }
             switch item.action {
-            case .confirm: confirmReminder(reminder)
-            case .snooze:  snoozeReminder(reminder, afterMinutes: 15)
+            case .confirm: confirmReminder(reminder, expectedToken: token)
+            case .snooze:  snoozeReminder(reminder, afterMinutes: 15, expectedToken: token)
             case .dismiss: escalateRetry(reminder)
             }
             print("[ReminderEngine] 已排空通知动作: \(item.action.rawValue) \(reminder.title)")
@@ -383,26 +383,27 @@ final class ReminderEngine: ObservableObject {
 
     /// - Parameter source: 记录备注来源。默认「手动确认」；补打卡入口传「补打卡」，
     ///   统计口径仍算 .confirm（计入完成 / 连续天数），只在历史里区分是不是事后补的。
-    func confirmReminder(_ reminder: Reminder, source: String = "手动确认") {
+    @discardableResult func confirmReminder(_ reminder: Reminder, source: String = "手动确认", expectedToken: String) -> Bool {
         guard let context = modelContext,
-              ReminderActions.complete(reminder, context: context, next: calculateNextTrigger, source: source) != nil else { return }
+              ReminderActions.complete(reminder, expectedToken: expectedToken, context: context, next: calculateNextTrigger, source: source) != nil else { return false }
         HolidayAdjustStore.setNote(nil, for: reminder.id)
         NotificationCenter.default.post(name: .reminderConfirmed, object: reminder)
         Task {
             await NotificationManager.shared.removePendingNotification(for: reminder.id)
             await self.scheduleAllNotifications(for: reminder)
         }
+        return true
     }
 
-    func skipReminder(_ reminder: Reminder) {
-        guard let context = modelContext, ReminderActions.skip(reminder, context: context, next: calculateNextTrigger) else { return }
+    func skipReminder(_ reminder: Reminder, expectedToken: String) {
+        guard let context = modelContext, ReminderActions.skip(reminder, expectedToken: expectedToken, context: context, next: calculateNextTrigger) else { return }
         Task {
             await NotificationManager.shared.removePendingNotification(for: reminder.id)
             await self.scheduleAllNotifications(for: reminder)
         }
     }
-    func undoCompletion(_ reminder: Reminder) {
-        guard let context = modelContext, ReminderActions.undo(reminder, context: context) else { return }
+    func undoCompletion(_ reminder: Reminder, expectedToken: String) {
+        guard let context = modelContext, ReminderActions.undo(reminder, expectedToken: expectedToken, context: context) else { return }
         Task {
             await NotificationManager.shared.removePendingNotification(for: reminder.id)
             await self.scheduleAllNotifications(for: reminder)
@@ -438,14 +439,14 @@ final class ReminderEngine: ObservableObject {
     // MARK: - 稍后提醒
 
     /// 稍后 N 分钟（v2.1.0: 支持任意分钟数，原固定 15 分钟）
-    func snoozeReminder(_ reminder: Reminder, afterMinutes minutes: Int) {
+    @discardableResult func snoozeReminder(_ reminder: Reminder, afterMinutes minutes: Int, expectedToken: String) -> Bool {
         let now = Date()
         let snoozeAt = Calendar.current.date(byAdding: .minute, value: minutes, to: now) ?? now
-        snoozeTo(reminder, at: snoozeAt, note: "推迟\(minutes)分钟")
+        return snoozeTo(reminder, at: snoozeAt, note: "推迟\(minutes)分钟", expectedToken: expectedToken)
     }
 
     /// 稍后到明天提醒时刻（reminderHour:reminderMinute；已过则顺延一天）
-    func snoozeReminderTomorrow(_ reminder: Reminder) {
+    func snoozeReminderTomorrow(_ reminder: Reminder, expectedToken: String) {
         let cal = Calendar.current
         let now = Date()
         var comps = cal.dateComponents([.year, .month, .day], from: now)
@@ -456,16 +457,17 @@ final class ReminderEngine: ObservableObject {
         if snoozeAt <= now {
             snoozeAt = cal.date(byAdding: .day, value: 1, to: snoozeAt) ?? snoozeAt
         }
-        snoozeTo(reminder, at: snoozeAt, note: "推迟到明天")
+        snoozeTo(reminder, at: snoozeAt, note: "推迟到明天", expectedToken: expectedToken)
     }
 
-    private func snoozeTo(_ reminder: Reminder, at snoozeAt: Date, note: String) {
+    @discardableResult private func snoozeTo(_ reminder: Reminder, at snoozeAt: Date, note: String, expectedToken: String) -> Bool {
         guard let context = modelContext,
-              ReminderActions.snooze(reminder, until: snoozeAt, context: context) else { return }
+              ReminderActions.snooze(reminder, until: snoozeAt, expectedToken: expectedToken, context: context) else { return false }
         Task {
             await NotificationManager.shared.removePendingNotification(for: reminder.id)
             await self.scheduleAllNotifications(for: reminder)
         }
+        return true
     }
 
     // MARK: - 递增重试

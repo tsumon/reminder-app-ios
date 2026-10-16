@@ -14,11 +14,35 @@ import SwiftData
         precondition(ReminderActions.complete(r, expectedToken: token, now: now, context: context) != nil)
         precondition(ReminderActions.complete(r, expectedToken: token, now: now, context: context) == nil)
         precondition(r.records.filter { $0.type == "confirm" }.count == 1)
-        precondition(ReminderActions.undo(r, context: context))
+        precondition(ReminderActions.undo(r, expectedToken: r.actionToken, context: context))
         precondition(r.records.isEmpty && r.nextTriggerAt == now)
-        precondition(ReminderActions.skip(r, now: now, context: context))
+        precondition(ReminderActions.skip(r, expectedToken: r.actionToken, now: now, context: context))
         precondition(r.records.allSatisfy { $0.type != "confirm" })
-        precondition(!ReminderActions.undo(r, context: context))
+        precondition(!ReminderActions.undo(r, expectedToken: r.actionToken, context: context))
+        let early = Reminder(title: "Early fixed", cycle: .daily,
+            firstTriggerAt: now.addingTimeInterval(86400), nextTriggerAt: now.addingTimeInterval(86400))
+        context.insert(early); try context.save()
+        let earlyToken = early.actionToken
+        precondition(ReminderActions.complete(early, expectedToken: earlyToken, now: now, context: context) != nil)
+        let firstAdvanced = early.nextTriggerAt
+        precondition(firstAdvanced > now.addingTimeInterval(86400), "Early completion must advance the future occurrence")
+        precondition(ReminderActions.complete(early, expectedToken: earlyToken, now: now, context: context) == nil)
+        let nextToken = early.actionToken
+        precondition(ReminderActions.complete(early, expectedToken: nextToken, now: now, context: context) != nil,
+            "A new displayed token may complete the next occurrence early")
+        precondition(early.nextTriggerAt > firstAdvanced && early.records.filter { $0.type == "confirm" }.count == 2)
+        let relativeEarly = Reminder(title: "Early relative", cycle: .daily,
+            firstTriggerAt: now.addingTimeInterval(86400 * 10), nextTriggerAt: now.addingTimeInterval(86400 * 10))
+        relativeEarly.recurrenceMode = "afterCompletion"
+        context.insert(relativeEarly); try context.save()
+        precondition(ReminderActions.complete(relativeEarly, expectedToken: relativeEarly.actionToken, now: now, context: context) != nil)
+        precondition(Calendar.current.dateComponents([.day], from: now, to: relativeEarly.nextTriggerAt).day == 1)
+        let retryFuture = Reminder(title: "Delivered with future retry", cycle: .daily,
+            firstTriggerAt: now, nextTriggerAt: now.addingTimeInterval(86400 * 7), status: .active, retryStage: 3)
+        context.insert(retryFuture); try context.save()
+        precondition(ReminderActions.complete(retryFuture, expectedToken: retryFuture.actionToken, now: now, context: context) != nil)
+        precondition(Calendar.current.dateComponents([.day], from: now, to: retryFuture.nextTriggerAt).day == 1,
+            "A future retry timestamp must not skip the next normal fixed anchor")
         r.reminderStyle = "gentle"; r.retryStage = 1; r.status = .snoozed
         precondition(ReminderPolicy.deliveryDates(for: r, now: now.addingTimeInterval(-1)).count == 1)
         let many = (0..<80).map { i in
@@ -61,12 +85,12 @@ import SwiftData
         precondition(ReminderActions.complete(runtime, expectedToken: chainToken, now: now, context: context) != nil)
         precondition(!ReminderActions.accepts(runtime, token: chainToken))
         _ = ReminderActions.changed(runtime, context: context)
-        precondition(!ReminderActions.undo(runtime, context: context), "Edit supersedes undo")
+        precondition(!ReminderActions.undo(runtime, expectedToken: runtime.actionToken, context: context), "Edit supersedes undo")
         let once = Reminder(title: "Once", cycle: .once, firstTriggerAt: now, nextTriggerAt: now)
         context.insert(once); try context.save()
-        precondition(!ReminderActions.skip(once, context: context))
-        precondition(ReminderActions.complete(once, now: now, context: context) != nil && once.status == .confirmed)
-        precondition(ReminderActions.complete(once, now: now, context: context) == nil)
+        precondition(!ReminderActions.skip(once, expectedToken: once.actionToken, context: context))
+        precondition(ReminderActions.complete(once, expectedToken: once.actionToken, now: now, context: context) != nil && once.status == .confirmed)
+        precondition(ReminderActions.complete(once, expectedToken: once.actionToken, now: now, context: context) == nil)
         let frozen = SyncRevisionSnapshot(reminders: [runtime])
         let concurrentEdit = Task { @MainActor in
             runtime.title = "Edit during upload"; _ = ReminderActions.changed(runtime, context: context)
