@@ -2,6 +2,21 @@ import Foundation
 import SwiftData
 
 @MainActor enum ReminderEdits {
+    /// The editable lower boundary is distinct from its derived first matching rule occurrence.
+    struct RuleStartInput: Equatable {
+        let anchor: Date
+        init(date: Date, time: Date, calendar: Calendar = .current) {
+            var parts = calendar.dateComponents([.year, .month, .day], from: date)
+            let clock = calendar.dateComponents([.hour, .minute], from: time)
+            parts.hour = clock.hour; parts.minute = clock.minute
+            anchor = calendar.date(from: parts) ?? date
+        }
+    }
+    static func ruleFirstTrigger(start: RuleStartInput, period: RulePeriod, week: RuleWeek,
+                                 weekday: RuleWeekday, hour: Int, minute: Int, calendar: Calendar = .current) -> Date {
+        ReminderPolicy.nextRuleDate(period: period, week: week.rawValue, weekday: weekday.rawValue,
+            hour: hour, minute: minute, from: start.anchor, calendar: calendar)
+    }
     static func cycleAnchor(date: Date, time: Date, editing: Bool, now: Date = Date(), calendar: Calendar = .current) -> Date {
         var parts = calendar.dateComponents([.year, .month, .day], from: date)
         let clock = calendar.dateComponents([.hour, .minute], from: time)
@@ -9,7 +24,8 @@ import SwiftData
         let anchor = calendar.date(from: parts) ?? date
         return editing || anchor > now ? anchor : calendar.date(byAdding: .minute, value: 1, to: now) ?? now.addingTimeInterval(60)
     }
-    static func scheduleChanged(_ draft: Reminder, from r: Reminder) -> Bool {
+    static func scheduleChanged(_ draft: Reminder, from r: Reminder,
+                                ruleStart: RuleStartInput? = nil, originalRuleStart: RuleStartInput? = nil) -> Bool {
         if draft.kind != r.kind || draft.holidayAware != r.holidayAware { return true }
         switch r.kind {
         case .cycle:
@@ -18,7 +34,8 @@ import SwiftData
                 draft.recurrenceMode != r.recurrenceMode ||
                 Calendar.current.dateComponents(fields, from: draft.firstTriggerAt) != Calendar.current.dateComponents(fields, from: r.firstTriggerAt)
         case .rule:
-            return draft.rulePeriod != r.rulePeriod || draft.ruleWeek != r.ruleWeek || draft.ruleWeekday != r.ruleWeekday ||
+            let startEdited = ruleStart != nil && originalRuleStart != nil && ruleStart != originalRuleStart
+            return startEdited || draft.rulePeriod != r.rulePeriod || draft.ruleWeek != r.ruleWeek || draft.ruleWeekday != r.ruleWeekday ||
                 draft.reminderHour != r.reminderHour || draft.reminderMinute != r.reminderMinute
         case .date:
             return draft.dateType != r.dateType || draft.targetMonth != r.targetMonth || draft.targetDay != r.targetDay ||

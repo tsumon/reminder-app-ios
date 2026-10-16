@@ -22,18 +22,50 @@ import SwiftData
             if cycle == .monthly { precondition(old.nextTriggerAt == date(10, 31, 10)) }
             precondition(!ReminderPolicy.deliveryDates(for: old, now: now).isEmpty)
         }
-        for future in [false, true] {
-            let anchor = future ? date(12, 1, 10) : date(1, 1, 10)
-            let rule = Reminder(title: "Rule edit", kind: .rule, reminderHour: 10, rulePeriod: .monthly,
-                ruleWeek: .w2, ruleWeekday: .tue, firstTriggerAt: anchor, nextTriggerAt: anchor)
+        // Use the form's original inputs, derived draft mapping and real predicate together.
+        // A derived first occurrence alone cannot tell whether the start control was edited.
+        for (oldStart, selectedStart, expectedFirst, expectedNext, hour) in [
+            (date(1, 13), date(12, 1), date(12, 8), date(12, 8), 9),
+            (date(12, 8), date(10, 1), date(10, 13), date(11, 10), 9),
+            (date(1, 13), date(1, 13), date(1, 13, 10), date(11, 10, 10), 10)] {
+            let rule = Reminder(title: "Rule edit", kind: .rule, reminderHour: 9, rulePeriod: .monthly,
+                ruleWeek: .w2, ruleWeekday: .tue, firstTriggerAt: oldStart, nextTriggerAt: date(11, 10))
             context.insert(rule); try context.save()
-            let draft = Reminder(title: "Rule edit", kind: .rule, reminderHour: 10, rulePeriod: .monthly,
-                ruleWeek: .w2, ruleWeekday: .tue, firstTriggerAt: anchor, nextTriggerAt: anchor)
-            precondition(ReminderEdits.apply(draft, to: rule, expectedToken: rule.actionToken, scheduleChanged: true,
+            let original = ReminderEdits.RuleStartInput(date: oldStart, time: oldStart, calendar: cal)
+            let selected = ReminderEdits.RuleStartInput(date: selectedStart, time: oldStart, calendar: cal)
+            let mapped = ReminderEdits.ruleFirstTrigger(start: selected, period: .monthly, week: .w2,
+                weekday: .tue, hour: hour, minute: 0, calendar: cal)
+            let draft = Reminder(title: "Rule edit", kind: .rule, reminderHour: hour, rulePeriod: .monthly,
+                ruleWeek: .w2, ruleWeekday: .tue, firstTriggerAt: mapped, nextTriggerAt: mapped)
+            let changed = ReminderEdits.scheduleChanged(draft, from: rule, ruleStart: selected, originalRuleStart: original)
+            precondition(changed, "Actual form predicate must detect the edited rule start/clock")
+            precondition(ReminderEdits.apply(draft, to: rule, expectedToken: rule.actionToken, scheduleChanged: changed,
                 context: context, now: now, calculate: { after, r in ReminderPolicy.nextRuleDate(period: r.rulePeriod,
                     week: r.ruleWeek.rawValue, weekday: r.ruleWeekday.rawValue, hour: r.reminderHour, minute: r.reminderMinute, from: after, calendar: cal) }))
-            precondition(rule.nextTriggerAt > now && (!future || rule.nextTriggerAt >= anchor))
+            precondition(rule.firstTriggerAt == expectedFirst && rule.nextTriggerAt == expectedNext)
             precondition(!ReminderPolicy.deliveryDates(for: rule, now: now).isEmpty)
+        }
+        for advanceOnly in [false, true] {
+            let oldStart = date(1, 13), due = date(11, 11), retry = date(11, 10)
+            let rule = Reminder(title: "Preserve rule", kind: .rule, reminderHour: 9, rulePeriod: .monthly,
+                ruleWeek: .w2, ruleWeekday: .tue, firstTriggerAt: oldStart, nextTriggerAt: due, status: .snoozed, retryStage: 2)
+            rule.lastRetryAt = retry
+            context.insert(rule); try context.save()
+            let original = ReminderEdits.RuleStartInput(date: oldStart, time: oldStart, calendar: cal)
+            let untouched = ReminderEdits.RuleStartInput(date: oldStart, time: oldStart, calendar: cal)
+            let mapped = ReminderEdits.ruleFirstTrigger(start: untouched, period: .monthly, week: .w2,
+                weekday: .tue, hour: 9, minute: 0, calendar: cal)
+            precondition(mapped != oldStart, "Untouched form still derives a different next rule date")
+            let draft = Reminder(title: advanceOnly ? rule.title : "Metadata renamed", note: advanceOnly ? "" : "Edited note",
+                kind: .rule, advanceDays: advanceOnly ? 7 : rule.advanceDays, reminderHour: 9, rulePeriod: .monthly,
+                ruleWeek: .w2, ruleWeekday: .tue, firstTriggerAt: mapped, nextTriggerAt: mapped)
+            let changed = ReminderEdits.scheduleChanged(draft, from: rule, ruleStart: untouched, originalRuleStart: original)
+            precondition(!changed, "Untouched start must preserve snooze/retries for metadata or advance-only form edits")
+            precondition(ReminderEdits.apply(draft, to: rule, expectedToken: rule.actionToken, scheduleChanged: changed,
+                context: context, now: now, calculate: { _, _ in fatalError("Untouched rule start must not recalculate") }))
+            precondition(rule.firstTriggerAt == oldStart && rule.nextTriggerAt == due && rule.status == .snoozed &&
+                rule.retryStage == 2 && rule.lastRetryAt == retry)
+            precondition(advanceOnly ? rule.advanceDays == 7 : rule.title == "Metadata renamed" && rule.note == "Edited note")
         }
         for (relative, future) in [(false, true), (true, false), (true, true)] {
             let anchor = future ? date(12, 1, 10) : date(1, 1, 10)

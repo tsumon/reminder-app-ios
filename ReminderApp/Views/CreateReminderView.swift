@@ -11,6 +11,7 @@ struct CreateReminderView: View {
     var onCreated: ((Reminder) -> Void)? = nil
     @State private var expectedToken = ""
     @State private var initialSchedule = ""
+    @State private var initialRuleStart: ReminderEdits.RuleStartInput?
     @State private var saving = false
     @State private var didSave = false
     @State private var recurrenceMode = "fixed"
@@ -590,6 +591,7 @@ struct CreateReminderView: View {
         defer { if !didSave { saving = false } }
         let calendar = Calendar.current
 
+        let ruleStart = ReminderEdits.RuleStartInput(date: triggerDate, time: triggerTime, calendar: calendar)
         let reminder: Reminder
 
         switch kind {
@@ -629,25 +631,8 @@ struct CreateReminderView: View {
 
         case .rule:
             // 用户选择的首次时间作为锚点，取锚点之后的下一个规则日
-            let dateComponents = calendar.dateComponents([.year, .month, .day], from: triggerDate)
-            let timeComponents = calendar.dateComponents([.hour, .minute], from: triggerTime)
-            var merged = DateComponents()
-            merged.year = dateComponents.year
-            merged.month = dateComponents.month
-            merged.day = dateComponents.day
-            merged.hour = timeComponents.hour
-            merged.minute = timeComponents.minute
-            let anchor = calendar.date(from: merged) ?? triggerDate
-
-            let engine = ReminderEngine.shared
-            let firstTrigger = engine.nextRuleDate(
-                period: rulePeriod,
-                week: ruleWeek.rawValue,
-                weekday: ruleWeekday.rawValue,
-                hour: reminderHour,
-                minute: reminderMinute,
-                from: anchor
-            )
+            let firstTrigger = ReminderEdits.ruleFirstTrigger(start: ruleStart, period: rulePeriod,
+                week: ruleWeek, weekday: ruleWeekday, hour: reminderHour, minute: reminderMinute, calendar: calendar)
             reminder = Reminder(
                 title: title.trimmingCharacters(in: .whitespaces),
                 note: note.trimmingCharacters(in: .whitespaces),
@@ -745,7 +730,8 @@ struct CreateReminderView: View {
         reminder.useAlarmKit = useAlarmKit; reminder.policyMigrated = true
         if let editing {
             guard ReminderEdits.apply(reminder, to: editing, expectedToken: expectedToken,
-                scheduleChanged: ReminderEdits.scheduleChanged(reminder, from: editing), context: modelContext,
+                scheduleChanged: ReminderEdits.scheduleChanged(reminder, from: editing,
+                    ruleStart: ruleStart, originalRuleStart: initialRuleStart), context: modelContext,
                 calculate: ReminderEngine.shared.calculateNextTrigger) else {
                 errorMessage = "提醒已被其他操作修改，请关闭后重新编辑"; return
             }
@@ -794,6 +780,7 @@ struct CreateReminderView: View {
             selectedHolidayID = r.holidayID ?? "chunjie"; rulePeriod = r.rulePeriod; ruleWeek = r.ruleWeek; ruleWeekday = r.ruleWeekday
             priority = r.priority; holidayAware = r.holidayAware
             triggerDate = r.firstTriggerAt; triggerTime = r.firstTriggerAt
+            initialRuleStart = ReminderEdits.RuleStartInput(date: triggerDate, time: triggerTime)
             recurrenceMode = r.recurrenceMode; reminderStyle = r.reminderStyle
             intervalsText = r.policy.intervals.map(String.init).joined(separator: ","); maxAttempts = r.policy.attempts
             useAlarmKit = r.useAlarmKit; quietEnabled = r.quietStartMinute != nil
