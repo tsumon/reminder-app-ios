@@ -497,7 +497,16 @@ final class ReminderEngine: ObservableObject {
 
     func ensureRetryChains() async {
         replanRequested = true
-        guard !replanning, let context = modelContext else { return }
+        guard let context = modelContext else { return }
+        if replanning {
+            // Publish a changed date set while an older AlarmManager.schedule call is suspended.
+            // Its production reconciler will cancel that old ID again when the await returns.
+            if #available(iOS 26.0, *) {
+                let current = (try? context.fetch(FetchDescriptor<Reminder>())) ?? []
+                ImportantAlarmService.shared.reconcile(desired: ReminderPolicy.allocate(current, limit: Int.max))
+            }
+            return
+        }
         replanning = true
         defer { replanning = false }
         while replanRequested {
@@ -513,8 +522,7 @@ final class ReminderEngine: ObservableObject {
             let all = ReminderPolicy.allocate(reminders, now: now, limit: Int.max)
             let reserved = await NotificationManager.shared.unmanagedPendingCount()
             if generation != SyncStore.localVersion { replanRequested = true; continue }
-            let tokens = Dictionary(uniqueKeysWithValues: reminders.map { ($0.id.uuidString, $0.actionToken) })
-            if #available(iOS 26.0, *) { await ImportantAlarmService.shared.removeStale(validTokens: tokens) }
+            if #available(iOS 26.0, *) { ImportantAlarmService.shared.reconcile(desired: all) }
             var alarmCovered = Set<String>()
             if #available(iOS 26.0, *) {
                 for delivery in all where delivery.important {

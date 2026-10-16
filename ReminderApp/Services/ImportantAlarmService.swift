@@ -10,14 +10,17 @@ struct ReminderAlarmMetadata: AlarmMetadata { var reminderID: String }
 @available(iOS 26.0, *)
 @MainActor final class ImportantAlarmService: ObservableObject {
     static let shared = ImportantAlarmService()
-    struct Entry: Codable { let id: UUID; let reminderID: String; let token: String; let date: Date }
     private let key = "reminder_alarm_entries_v1"
     @Published private(set) var alarmCount = 0
     private var observer: Task<Void, Never>?
-    private var entries: [Entry] {
-        get { (UserDefaults.standard.data(forKey: key)).flatMap { try? JSONDecoder().decode([Entry].self, from: $0) } ?? [] }
-        set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: key) }
-    }
+    private lazy var reconciler: AlarmDeliveryReconciler = {
+        let entries = UserDefaults.standard.data(forKey: key).flatMap {
+            try? JSONDecoder().decode([AlarmDeliveryReconciler.Entry].self, from: $0)
+        } ?? []
+        return AlarmDeliveryReconciler(entries: entries, persist: { [key = self.key] entries in
+            UserDefaults.standard.set(try? JSONEncoder().encode(entries), forKey: key)
+        })
+    }()
     private init() {
         observer = Task { [weak self] in
             for await alarms in AlarmManager.shared.alarmUpdates { self?.alarmCount = alarms.count }
@@ -36,11 +39,22 @@ struct ReminderAlarmMetadata: AlarmMetadata { var reminderID: String }
         if authorized { return true }
         return (try? await AlarmManager.shared.requestAuthorization()) == .authorized
     }
+    func reconcile(desired: [ReminderPolicy.Delivery]) {
+        reconciler.reconcile(desired: authorized ? desired : [], cancel: { id in
+            try? AlarmManager.shared.cancel(id: id)
+        })
+    }
     func schedule(_ delivery: ReminderPolicy.Delivery) async -> Bool {
         guard authorized, delivery.kind != .advance else { return false }
-        if let entry = entries.first(where: { $0.reminderID == delivery.reminderID.uuidString && $0.token == delivery.token && $0.date == delivery.date }),
-           (try? AlarmManager.shared.alarms.contains { $0.id == entry.id }) == true { return true }
-        let id = UUID()
+        return await reconciler.schedule(delivery, exists: { id in
+            (try? AlarmManager.shared.alarms.contains { $0.id == id }) == true
+        }, install: { id, current in
+            try await self.install(current, id: id)
+        }, cancel: { id in
+            try? AlarmManager.shared.cancel(id: id)
+        })
+    }
+    private func install(_ delivery: ReminderPolicy.Delivery, id: UUID) async throws {
         let alert = AlarmPresentation.Alert(title: LocalizedStringResource(stringLiteral: delivery.title),
             stopButton: AlarmButton(text: "完成", textColor: .white, systemImageName: "checkmark"),
             secondaryButton: AlarmButton(text: "稍后15分钟", textColor: .white, systemImageName: "clock"),
@@ -50,20 +64,12 @@ struct ReminderAlarmMetadata: AlarmMetadata { var reminderID: String }
         let config = AlarmManager.AlarmConfiguration(schedule: .fixed(delivery.date), attributes: attributes,
             stopIntent: CompleteImportantReminderIntent(reminderID: delivery.reminderID.uuidString, token: delivery.token),
             secondaryIntent: SnoozeImportantReminderIntent(reminderID: delivery.reminderID.uuidString, token: delivery.token))
-        do {
-            _ = try await AlarmManager.shared.schedule(id: id, configuration: config)
-            entries.append(Entry(id: id, reminderID: delivery.reminderID.uuidString, token: delivery.token, date: delivery.date))
-            return true
-        } catch { print("[AlarmKit] fallback: \(error)"); return false }
+        _ = try await AlarmManager.shared.schedule(id: id, configuration: config)
     }
     func cancel(reminderID: UUID) {
-        for entry in entries where entry.reminderID == reminderID.uuidString { try? AlarmManager.shared.cancel(id: entry.id) }
-        entries.removeAll { $0.reminderID == reminderID.uuidString }
-    }
-    func removeStale(validTokens: [String: String]) async {
-        let stale = entries.filter { validTokens[$0.reminderID] != $0.token || !authorized }
-        for entry in stale { try? AlarmManager.shared.cancel(id: entry.id) }
-        let ids = Set(stale.map(\.id)); entries.removeAll { ids.contains($0.id) }
+        reconciler.cancel(reminderID: reminderID, systemCancel: { id in
+            try? AlarmManager.shared.cancel(id: id)
+        })
     }
     func act(reminderID: String, token: String, snooze: Bool) async {
         guard let id = UUID(uuidString: reminderID) else { return }

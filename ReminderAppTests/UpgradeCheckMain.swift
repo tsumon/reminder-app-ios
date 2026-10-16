@@ -125,14 +125,55 @@ import SwiftData
         let holidayNow = Calendar.current.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 9))!
         let holidayExpected = Calendar.current.date(from: DateComponents(year: 2026, month: 9, day: 30, hour: 9))!
         let holiday = Reminder(title: "Holiday completion", cycle: .weekly, firstTriggerAt: holidayNow, nextTriggerAt: holidayNow)
+        holiday.reminderStyle = "important"; holiday.useAlarmKit = true
+        holiday.retryIntervalsMinutes = [5, 10]; holiday.maxReminderAttempts = 3
         context.insert(holiday); try context.save()
         HolidayNoteStore.setNote("Old occurrence note", for: holiday.id)
         precondition(ReminderActions.complete(holiday, expectedToken: holiday.actionToken, now: holidayNow, context: context) != nil)
         let holidayToken = holiday.actionToken; let nominalHoliday = holiday.nextTriggerAt
+        let alarmAdapter = AlarmAdapterProbe()
+        let alarmReconciler = AlarmDeliveryReconciler()
+        let nominalAlarms = ReminderPolicy.allocate([holiday], now: holidayNow, limit: Int.max)
+        alarmReconciler.reconcile(desired: nominalAlarms, cancel: alarmAdapter.cancel)
+        for delivery in nominalAlarms {
+            let installed = await alarmReconciler.schedule(delivery, exists: alarmAdapter.exists,
+                install: alarmAdapter.install, cancel: alarmAdapter.cancel)
+            precondition(installed)
+        }
+        let nominalIDs = Set(alarmAdapter.installed.keys)
+        precondition(nominalIDs.count == 3)
         let adjusted = await HolidayPrecheck.adjust(holiday, expectedToken: holidayToken, expectedDue: nominalHoliday,
             now: holidayNow, context: context, refresh: { _ in })
         precondition(adjusted && holiday.nextTriggerAt == holidayExpected && holiday.firstTriggerAt == holidayNow)
         precondition(holiday.actionToken == holidayToken && holiday.undoCompletion != nil)
+        let adjustedAlarms = ReminderPolicy.allocate([holiday], now: holidayNow, limit: Int.max)
+        alarmReconciler.reconcile(desired: adjustedAlarms, cancel: alarmAdapter.cancel)
+        for delivery in adjustedAlarms {
+            let installed = await alarmReconciler.schedule(delivery, exists: alarmAdapter.exists,
+                install: alarmAdapter.install, cancel: alarmAdapter.cancel)
+            precondition(installed)
+        }
+        precondition(nominalIDs.isSubset(of: alarmAdapter.cancelled))
+        precondition(nominalIDs.isDisjoint(with: Set(alarmAdapter.installed.keys)))
+        let adjustedKeys = Set(adjustedAlarms.map(AlarmDeliveryReconciler.Key.init))
+        precondition(Set(alarmAdapter.installed.values) == adjustedKeys && alarmAdapter.installed.count == 3)
+        precondition(Set(alarmReconciler.entries.map(\.key)) == adjustedKeys)
+        let inFlight = AlarmDeliveryReconciler()
+        let delayedAdapter = AlarmAdapterProbe()
+        inFlight.reconcile(desired: nominalAlarms, cancel: delayedAdapter.cancel)
+        let staleInstall = await inFlight.schedule(nominalAlarms[0], exists: delayedAdapter.exists, install: { id, delivery in
+            inFlight.reconcile(desired: adjustedAlarms, cancel: delayedAdapter.cancel)
+            await Task.yield()
+            // The system finishes installing AFTER its early cancellation attempt.
+            try await delayedAdapter.install(id, delivery)
+        }, cancel: delayedAdapter.cancel)
+        precondition(!staleInstall && delayedAdapter.installed.isEmpty && delayedAdapter.cancelled.count == 1)
+        for delivery in adjustedAlarms {
+            let installed = await inFlight.schedule(delivery, exists: delayedAdapter.exists,
+                install: delayedAdapter.install, cancel: delayedAdapter.cancel)
+            precondition(installed)
+        }
+        precondition(Set(delayedAdapter.installed.values) == adjustedKeys)
         precondition(ReminderActions.undo(holiday, expectedToken: holidayToken, context: context))
         precondition(holiday.nextTriggerAt == holidayNow && holiday.records.isEmpty && HolidayNoteStore.note(for: holiday.id) == "Old occurrence note")
         HolidayNoteStore.setNote(nil, for: holiday.id)
@@ -210,4 +251,15 @@ import SwiftData
         UserDefaults.standard.removeObject(forKey: "quiet_hours_\(legacyID.uuidString)_end")
         print("Upgrade policy/actions/global allocation/v3 checks passed")
     }
+}
+
+/// Only the OS effects are substituted; all desired-set/cancellation/await logic is production code.
+@MainActor final class AlarmAdapterProbe {
+    var installed: [UUID: AlarmDeliveryReconciler.Key] = [:]
+    var cancelled = Set<UUID>()
+    func exists(_ id: UUID) -> Bool { installed[id] != nil }
+    func install(_ id: UUID, _ delivery: ReminderPolicy.Delivery) async throws {
+        installed[id] = AlarmDeliveryReconciler.Key(delivery)
+    }
+    func cancel(_ id: UUID) { cancelled.insert(id); installed.removeValue(forKey: id) }
 }

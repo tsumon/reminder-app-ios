@@ -129,6 +129,21 @@ jobs:
           set -euo pipefail
           python3 ReminderAppUITests/MockAIServer.py > "$RUNNER_TEMP/reminder-mock.log" 2>&1 &
           python3 - <<'PY'
+          import json, time, urllib.request
+          for attempt in range(30):
+              try:
+                  with urllib.request.urlopen('http://127.0.0.1:8898/v1/models', timeout=2) as response:
+                      models=json.load(response)
+                  assert any(item['id']=='llama3.2' for item in models['data'])
+                  with urllib.request.urlopen('http://127.0.0.1:8899/state', timeout=2) as response:
+                      assert 'entries' in json.load(response)
+                  print('Both model8898 and scripted AI/WebDAV8899 fixtures ready')
+                  break
+              except Exception:
+                  if attempt == 29: raise
+                  time.sleep(1)
+          PY
+          python3 - <<'PY'
           import json, subprocess
           devices=json.loads(subprocess.check_output(['xcrun','simctl','list','devices','available','-j']))['devices']
           chosen=next((d['udid'] for group in devices.values() for d in group if 'iPhone' in d['name']),None)

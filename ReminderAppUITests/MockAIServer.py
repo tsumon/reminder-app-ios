@@ -12,6 +12,7 @@
   req4: 流式   → 文本「已按农历创建：mama生日（农历） 2月11日 9:00」
 """
 import json
+import threading
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -143,6 +144,25 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.flush()
 
 
+class ModelsHandler(Handler):
+    """Independent fixture: model/ping tests must not consume port8899's ask_user script."""
+    def do_GET(self):
+        if self.path.rstrip("/") == "/v1/models":
+            self._json({"object": "list", "data": [
+                {"id": "llama3.2", "object": "model"},
+                {"id": "qwen2.5", "object": "model"},
+            ]})
+        else:
+            self.send_error(404)
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        self.rfile.read(length)
+        self._json(resp_text("Mock model connection successful"))
+
+
 if __name__ == "__main__":
-    print("mock AI listening on 127.0.0.1:%d" % PORT)
+    models = ThreadingHTTPServer(("127.0.0.1", 8898), ModelsHandler)
+    threading.Thread(target=models.serve_forever, daemon=True).start()
+    print("mock models8898 and scripted AI/WebDAV8899 ready", flush=True)
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

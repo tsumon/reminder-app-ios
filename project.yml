@@ -196,6 +196,7 @@ targets:
       - path: ReminderApp/Services/HolidayService.swift
       - path: ReminderApp/Services/LunarCalendar.swift
       - path: ReminderApp/Services/ReminderActions.swift
+      - path: ReminderApp/Services/AlarmDeliveryReconciler.swift
       - path: ReminderApp/Services/HolidayPrecheck.swift
       - path: ReminderApp/Services/HolidayRemoteService.swift
       - path: ReminderApp/Services/ReminderEdits.swift
