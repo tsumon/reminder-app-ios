@@ -47,6 +47,8 @@ struct DiagnosticsView: View {
                     Task {
                         guard await NotificationManager.shared.requestAuthorization() else { testResult = "请在系统设置中允许通知"; return }
                         let content = UNMutableNotificationContent(); content.title = "提醒自检"; content.body = "测试通知已送达"; content.sound = .default
+                        await NotificationManager.shared.reserveUnmanaged(identifier: "permission-test")
+                        defer { NotificationManager.shared.releaseUnmanagedReservation(identifier: "permission-test") }
                         do {
                             try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "permission-test", content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 10, repeats: false)))
                             testResult = "已安排，锁屏等待10秒检查声音和横幅"

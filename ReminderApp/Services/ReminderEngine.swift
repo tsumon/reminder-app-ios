@@ -624,8 +624,11 @@ final class ReminderEngine: ObservableObject {
             let m = cal.component(.month, from: occ)
             let d = cal.component(.day, from: occ)
 
-            // 确保当年节假日数据就绪
+            // Fetch may suspend while the user completes/edits/syncs this reminder.
+            let token = r.actionToken
             await HolidayRemoteService.refresh(year: y)
+            guard ReminderActions.accepts(r, token: token), r.nextTriggerAt == occ,
+                  r.status != .confirmed, r.status != .overdue else { continue }
 
             guard let st = HolidayRemoteService.status(year: y, month: m, day: d),
                   st.isHoliday else { continue }
@@ -645,6 +648,7 @@ final class ReminderEngine: ObservableObject {
             let note = Localized("因%@放假，已前移至假期前最近工作日（%@）", st.name, fmt.string(from: shiftedAt))
 
             r.nextTriggerAt = shiftedAt
+            r.actionRevision += 1; r.undoCompletion = nil
             r.updatedAt = Date()
             HolidayAdjustStore.setNote(note, for: r.id)
             try? context.save()

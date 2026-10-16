@@ -97,9 +97,15 @@ final class NotificationManager: NSObject, ObservableObject {
 
     /// 真正添加 D-day 通知（不含移除逻辑，供 scheduleAllNotifications 在统一移除后调用）
     /// 排 D-day 通知；at 缺省用 reminder.nextTriggerAt（v2.1.1: 勿扰时段顺延后的触发时间）
+    private var reservedUnmanaged = Set<String>()
+    func reserveUnmanaged(identifier: String) async {
+        reservedUnmanaged.insert(identifier)
+        await ReminderEngine.shared.ensureRetryChains()
+    }
+    func releaseUnmanagedReservation(identifier: String) { reservedUnmanaged.remove(identifier) }
     func unmanagedPendingCount() async -> Int {
         let requests = await UNUserNotificationCenter.current().pendingNotificationRequests()
-        return requests.filter { $0.content.userInfo["reminderID"] == nil }.count
+        return Set(requests.filter { $0.content.userInfo["reminderID"] == nil }.map(\.identifier)).union(reservedUnmanaged).count
     }
     func pendingNotificationCount() async -> Int { await UNUserNotificationCenter.current().pendingNotificationRequests().count }
     func removeManagedRequests() async {
