@@ -10,6 +10,9 @@ struct DiagnosticsView: View {
 
     @State private var authStatus = "检查中…"
     @State private var pendingCount = -1
+    @State private var alarmStatus = "iOS 26+ 可用"
+    @State private var testResult = ""
+    @State private var coverage = ""
     @State private var checkedAt = Date()
 
     var body: some View {
@@ -29,11 +32,39 @@ struct DiagnosticsView: View {
                 }
             }
 
+            Section("权限与提醒自检".localized) {
+                Text("普通通知受静音、专注模式和系统设置影响。iOS 26+ 可为重要事项单独启用 AlarmKit。".localized)
+                Text("AlarmKit：\(alarmStatus)")
+                Text(coverage)
+                Button("申请通知权限".localized) { Task { _ = await NotificationManager.shared.requestAuthorization(); refresh() } }
+                Button("允许重要提醒使用 AlarmKit".localized) {
+                    Task {
+                        if #available(iOS 26.0, *) { _ = await ImportantAlarmService.shared.requestAuthorization(); await ReminderEngine.shared.ensureRetryChains() }
+                        refresh()
+                    }
+                }
+                Button("发送10秒测试提醒".localized) {
+                    Task {
+                        guard await NotificationManager.shared.requestAuthorization() else { testResult = "请在系统设置中允许通知"; return }
+                        let content = UNMutableNotificationContent(); content.title = "提醒自检"; content.body = "测试通知已送达"; content.sound = .default
+                        await NotificationManager.shared.reserveUnmanaged(identifier: "permission-test")
+                        defer { NotificationManager.shared.releaseUnmanagedReservation(identifier: "permission-test") }
+                        do {
+                            try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "permission-test", content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 10, repeats: false)))
+                            testResult = "已安排，锁屏等待10秒检查声音和横幅"
+                        } catch { testResult = error.localizedDescription }
+                    }
+                }
+                if !testResult.isEmpty { Text(testResult).font(.caption) }
+            }
+            Section("隐私".localized) {
+                Text("提醒和历史保存在此设备。使用 AI 时，对话与相关提醒会发送到你配置的服务地址；请检查供应商隐私政策。API 密钥和 WebDAV 密码保存在 Keychain。启用 WebDAV 后，备份会上传到你选择的服务器。附近分享和导出的备份也包含提醒内容，请只分享给信任的人。删除提醒暂不跨设备同步。".localized)
+            }
             Section("数据".localized) {
                 row("提醒总数".localized, "\(reminders.count)")
                 row("未完成".localized, "\(reminders.filter { $0.status != .confirmed }.count)")
                 row("已停用".localized, "\(reminders.filter { !$0.isEnabled }.count)")
-                row("关键提醒".localized, "\(reminders.filter { ReminderEngine.CriticalStore.isCritical($0.id) }.count)")
+                row("关键提醒".localized, "\(reminders.filter { $0.reminderStyle == "important" }.count)")
             }
 
             Section("同步".localized) {
@@ -150,6 +181,11 @@ struct DiagnosticsView: View {
     private func refresh() {
         checkedAt = Date()
         Task {
+            ReminderEngine.shared.configure(with: modelContext)
+            await ReminderEngine.shared.ensureRetryChains()
+            let engine = ReminderEngine.shared
+            coverage = "已覆盖下次提醒 \(engine.scheduledPrimaryCount)/\(engine.eligiblePrimaryCount)。系统最多保留64条待发通知（含重试和预告）；超过覆盖范围需重新打开 App 补排，不能保证长期离线全量送达。"
+            if #available(iOS 26.0, *) { alarmStatus = ImportantAlarmService.shared.authorizationLabel }
             let settings = await UNUserNotificationCenter.current().notificationSettings()
             switch settings.authorizationStatus {
             case .authorized, .provisional, .ephemeral:

@@ -876,20 +876,22 @@ struct AIChatView: View {
         let keyword = (args["title_keyword"] as? String ?? "").lowercased()
         // 空关键词 contains("") 恒 true 会命中第一条无关提醒 → 必须守卫
         guard !keyword.isEmpty else { return "请指定要确认的提醒标题（如：确认「交房租」）。" }
-        guard let match = await MainActor.run(body: { reminders.first(where: { $0.title.lowercased().contains(keyword) }) })
+        guard let (match, expectedToken) = await MainActor.run(body: { reminders.first(where: { $0.title.lowercased().contains(keyword) }).map { ($0, $0.actionToken) } })
         else { return Localized("未找到包含「%@」的提醒", keyword) }
 
-        await MainActor.run { ReminderEngine.shared.confirmReminder(match) }
+        let changed = await MainActor.run { ReminderEngine.shared.confirmReminder(match, expectedToken: expectedToken) }
+        guard changed else { return "提醒已被其他操作修改，请重新确认" }
         return Localized("已确认「%@」，下次提醒时间已更新。", match.title)
     }
 
     private func handleSnooze(args: [String: Any]) async -> String {
         let keyword = (args["title_keyword"] as? String ?? "").lowercased()
         guard !keyword.isEmpty else { return "请指定要推迟的提醒标题（如：推迟「交房租」）。" }
-        guard let match = await MainActor.run(body: { reminders.first(where: { $0.title.lowercased().contains(keyword) }) })
+        guard let (match, expectedToken) = await MainActor.run(body: { reminders.first(where: { $0.title.lowercased().contains(keyword) }).map { ($0, $0.actionToken) } })
         else { return Localized("未找到包含「%@」的提醒", keyword) }
 
-        await MainActor.run { ReminderEngine.shared.snoozeReminder(match, afterMinutes: 15) }
+        let changed = await MainActor.run { ReminderEngine.shared.snoozeReminder(match, afterMinutes: 15, expectedToken: expectedToken) }
+        guard changed else { return "提醒已被其他操作修改，请重新确认" }
         return Localized("已推迟「%@」，15 分钟后再次提醒。", match.title)
     }
 
@@ -919,7 +921,7 @@ struct AIChatView: View {
         let cycleRaw = args["cycle"] as? String
         let customDaysRaw = (args["custom_days"] as? Int) ?? (args["custom_days"] as? Double).map(Int.init)
 
-        guard let match = await MainActor.run(body: { reminders.first(where: { $0.title.lowercased().contains(keyword) }) })
+        guard let (match, expectedToken) = await MainActor.run(body: { reminders.first(where: { $0.title.lowercased().contains(keyword) }).map { ($0, $0.actionToken) } })
         else { return Localized("未找到包含「%@」的提醒", keyword) }
 
         // C3: 用「生效后的周期」判断，而非「本次传入的周期」——
@@ -944,7 +946,17 @@ struct AIChatView: View {
             }
         }
 
-        let updatedTitle = await MainActor.run {
+        let scheduleKeys = ["cycle", "custom_days", "rule_period", "rule_week", "rule_weekday", "date_type", "target_month", "target_day", "holiday_name", "reminder_hour", "reminder_minute", "weekday", "holiday_aware"]
+        let scheduleChanged = scheduleKeys.contains { args[$0] != nil }
+        let updatedTitle: String? = await MainActor.run {
+            guard match.actionToken == expectedToken else { return nil }
+            if !scheduleChanged {
+                let advance = (args["advance_days"] as? Int) ?? (args["advance_days"] as? Double).map(Int.init)
+                guard ReminderEdits.applyMetadata(to: match, expectedToken: expectedToken,
+                    title: args["new_title"] as? String, note: args["note"] as? String,
+                    advanceDays: advance, context: modelContext) else { return nil }
+                return match.title
+            }
             // 字符串字段
             if let nt = args["new_title"] as? String { match.title = nt }
             if let n = args["note"] as? String { match.note = n }
@@ -1061,11 +1073,11 @@ struct AIChatView: View {
             match.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(after: Date(), reminder: match)
             // Item 2: 参数变更后清空旧的前移备注（避免误显示）
             ReminderEngine.HolidayAdjustStore.setNote(nil, for: match.id)
-            try? modelContext.save()
-            SyncStore.touchLocalChange()
+            _ = ReminderActions.changed(match, context: modelContext)
             return match.title
         }
 
+        guard let updatedTitle else { return "提醒已被其他操作修改，请重新编辑" }
         // 重排本地通知
         await ReminderEngine.shared.scheduleAllNotifications(for: match)
         return Localized("已修改「%@」", updatedTitle)

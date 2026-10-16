@@ -4,6 +4,7 @@ on:
   push:
     branches: [master]
     tags: ['v*']
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -18,7 +19,7 @@ jobs:
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.0'
+          xcode-version: '26.3'
 
       - name: Fix Homebrew tap trust issue
         run: brew untap aws/tap 2>/dev/null; true
@@ -60,6 +61,36 @@ jobs:
           echo "Running: $BIN"
           "$BIN"
 
+      - name: Run protocol, policy, action and populated migration checks
+        run: |
+          set -euo pipefail
+          for SCHEME in BackupProtocolCheck SixFeaturesCheck UpgradeCheck LegacyStoreProducer MigrationCheck; do
+            xcodebuild build -project ReminderApp.xcodeproj -scheme "$SCHEME" -destination 'platform=macOS' -derivedDataPath ./DerivedDataChecks CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+          done
+          ./DerivedDataChecks/Build/Products/Debug/BackupProtocolCheck
+          ./DerivedDataChecks/Build/Products/Debug/SixFeaturesCheck
+          ./DerivedDataChecks/Build/Products/Debug/UpgradeCheck
+          ./DerivedDataChecks/Build/Products/Debug/LegacyStoreProducer "$RUNNER_TEMP/reminder-v272.store"
+          ./DerivedDataChecks/Build/Products/Debug/MigrationCheck "$RUNNER_TEMP/reminder-v272.store"
+
+      - name: Upload actual cross-platform backup export
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-protocol-v3-export
+          path: |
+            ios-export-v3.json
+            ios-sync-edit-v3.json
+          if-no-files-found: warn
+
+      - name: Upload Android to iOS production roundtrip
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-ios-roundtrip-v3
+          path: android-ios-roundtrip-v3.json
+          if-no-files-found: warn
+
       - name: Download iOS Simulator runtime
         # actool (AssetCatalogSimulatorAgent) 需要 iOS 模拟器运行时才能编译 Assets.xcassets，
         # macOS runner 默认未安装，会导致 archive 阶段 "No simulator runtime version ... available" 失败。
@@ -95,6 +126,69 @@ jobs:
           echo "=== BUILD LOG (last 100 lines) ==="
           tail -100 build.log
 
+      - name: Run simulator regression tests
+        run: |
+          set -euo pipefail
+          python3 ReminderAppUITests/MockAIServer.py > "$RUNNER_TEMP/reminder-mock.log" 2>&1 &
+          python3 - <<'PY'
+          import json, time, urllib.request
+          for attempt in range(30):
+              try:
+                  with urllib.request.urlopen('http://127.0.0.1:8898/v1/models', timeout=2) as response:
+                      models=json.load(response)
+                  assert any(item['id']=='llama3.2' for item in models['data'])
+                  with urllib.request.urlopen('http://127.0.0.1:8899/state', timeout=2) as response:
+                      assert 'entries' in json.load(response)
+                  print('Both model8898 and scripted AI/WebDAV8899 fixtures ready')
+                  break
+              except Exception:
+                  if attempt == 29: raise
+                  time.sleep(1)
+          PY
+          python3 - <<'PY'
+          import json, subprocess
+          devices=json.loads(subprocess.check_output(['xcrun','simctl','list','devices','available','-j']))['devices']
+          chosen=next((d['udid'] for group in devices.values() for d in group if 'iPhone' in d['name']),None)
+          if not chosen: raise SystemExit('No available iPhone simulator')
+          with open('simulator-id.txt','w') as f: f.write(chosen)
+          PY
+          xcodebuild test -project ReminderApp.xcodeproj -scheme ReminderApp -destination "platform=iOS Simulator,id=$(cat simulator-id.txt)" -parallel-testing-enabled NO -resultBundlePath TestResults.xcresult CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+
+      - name: Export UI screenshot and failure attachments
+        if: always()
+        run: |
+          set -euo pipefail
+          # Apple documents export attachments and recommends CLI help for installed tool details.
+          # https://developer.apple.com/documentation/xcode-release-notes/xcode-16_3-release-notes
+          xcrun xcresulttool help export attachments | tee xcresult-attachments-help.txt
+          if [ -d TestResults.xcresult ]; then
+            xcrun xcresulttool export attachments --path TestResults.xcresult --output-path UIAttachments 2>&1 | tee xcresult-attachments-export.log
+          else
+            echo "No xcresult bundle was produced; retaining build and test failure logs."
+          fi
+
+      - name: Upload exported UI attachments
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ui-attachments
+          path: |
+            UIAttachments
+            xcresult-attachments-help.txt
+            xcresult-attachments-export.log
+          if-no-files-found: warn
+
+      - name: Upload UI test results and mock log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ui-results
+          path: |
+            TestResults.xcresult
+            ${{ runner.temp }}/reminder-mock.log
+            build.log
+          if-no-files-found: warn
+
       - name: Package IPA (unsigned, from archive)
         run: |
           APP_PATH=$(find "$PWD/build/ReminderApp.xcarchive/Products/Applications" -name '*.app' -type d -maxdepth 1 | head -1)
@@ -124,7 +218,7 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ReminderApp.ipa
+          name: ReminderApp-unsigned.ipa
           path: ReminderApp.ipa
           retention-days: 30
 

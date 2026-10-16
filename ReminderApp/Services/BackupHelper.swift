@@ -40,20 +40,20 @@ enum BackupHelper {
         var note: String
         var kind: String
         var cycle: String
-        var customDays: Int
+        var customDays: Int = 0
         var dateType: String?
         var targetMonth: Int?
         var targetDay: Int?
         /// 阶段2: 跨端统一为稳定节假日 ID（旧文件只有 holidayName，且 iOS 旧导出实际塞的是 ID）→ 导入兜底
         var holidayId: String?
         var holidayName: String?
-        var advanceDays: Int
-        var reminderHour: Int
-        var reminderMinute: Int
+        var advanceDays: Int = 3
+        var reminderHour: Int = 9
+        var reminderMinute: Int = 0
         var rulePeriod: String?
         var ruleWeek: Int?
         var ruleWeekday: Int?
-        var priority: String
+        var priority: String = "normal"
         var firstTriggerAt: Double
         var nextTriggerAt: Double
         var status: String
@@ -61,9 +61,81 @@ enum BackupHelper {
         /// H1: 关键提醒标记（iOS 存 UserDefaults CriticalStore，不动 schema；
         /// Optional 兼容旧文件缺 isCritical 键——旧协议是 is_critical snake_case，读取为 nil → false）
         var isCritical: Bool? = nil
+        var legacyCritical: Bool? = nil
         /// v2.4.10: 避开节假日/周末（缺省 false，旧备份兼容）
         var holidayAware: Bool? = nil
+        var retryCount: Int? = nil
+        var recurrenceMode: String? = nil
+        var reminderStyle: String? = nil
+        var retryIntervalsMinutes: [Int]? = nil
+        var maxReminderAttempts: Int? = nil
+        var quietStartMinute: Int? = nil
+        var quietEndMinute: Int? = nil
+        var createdAt: Double? = nil
+        var updatedAt: Double? = nil
+        var lastRetryAt: Double? = nil
+        var lastCompletedAt: Double? = nil
+        var lastConfirmedAt: Double? = nil
+        var records: [RecordItem]? = nil
+
+        var stableID: UUID? { syncId.flatMap(UUID.init(uuidString:)) ?? id?.stringValue.flatMap(UUID.init(uuidString:)) }
+
+        enum CodingKeys: String, CodingKey {
+            case syncId, id, title, note, kind, cycle, customDays, dateType, targetMonth, targetDay, holidayId, holidayName
+            case advanceDays, reminderHour, reminderMinute, rulePeriod, ruleWeek, ruleWeekday, priority
+            case firstTriggerAt, nextTriggerAt, status, isActive, isCritical, holidayAware
+            case retryCount, recurrenceMode, reminderStyle, retryIntervalsMinutes, maxReminderAttempts, quietStartMinute, quietEndMinute
+            case createdAt, updatedAt, lastRetryAt, lastCompletedAt, lastConfirmedAt, records
+            case legacyCritical = "is_critical"
+        }
+        // Defaults must also apply while decoding minimal Android/legacy envelopes.
+        init() { title = ""; note = ""; kind = "cycle"; cycle = "weekly"; firstTriggerAt = 0; nextTriggerAt = 0; status = "pending"; isActive = true }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            syncId = try c.decodeIfPresent(String.self, forKey: .syncId)
+            id = try c.decodeIfPresent(LooseID.self, forKey: .id)
+            title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+            note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+            kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "cycle"
+            cycle = try c.decodeIfPresent(String.self, forKey: .cycle) ?? "weekly"
+            customDays = try c.decodeIfPresent(Int.self, forKey: .customDays) ?? 0
+            advanceDays = try c.decodeIfPresent(Int.self, forKey: .advanceDays) ?? 3
+            reminderHour = try c.decodeIfPresent(Int.self, forKey: .reminderHour) ?? 9
+            reminderMinute = try c.decodeIfPresent(Int.self, forKey: .reminderMinute) ?? 0
+            priority = try c.decodeIfPresent(String.self, forKey: .priority) ?? "normal"
+            firstTriggerAt = try c.decodeIfPresent(Double.self, forKey: .firstTriggerAt) ?? 0
+            nextTriggerAt = try c.decodeIfPresent(Double.self, forKey: .nextTriggerAt) ?? 0
+            status = try c.decodeIfPresent(String.self, forKey: .status) ?? "pending"
+            isActive = try c.decodeIfPresent(Bool.self, forKey: .isActive) ?? true
+            dateType = try c.decodeIfPresent(String.self, forKey: .dateType)
+            targetMonth = try c.decodeIfPresent(Int.self, forKey: .targetMonth)
+            targetDay = try c.decodeIfPresent(Int.self, forKey: .targetDay)
+            holidayId = try c.decodeIfPresent(String.self, forKey: .holidayId)
+            holidayName = try c.decodeIfPresent(String.self, forKey: .holidayName)
+            rulePeriod = try c.decodeIfPresent(String.self, forKey: .rulePeriod)
+            ruleWeek = try c.decodeIfPresent(Int.self, forKey: .ruleWeek)
+            ruleWeekday = try c.decodeIfPresent(Int.self, forKey: .ruleWeekday)
+            isCritical = try c.decodeIfPresent(Bool.self, forKey: .isCritical) ?? c.decodeIfPresent(Bool.self, forKey: .legacyCritical)
+            holidayAware = try c.decodeIfPresent(Bool.self, forKey: .holidayAware)
+            retryCount = try c.decodeIfPresent(Int.self, forKey: .retryCount)
+            recurrenceMode = try c.decodeIfPresent(String.self, forKey: .recurrenceMode)
+            reminderStyle = try c.decodeIfPresent(String.self, forKey: .reminderStyle)
+            retryIntervalsMinutes = try c.decodeIfPresent([Int].self, forKey: .retryIntervalsMinutes)
+            maxReminderAttempts = try c.decodeIfPresent(Int.self, forKey: .maxReminderAttempts)
+            quietStartMinute = try c.decodeIfPresent(Int.self, forKey: .quietStartMinute)
+            quietEndMinute = try c.decodeIfPresent(Int.self, forKey: .quietEndMinute)
+            createdAt = try c.decodeIfPresent(Double.self, forKey: .createdAt)
+            updatedAt = try c.decodeIfPresent(Double.self, forKey: .updatedAt)
+            lastRetryAt = try c.decodeIfPresent(Double.self, forKey: .lastRetryAt)
+            lastConfirmedAt = try c.decodeIfPresent(Double.self, forKey: .lastConfirmedAt)
+            lastCompletedAt = try c.decodeIfPresent(Double.self, forKey: .lastCompletedAt) ?? lastConfirmedAt
+            records = try c.decodeIfPresent([RecordItem].self, forKey: .records)
+        }
     }
+    struct RecordItem: Codable {
+        var id: UUID; var performedAt: Double; var type: String; var note: String
+    }
+
 
     struct BackupRoot: Codable {
         var version: Int
@@ -93,42 +165,51 @@ enum BackupHelper {
     /// 带指定 exportedAt（秒）的导出，用于同步时保证版本递增
     static func exportJSON(_ reminders: [Reminder], exportedAt: TimeInterval) -> String {
         let items = reminders.map { r in
-            BackupItem(
-                // 阶段2: 跨端稳定 ID —— iOS 的 Reminder.id 就是 UUID，直接透传
-                syncId: r.id.uuidString,
-                title: r.title,
-                note: r.note,
-                kind: r.kind.rawValue == "周期提醒" ? "cycle" : (r.kind.rawValue == "规则提醒" ? "rule" : "date"),
-                cycle: r.cycle.rawValue == "自定义" ? "custom" : cycleCode(r.cycle),
-                customDays: r.customDays,
-                dateType: dateTypeCode(r.dateType),
-                targetMonth: r.kind == .date ? r.targetMonth : nil,
-                targetDay: r.kind == .date ? r.targetDay : nil,
-                // 阶段2: holidayId 写稳定 ID（holidayName 保留导出供旧版读取）
-                holidayId: r.holidayID,
-                holidayName: r.holidayID,
-                advanceDays: r.advanceDays,
-                reminderHour: r.reminderHour,
-                reminderMinute: r.reminderMinute,
-                rulePeriod: r.kind == .rule ? rulePeriodCode(r.rulePeriod) : nil,
-                ruleWeek: r.kind == .rule ? r.ruleWeek.rawValue : nil,
-                ruleWeekday: r.kind == .rule ? r.ruleWeekday.rawValue : nil,
-                priority: r.priority.rawValue == "高" ? "high" : (r.priority.rawValue == "低" ? "low" : "normal"),
-                firstTriggerAt: r.firstTriggerAt.timeIntervalSince1970 * 1000,
-                nextTriggerAt: r.nextTriggerAt.timeIntervalSince1970 * 1000,
-                status: statusCode(r.status),
-                isActive: r.isEnabled,
-                // H1: 关键提醒标记纳入导出（读 CriticalStore）
-                isCritical: ReminderEngine.CriticalStore.isCritical(r.id),
-                // v2.4.10: 避开节假日/周末
-                holidayAware: r.holidayAware
-            )
+            var item = BackupItem()
+            item.syncId = r.id.uuidString.lowercased()
+            item.title = r.title
+            item.note = r.note
+            item.kind = r.kind.rawValue == "周期提醒" ? "cycle" : (r.kind.rawValue == "规则提醒" ? "rule" : "date")
+            item.cycle = r.cycle.rawValue == "自定义" ? "custom" : cycleCode(r.cycle)
+            item.customDays = r.customDays
+            item.dateType = dateTypeCode(r.dateType)
+            item.targetMonth = r.kind == .date ? r.targetMonth : nil
+            item.targetDay = r.kind == .date ? r.targetDay : nil
+            item.holidayId = r.holidayID
+            item.holidayName = r.holidayID
+            item.advanceDays = r.advanceDays
+            item.reminderHour = r.reminderHour
+            item.reminderMinute = r.reminderMinute
+            item.rulePeriod = r.kind == .rule ? rulePeriodCode(r.rulePeriod) : nil
+            item.ruleWeek = r.kind == .rule ? r.ruleWeek.rawValue : nil
+            item.ruleWeekday = r.kind == .rule ? r.ruleWeekday.rawValue : nil
+            item.priority = r.priority.rawValue == "高" ? "high" : (r.priority.rawValue == "低" ? "low" : "normal")
+            item.firstTriggerAt = r.firstTriggerAt.timeIntervalSince1970 * 1000
+            item.nextTriggerAt = r.nextTriggerAt.timeIntervalSince1970 * 1000
+            item.status = statusCode(r.status)
+            item.isActive = r.isEnabled
+            item.isCritical = r.reminderStyle == "important"
+            item.holidayAware = r.holidayAware
+            item.retryCount = r.retryStage
+            item.recurrenceMode = r.recurrenceMode
+            item.reminderStyle = r.reminderStyle
+            item.retryIntervalsMinutes = r.policy.intervals
+            item.maxReminderAttempts = r.policy.attempts
+            item.quietStartMinute = r.policy.quietStart
+            item.quietEndMinute = r.policy.quietEnd
+            item.createdAt = r.createdAt.timeIntervalSince1970 * 1000
+            item.updatedAt = r.updatedAt.timeIntervalSince1970 * 1000
+            item.lastRetryAt = r.lastRetryAt.map { $0.timeIntervalSince1970 * 1000 }
+            item.lastCompletedAt = r.lastCompletedAt.map { $0.timeIntervalSince1970 * 1000 }
+            item.lastConfirmedAt = item.lastCompletedAt
+            item.records = r.records.map { RecordItem(id: $0.id, performedAt: $0.performedAt.timeIntervalSince1970 * 1000, type: $0.type, note: $0.note) }
+            return item
         }
         let root = BackupRoot(
             version: 1,
             // 阶段2: 协议版本 2（id/holidayId/isCritical camelCase）
-            schemaVersion: 2,
-            exportedAt: exportedAt,
+            schemaVersion: 3,
+            exportedAt: exportedAt * 1000,
             // v2.0.17: 单调版本随导出带上（判新主依据）
             dataVersion: SyncStore.localVersion,
             reminders: items
@@ -194,26 +275,13 @@ enum BackupHelper {
         var importedCount = 0
         var skippedCount = 0
         var inserted: [Reminder] = []
-        let now = Date()
-
         for item in items {
             let reminder = makeReminder(from: item)
             let fingerprint = "\(reminder.title)|\(Int(reminder.nextTriggerAt.timeIntervalSince1970))"
 
-            if existingIDs.contains(reminder.id) || existingFingerprints.contains(fingerprint) {
+            if existingIDs.contains(reminder.id) || (item.stableID == nil && existingFingerprints.contains(fingerprint)) {
                 skippedCount += 1
                 continue
-            }
-
-            // 备份可能来自其他设备，nextTriggerAt 已过期——
-            // 直接调度会用过去的日期排通知 → 导入瞬间弹一堆通知。
-            // 过期且可重复的提醒先推到未来；一次性已过期则标记逾期不再弹。
-            if reminder.nextTriggerAt <= now {
-                if reminder.cycle == .once {
-                    reminder.status = .overdue
-                } else {
-                    reminder.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(after: now, reminder: reminder)
-                }
             }
 
             existingIDs.insert(reminder.id)
@@ -244,7 +312,7 @@ enum BackupHelper {
     private static func statusCode(_ s: ReminderStatus) -> String {
         switch s {
         case .pending:   return "pending"
-        case .active:    return "active"
+        case .active:    return "notifying"
         case .snoozed:   return "snoozed"
         case .confirmed: return "confirmed"
         case .overdue:   return "overdue"
@@ -318,7 +386,7 @@ enum BackupHelper {
             switch item.status {
             case "confirmed": return .confirmed
             case "overdue": return .overdue
-            case "active": return .active
+            case "active", "notifying": return .active
             case "snoozed": return .snoozed
             default: return .pending
             }
@@ -355,8 +423,24 @@ enum BackupHelper {
             isEnabled: item.isActive,
             holidayAware: item.holidayAware ?? false
         )
-        // H1: 导入时写回关键标记到 CriticalStore（保持 UserDefaults 方案，不动 schema）
-        ReminderEngine.CriticalStore.setCritical(item.isCritical ?? false, for: reminder.id)
+        reminder.recurrenceMode = RecurrenceMode(rawValue: item.recurrenceMode ?? "")?.rawValue ?? "fixed"
+        reminder.reminderStyle = ReminderStyle(rawValue: item.reminderStyle ?? "")?.rawValue ?? (item.isCritical == true ? "important" : "persistent")
+        let policy = ReminderPolicy(intervals: item.retryIntervalsMinutes ?? ReminderPolicy.legacyIntervals,
+            attempts: item.maxReminderAttempts ?? 5, quietStart: item.quietStartMinute, quietEnd: item.quietEndMinute)
+        reminder.retryIntervalsMinutes = policy.intervals; reminder.maxReminderAttempts = policy.attempts
+        reminder.quietStartMinute = policy.quietStart; reminder.quietEndMinute = policy.quietEnd
+        reminder.retryStage = min(10, max(0, item.retryCount ?? 0))
+        reminder.policyMigrated = true
+        if let date = item.createdAt { reminder.createdAt = Date(timeIntervalSince1970: date / 1000) }
+        if let date = item.updatedAt { reminder.updatedAt = Date(timeIntervalSince1970: date / 1000) }
+        reminder.lastRetryAt = item.lastRetryAt.map { Date(timeIntervalSince1970: $0 / 1000) }
+        reminder.lastCompletedAt = item.lastCompletedAt.map { Date(timeIntervalSince1970: $0 / 1000) }
+        var recordIDs = Set<UUID>()
+        reminder.records = (item.records ?? []).compactMap { value in
+            guard recordIDs.insert(value.id).inserted else { return nil }
+            guard let type = ReminderRecordType(rawValue: value.type) else { return nil }
+            return ReminderRecord(id: value.id, performedAt: Date(timeIntervalSince1970: value.performedAt / 1000), type: type, note: value.note)
+        }
         return reminder
     }
 }

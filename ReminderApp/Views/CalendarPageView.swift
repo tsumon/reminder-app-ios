@@ -91,12 +91,13 @@ struct CalendarPageView: View {
 
     @ViewBuilder
     private func dayTaskRow(_ r: Reminder) -> some View {
+        let token = r.actionToken
         let due = r.status == .active || r.status == .snoozed || r.status == .overdue
         Button {
             pendingDetailID = r.id
         } label: {
             ReminderRowView(reminder: r, onConfirm: due ? {
-                ReminderEngine.shared.confirmReminder(r)
+                ReminderEngine.shared.confirmReminder(r, expectedToken: token)
             } : nil)
         }
         .buttonStyle(.plain)

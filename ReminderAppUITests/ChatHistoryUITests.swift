@@ -36,6 +36,7 @@ final class ChatHistoryUITests: XCTestCase {
     /// Chat is full-screen: input hittable, SoftTabDock gone, pop restores dock.
     func testChatInputNotCoveredByTabDock() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         app.launchArguments += ["-uitest_skip_permission", "1"]
         app.launch()
 
@@ -68,6 +69,7 @@ final class ChatHistoryUITests: XCTestCase {
 
     func testHistorySurvivesAppRestart() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         app.launchArguments += ["-uitest_ai_fixture", "1", "-uitest_skip_permission", "1"]
         app.launch()
 
@@ -133,34 +135,55 @@ final class MultiTurnHistoryUITests: XCTestCase {
     }
 
     private func send(_ app: XCUIApplication, _ text: String) {
-        let input = app.textFields.firstMatch
+        let input = app.textFields["ai-input"]
         XCTAssertTrue(input.waitForExistence(timeout: 5), "输入框未找到")
+        let ready = NSPredicate(format: "enabled == true AND hittable == true")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: ready, object: input)], timeout: 15), .completed,
+                       "上一轮请求结束后输入框未恢复")
         input.tap()
-        sleep(1)
-        app.typeText(text)
+        input.typeText(text)
+        // Typing completion can precede the final SwiftUI/accessibility value update.
+        // Wait for exact committed text without retyping or sending a partial value.
+        let committedInput = NSPredicate(format: "value == %@", text)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: committedInput, object: input)], timeout: 5), .completed,
+                       "完整输入未提交到 AI 输入框")
+        XCTAssertEqual(input.value as? String, text, "输入未进入 AI 输入框")
         let send = app.buttons["send-button"]
         XCTAssertTrue(send.waitForExistence(timeout: 5), "发送按钮未找到")
+        XCTAssertTrue(send.isEnabled, "有输入时发送按钮仍不可用")
         send.tap()
         XCTAssertTrue(app.staticTexts[text].waitForExistence(timeout: 8), "(\(text)) 未上屏")
-        sleep(1)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: ready, object: input)], timeout: 15), .completed,
+                       "本轮请求未结束，不能开始下一轮历史验证")
     }
 
     private func historyCount(_ app: XCUIApplication) -> Int {
         // 菜单标题 "查看历史（N 条）" / "View History (N)"
-        let menu = app.images["clock.arrow.circlepath"].firstMatch
+        let menu = app.buttons["history-menu"]
         XCTAssertTrue(menu.waitForExistence(timeout: 5), "历史菜单未找到")
         menu.tap()
         let item = app.buttons.matching(NSPredicate(format: "label MATCHES %@", ".*\\d+.*")).firstMatch
         let ok = item.waitForExistence(timeout: 4)
         let label = ok ? item.label : "?"
-        if ok { app.tap() } // 点空白收起
+        XCTAssertTrue(ok, "查看历史条数菜单项未出现")
+        // 屏幕中央可能是聊天选项；只点消息区域左侧留白关闭菜单，保持当前滚动位置。
+        if ok {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.45)).tap()
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == false"), object: item)], timeout: 4), .completed,
+                "历史菜单未收起")
+        }
         let m = label.range(of: #"\d+"#, options: .regularExpression)
         return m.map { Int(label[$0])! } ?? -1
     }
 
     func testMultiTurnAccumulatesAcrossReentry() throws {
         let app = XCUIApplication()
-        app.launchArguments += ["-uitest_ai_fixture", "1", "-uitest_skip_permission", "1"]
+        app.launchArguments += ["-uitest_isolate_notifications"]
+        // 独立无状态服务，避免继承上一用例的失败端点/消费 ask_user 请求序列。
+        app.launchArguments += ["-uitest_ai_fixture", "1", "-uitest_skip_permission", "1",
+                                "-ai_endpoint", "http://127.0.0.1:8898/v1",
+                                "-ai_is_local", "1", "-ai_fallback_enabled", "0"]
         app.launch()
         openAIPage(app)
 
@@ -201,6 +224,7 @@ final class MultiTurnHistoryUITests: XCTestCase {
         }
 
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         app.launchArguments += [
             "-uitest_skip_permission", "1",
             "-ai_endpoint", "http://127.0.0.1:8898/v1",

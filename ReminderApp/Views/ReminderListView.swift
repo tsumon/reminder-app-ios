@@ -25,11 +25,15 @@ struct ReminderBackupDocument: FileDocument {
 
 /// 首页：提醒列表
 struct ReminderListView: View {
+    @State private var showSyncConflict = false
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Reminder.nextTriggerAt) private var reminders: [Reminder]
     // v2.3.0: 今日完成数（hero 完成率环）
     @Query(sort: \ReminderRecord.performedAt) private var records: [ReminderRecord]
     @State private var showCreateSheet = false
+    @State private var quickSentence = ""
+    @State private var createdID: UUID?
+    @State private var createdToken: String?
 
     // 智能清单筛选
     @State private var smartList: SmartList = .all
@@ -81,11 +85,29 @@ struct ReminderListView: View {
     var body: some View {
         // v1.9.8: NavigationStack 由 MainTabView 的 Tab 提供，避免嵌套双层导航栏
         mainContentWrapped
+            .confirmationDialog("同步冲突：两边都有修改，已停止写入。选择前将保存本地快照。删除不会跨设备同步。", isPresented: $showSyncConflict) {
+                Button("使用本地并上传".localized) { resolveSync(.local) }
+                Button("使用远程并保留本机独有提醒".localized) { resolveSync(.remote) }
+                Button("取消".localized, role: .cancel) {}
+            }
     }
 
     private var mainContent: some View {
         VStack(spacing: 0) {
             homeChromeHeader
+            HStack {
+                TextField("输入一句话创建提醒".localized, text: $quickSentence)
+                    .textFieldStyle(.roundedBorder).accessibilityIdentifier("quick-reminder-input")
+                Button("检查规则".localized) { showCreateSheet = true }
+            }.padding(.horizontal).padding(.bottom, 8)
+            if let id = createdID {
+                Button("撤销刚创建的提醒".localized) {
+                    guard let r = reminders.first(where: { $0.id == id }), r.actionToken == createdToken, r.records.isEmpty else { createdID = nil; return }
+                    modelContext.delete(r)
+                    if ReminderActions.save(modelContext) { Task { await NotificationManager.shared.removePendingNotification(for: id); await ReminderEngine.shared.ensureRetryChains() } }
+                    createdID = nil
+                }.buttonStyle(.bordered)
+            }
             Group {
                 if reminders.isEmpty {
                     emptyView
@@ -151,6 +173,7 @@ struct ReminderListView: View {
 
     @ToolbarContentBuilder
     private var homeToolbar: some ToolbarContent {
+        let batchTargets = reminders.filter { selectedIDs.contains($0.id) && $0.status != .confirmed }.map { ($0, $0.actionToken) }
         ToolbarItemGroup(placement: .bottomBar) {
             if editMode.isEditing {
                 Button {
@@ -160,7 +183,7 @@ struct ReminderListView: View {
                 }
                 Spacer()
                 Button {
-                    batchComplete()
+                    batchComplete(batchTargets)
                 } label: {
                     Label("完成".localized, systemImage: "checkmark")
                 }
@@ -376,7 +399,7 @@ struct ReminderListView: View {
                 if SyncStore.autoSync && SyncStore.isConfigured &&
                     Date().timeIntervalSince1970 - SyncStore.lastSyncAt > 300 {
                     Task {
-                        _ = await WebDavSync.syncNow(reminders: reminders, modelContext: modelContext)
+                        handleSyncResult(await WebDavSync.syncNow(reminders: reminders, modelContext: modelContext))
                     }
                 }
             }
@@ -447,7 +470,9 @@ struct ReminderListView: View {
     private var sheetsWrapped: some View {
         mainContent
             .sheet(isPresented: $showCreateSheet) {
-                CreateReminderView()
+                CreateReminderView(initialSentence: quickSentence, onCreated: { r in
+                    createdID = r.id; createdToken = r.actionToken; quickSentence = ""
+                })
             }
             // 近场传输: 同一局域网互传提醒
             .sheet(isPresented: $showNearbyShare) {
@@ -517,11 +542,11 @@ struct ReminderListView: View {
     private func saveWidgetSnapshot(_ reminders: [Reminder]) {
         let now = Date()
         let unhandled = reminders.filter {
-            $0.isEnabled && ($0.status == .active || $0.status == .snoozed ||
+            $0.isEnabled && ($0.status == .active || $0.status == .snoozed || $0.status == .overdue ||
                 ($0.status == .pending && $0.nextTriggerAt <= now))
         }
         let next = reminders
-            .filter { $0.isEnabled && $0.nextTriggerAt > now }
+            .filter { $0.isEnabled && $0.status != .confirmed }
             .min { $0.nextTriggerAt < $1.nextTriggerAt }
 
         WidgetSnapshot.save(WidgetReminderData(
@@ -530,7 +555,8 @@ struct ReminderListView: View {
             nextTime: next?.nextTriggerAt,
             updatedAt: now,
             // v1.8.7: 供小组件「完成」按钮定位提醒
-            nextReminderID: next?.id.uuidString
+            nextReminderID: next?.id.uuidString,
+            nextActionToken: next?.actionToken
         ))
 
         // 主动刷新已添加的小组件
@@ -577,17 +603,26 @@ struct ReminderListView: View {
 
     // MARK: - 同步
 
-    private func syncNow() {
+    private func resolveSync(_ choice: WebDavSync.ConflictChoice) {
         Task {
-            let result = await WebDavSync.syncNow(reminders: reminders, modelContext: modelContext)
-            switch result {
-            case .success(let conflict):
-                // v2.0.16: 双端都改过 → 提示已按版本覆盖
-                syncMessage = conflict ? "已用最新版本覆盖（检测到双端都有修改，未合并）" : "同步完成"
-            case .failure(let msg):
-                syncMessage = msg
+            switch await WebDavSync.resolve(choice, context: modelContext) {
+            case .success: syncMessage = "同步完成；本机独有提醒已保留。删除暂不跨设备同步。"
+            case .conflict: showSyncConflict = true
+            case .failure(let message): syncMessage = message
             }
         }
+    }
+
+    private func handleSyncResult(_ result: WebDavSync.SyncResult) {
+        switch result {
+        case .success: syncMessage = "同步完成"
+        case .conflict: showSyncConflict = true
+        case .failure(let message): syncMessage = message
+        }
+    }
+
+    private func syncNow() {
+        Task { handleSyncResult(await WebDavSync.syncNow(reminders: reminders, modelContext: modelContext)) }
     }
 
     private func importBackup(_ result: Result<URL, Error>) {
@@ -755,14 +790,12 @@ struct ReminderListView: View {
                     .listRowSeparator(.hidden)
             }
 
-            let unhandled = reminders.filter { $0.isEnabled && $0.status != .confirmed }.count
-            let enabledCount = max(reminders.filter(\.isEnabled).count, 1)
-            let doneShare = Double(max(enabledCount - unhandled, 0)) / Double(enabledCount)
             Section {
-                OverviewCard(unhandledCount: unhandled, progress: doneShare)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+                HStack {
+                    Text("待处理 \(reminders.filter { $0.isEnabled && $0.status != .confirmed }.count)")
+                    Spacer()
+                    Text("按到期时间排列".localized).foregroundStyle(.secondary)
+                }.font(.caption).listRowBackground(Color.clear)
             }
 
             // v1.9.8: 日历卡片移到「日历」Tab（CalendarPageView），首页只保留列表
@@ -783,11 +816,12 @@ struct ReminderListView: View {
             if !activeReminders.isEmpty {
                 Section {
                     ForEach(activeReminders) { reminder in
+                        let token = reminder.actionToken
                         Button {
                             pendingDetailID = reminder.id
                         } label: {
                             ReminderRowView(reminder: reminder) {
-                                ReminderEngine.shared.confirmReminder(reminder)
+                                ReminderEngine.shared.confirmReminder(reminder, expectedToken: token)
                             }
                         }
                         .buttonStyle(.plain)
@@ -936,8 +970,9 @@ struct ReminderListView: View {
     /// 右滑 → 完成。已逾期的额外给一个「补打今天」入口（记录备注区分为补打卡）
     @ViewBuilder
     private func completeSwipe(for reminder: Reminder) -> some View {
+        let token = reminder.actionToken
         Button {
-            ReminderEngine.shared.confirmReminder(reminder)
+            ReminderEngine.shared.confirmReminder(reminder, expectedToken: token)
         } label: {
             Label("完成".localized, systemImage: "checkmark")
         }
@@ -945,7 +980,7 @@ struct ReminderListView: View {
 
         if reminder.status == .overdue {
             Button {
-                ReminderEngine.shared.confirmReminder(reminder, source: "补打卡")
+                ReminderEngine.shared.confirmReminder(reminder, source: "补打卡", expectedToken: token)
             } label: {
                 Label("补打今天".localized, systemImage: "checkmark.circle.badge.questionmark")
             }
@@ -1061,6 +1096,7 @@ struct ReminderListView: View {
             r.firstTriggerAt = target
             r.nextTriggerAt = target
             r.updatedAt = Date()
+            r.actionRevision += 1; r.undoCompletion = nil
         }
         try? modelContext.save()
         SyncStore.touchLocalChange()
@@ -1074,10 +1110,9 @@ struct ReminderListView: View {
 
     // MARK: - 批量管理（v2.1.1）
 
-    private func batchComplete() {
-        let targets = reminders.filter { selectedIDs.contains($0.id) && $0.status != .confirmed }
-        for reminder in targets {
-            ReminderEngine.shared.confirmReminder(reminder)
+    private func batchComplete(_ targets: [(Reminder, String)]) {
+        for (reminder, token) in targets {
+            ReminderEngine.shared.confirmReminder(reminder, expectedToken: token)
         }
         finishBatch()
     }
@@ -1227,6 +1262,7 @@ struct TodayTimelineView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(reminders.enumerated()), id: \.offset) { index, reminder in
+                let token = reminder.actionToken
                 HStack(alignment: .top, spacing: 8) {
                     // 左侧时间 + 时间线
                     VStack(spacing: 0) {
@@ -1246,7 +1282,7 @@ struct TodayTimelineView: View {
 
                     // v2.5.0: 发光球打卡位（替代小圆点，点按即打卡 → 彩带庆祝）
                     OrbCheckButton(done: false) {
-                        ReminderEngine.shared.confirmReminder(reminder)
+                        ReminderEngine.shared.confirmReminder(reminder, expectedToken: token)
                     }
                     .padding(.top, 10)
 

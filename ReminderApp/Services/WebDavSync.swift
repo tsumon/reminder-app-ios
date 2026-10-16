@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import SwiftData
 import WidgetKit
 
@@ -11,155 +12,118 @@ enum WebDavSync {
     static let remoteICSFileName = "reminders.ics"
 
     enum SyncResult {
-        /// conflict=true：检测到上次同步后双端都有修改，已按版本覆盖（UI 提示用户，v2.0.16）
         case success(conflict: Bool)
+        case conflict
         case failure(String)
     }
+    enum ConflictChoice { case local, remote }
+    struct Remote { let json: String?; let etag: String? }
+    struct Conflict { let remote: Remote; let generation: Int }
+    private static var pending: Conflict?
+    private static var busy = false
+    private static let remoteStampKey = "sync_remote_stamp_v3"
 
-    static func syncNow(reminders: [Reminder], modelContext: ModelContext) async -> SyncResult {
-        guard SyncStore.isConfigured else {
-            return .failure("请先配置 WebDAV 服务器")
-        }
-
-        do {
-            let remoteJson = try await download()
-
-            // v2.0.22: 下载完成后重新读取当前提醒——网络 await 期间主线程用户可能
-            // 新建/编辑提醒，调用方传入的 reminders 快照已经过期；
-            // 用旧快照导出/比较会把用户刚做的改动覆盖掉（或上传旧数据）。
-            let currentReminders = (try? modelContext.fetch(FetchDescriptor<Reminder>())) ?? reminders
-
-            // ⚠️ 版本必须在 download() 之后读取：网络 await 期间主线程
-            // 用户可能新建/编辑提醒（touchLocalChange），用旧快照比较会把新数据误判为「远程新」而覆盖丢失
-            // v2.0.17: 单调版本（localVer）为判新主依据；墙钟（localChange）仅兜底（旧文件/升级前本地无版本）
-            let localChange = SyncStore.lastLocalChange // 秒
-            let localVer = SyncStore.localVersion
-            // v2.0.21 F1: 首次同步 + 上次同步版本必须在分支改写前快照，否则冲突判定会拿到刚写入的新值恒 false
-            let firstSync = SyncStore.isFirstSync
-            let lastSyncVer = SyncStore.lastSyncVersion
-
-            guard let remoteJson else {
-                // 远程无文件 → 上传本地
-                let exportedAt = max(Date().timeIntervalSince1970, localChange + 1)
-                let uploadJson = BackupHelper.exportJSON(currentReminders, exportedAt: exportedAt)
-                try await upload(uploadJson)
-                // 对齐版本，但要防止「回退」：上传期间用户编辑会抬高 lastLocalChange，
-                // 直接 set 会把版本回退成旧值，导致该编辑永远不同步
-                SyncStore.setLastLocalChange(max(exportedAt, SyncStore.lastLocalChange))
-                // v2.0.17: 记录已同步版本，防下轮误判（上传 dataVersion = 当前本地版本）
-                SyncStore.setLastSyncVersion(SyncStore.localVersion)
-                SyncStore.setLastSync()
-                SyncStore.setHasSyncedOnce()
-                return .success(conflict: false)
-            }
-
-            guard let rawRemoteVersion = BackupHelper.exportedAt(of: remoteJson) else {
-                return .failure("远程文件解析失败")
-            }
-            // 兼容 Android 的毫秒时间戳
-            let remoteVersion = rawRemoteVersion > 1e11 ? rawRemoteVersion / 1000 : rawRemoteVersion
-            // v2.0.17: 远程单调版本（旧文件无 dataVersion → 0，判新回退时间戳）
-            let remoteDataVersion = BackupHelper.dataVersion(of: remoteJson)
-
-            // v2.0.21 F1: 首次同步的冲突判定依据「两边都有数据」（版本不可比，无法用版本差判断）
-            let remoteHasData = BackupHelper.itemCount(of: remoteJson) > 0
-            let localHasData = !currentReminders.isEmpty
-
-            // v2.0.17 判新：双方都有单调版本 → 版本比较；任一为 0（旧文件/升级前）→ 时间戳兜底
-            // v2.0.21 F1: 首次同步两边版本不同源（远程是历史累计、本地从 0 起）→ 一律回退时间戳，
-            //             否则永远判「远程新」，本机新建的提醒会被静默覆盖。
-            // v2.0.21 F2: 版本相等（双端自同一基线各改相同次数）时用时间戳决胜，
-            //             否则两个判新都是 false → 落入「无变更」→ 双方改动都不同步且不提示。
-            let versionedCompare = !firstSync && remoteDataVersion > 0 && localVer > 0
-            let remoteIsNewer: Bool
-            let localIsNewer: Bool
-            if versionedCompare && remoteDataVersion != localVer {
-                remoteIsNewer = remoteDataVersion > localVer
-                localIsNewer = localVer > remoteDataVersion
-            } else {
-                remoteIsNewer = remoteVersion > localChange
-                localIsNewer = localChange > remoteVersion
-            }
-
-            if remoteIsNewer {
-                // 远程新 → 下载覆盖本地
-                guard let items = BackupHelper.importJSON(remoteJson) else {
-                    return .failure("远程文件解析失败")
-                }
-                // 保存失败时不更新版本号，避免本地旧数据与远程版本对齐后永远无法再同步
-                guard mergeRemote(currentReminders, items: items, in: modelContext) else {
-                    return .failure("本地数据写入失败，未应用远程数据，请检查存储空间后重试")
-                }
-                // v2.0.17: 下载后本地数据 = 远程数据 → 单调版本对齐远程（旧文件 dataVersion=0 时保持本地版本）
-                if remoteDataVersion > 0 {
-                    SyncStore.setLocalVersion(remoteDataVersion)
-                }
-                // v2.0.16/17 冲突提示：上次同步后本地也改过（版本化判定；旧文件回退不提示）
-                let conflict = isConflict(
-                    firstSync: firstSync,
-                    localHasData: localHasData,
-                    remoteHasData: remoteHasData,
-                    localVer: localVer,
-                    remoteDataVersion: remoteDataVersion,
-                    lastSyncVer: lastSyncVer
-                )
-                if remoteDataVersion > 0 {
-                    SyncStore.setLastSyncVersion(remoteDataVersion)
-                }
-                SyncStore.setLastLocalChange(remoteVersion)
-                SyncStore.setLastSync()
-                SyncStore.setHasSyncedOnce()
-                return .success(conflict: conflict)
-            } else if localIsNewer {
-                // 本地新 → 上传
-                let exportedAt = max(Date().timeIntervalSince1970, remoteVersion + 1)
-                let uploadJson = BackupHelper.exportJSON(currentReminders, exportedAt: exportedAt)
-                try await upload(uploadJson)
-                // v2.0.16/17 冲突提示：上次同步后远程也改过（版本化判定）
-                let conflict = isConflict(
-                    firstSync: firstSync,
-                    localHasData: localHasData,
-                    remoteHasData: remoteHasData,
-                    localVer: localVer,
-                    remoteDataVersion: remoteDataVersion,
-                    lastSyncVer: lastSyncVer
-                )
-                // 同上：max 防止上传期间新编辑的版本被回退
-                SyncStore.setLastLocalChange(max(exportedAt, SyncStore.lastLocalChange))
-                SyncStore.setLastSyncVersion(localVer)
-                SyncStore.setLastSync()
-                SyncStore.setHasSyncedOnce()
-                return .success(conflict: conflict)
-            } else {
-                // 版本与时间戳都相等 → 两边确为同一份数据，无变更
-                // （F2：版本相等但时间戳不同的情况已在上面用时间戳决胜，不会落到这里）
-                SyncStore.setLastSync()
-                SyncStore.setHasSyncedOnce()
-                return .success(conflict: false)
-            }
-        } catch {
-            return .failure(friendlyMessage(error))
-        }
+    static func stamp(_ json: String?) -> String {
+        guard let json else { return "missing" }
+        return SHA256.hash(data: Data(json.utf8)).map { String(format: "%02x", $0) }.joined()
     }
-
-    // MARK: - 冲突判定（v2.0.21）
-
-    /// 是否需要提示「已按版本覆盖」。
-    ///
-    /// - 首次同步：无 lastSyncVersion 基线可比，只要两边都有数据就意味着一方内容会被整体覆盖 → 提示
-    /// - 后续同步：自上次同步后双端都推进过版本 → 提示
-    private static func isConflict(
-        firstSync: Bool,
-        localHasData: Bool,
-        remoteHasData: Bool,
-        localVer: Int,
-        remoteDataVersion: Int,
-        lastSyncVer: Int
-    ) -> Bool {
-        if firstSync {
-            return localHasData && remoteHasData
+    @MainActor struct Transport {
+        var download: () async throws -> Remote
+        var upload: (String, Remote) async throws -> Void
+        var restore: () async -> Void
+        var isConfigured: Bool = true
+        static var live: Transport { Transport(download: { try await WebDavSync.download() },
+            upload: { try await WebDavSync.upload($0, replacing: $1) }, restore: {
+                #if os(iOS)
+                await ReminderEngine.shared.ensureRetryChains()
+                #endif
+            }, isConfigured: SyncStore.isConfigured) }
+    }
+    static func syncNow(reminders: [Reminder], modelContext: ModelContext, transport: Transport? = nil) async -> SyncResult {
+        let transport = transport ?? .live
+        guard transport.isConfigured else { return .failure("请先配置 WebDAV 服务器") }
+        guard !busy else { return .failure("同步正在进行") }
+        busy = true; defer { busy = false }
+        do {
+            let remote = try await transport.download()
+            let current = try modelContext.fetch(FetchDescriptor<Reminder>())
+            let generation = SyncStore.localVersion
+            let localChanged = generation != SyncStore.lastSyncVersion
+            let oldStamp = UserDefaults.standard.string(forKey: remoteStampKey)
+            let remoteChanged = oldStamp != stamp(remote.json)
+            if let json = remote.json, BackupHelper.importJSON(json) == nil { return .failure("远程文件解析失败，未写入任何数据") }
+            if remote.json != nil && !current.isEmpty && remoteChanged && (localChanged || oldStamp == nil) {
+                pending = Conflict(remote: remote, generation: generation)
+                return .conflict
+            }
+            if remote.json == nil || (localChanged && !remoteChanged) {
+                return try await uploadSnapshot(current, generation: generation, remote: remote, transport: transport)
+            }
+            if remoteChanged, let json = remote.json {
+                return try await applyRemote(json, current: current, remote: remote, context: modelContext, transport: transport)
+            }
+            SyncStore.setLastSync(); SyncStore.setHasSyncedOnce()
+            return .success(conflict: false)
+        } catch { return .failure(friendlyMessage(error)) }
+    }
+    static func resolve(_ choice: ConflictChoice, context: ModelContext, transport: Transport? = nil) async -> SyncResult {
+        let transport = transport ?? .live
+        guard !busy, let conflict = pending else { return .failure("请重新同步以获取最新冲突") }
+        busy = true; defer { busy = false }
+        do {
+            let latest = try await transport.download()
+            guard SyncStore.localVersion == conflict.generation, stamp(latest.json) == stamp(conflict.remote.json), latest.etag == conflict.remote.etag else {
+                pending = nil; return .failure("数据在选择期间发生变化，请重新同步")
+            }
+            let current = try context.fetch(FetchDescriptor<Reminder>())
+            try snapshotLocal(current)
+            pending = nil
+            switch choice {
+            case .local:
+                SyncStore.setLocalVersion(max(conflict.generation, BackupHelper.dataVersion(of: latest.json ?? "")) + 1)
+                return try await uploadSnapshot(current, generation: SyncStore.localVersion, remote: latest, transport: transport)
+            case .remote:
+                guard let json = latest.json else { return .failure("远程备份已不存在，请重新同步") }
+                return try await applyRemote(json, current: current, remote: latest, context: context, transport: transport)
+            }
+        } catch { return .failure(friendlyMessage(error)) }
+    }
+    private static func uploadSnapshot(_ current: [Reminder], generation: Int, remote: Remote, transport: Transport) async throws -> SyncResult {
+        // Serialize values and capture the generation on this actor before suspending.
+        let snapshot = SyncRevisionSnapshot(reminders: current)
+        guard snapshot.generation == generation else { return .failure("本地数据已变化，请重新同步") }
+        let json = snapshot.json
+        try await transport.upload(json, remote)
+        snapshot.acknowledge()
+        UserDefaults.standard.set(stamp(json), forKey: remoteStampKey)
+        SyncStore.setLastSync(); SyncStore.setHasSyncedOnce()
+        return .success(conflict: false)
+    }
+    private static func applyRemote(_ json: String, current: [Reminder], remote: Remote, context: ModelContext, transport: Transport) async throws -> SyncResult {
+        guard let items = BackupHelper.importJSON(json) else { return .failure("远程文件解析失败") }
+        try snapshotLocal(current)
+        guard mergeRemote(current, items: items, in: context) else { return .failure("本地写入失败，数据已回滚") }
+        let incomingGeneration = BackupHelper.dataVersion(of: json)
+        let previousGeneration = SyncStore.localVersion
+        let incomingIDs = Set(items.compactMap(\.stableID))
+        let hasLocalOnly = current.contains { !incomingIDs.contains($0.id) }
+        // A selected lower counter or retained local rows create a new shared revision.
+        let mustPublish = hasLocalOnly || incomingGeneration <= previousGeneration
+        let mergedGeneration = mustPublish ? max(previousGeneration, incomingGeneration) + 1 : incomingGeneration
+        SyncStore.setLocalVersion(mergedGeneration)
+        SyncStore.setLastSyncVersion(mustPublish ? max(0, mergedGeneration - 1) : mergedGeneration)
+        UserDefaults.standard.set(stamp(json), forKey: remoteStampKey)
+        SyncStore.setLastSync(); SyncStore.setHasSyncedOnce()
+        if mustPublish {
+            let merged = try context.fetch(FetchDescriptor<Reminder>())
+            do {
+                let result = try await uploadSnapshot(merged, generation: mergedGeneration, remote: remote, transport: transport)
+                await transport.restore()
+                return result
+            } catch { await transport.restore(); throw error }
         }
-        return lastSyncVer > 0 && localVer > lastSyncVer && remoteDataVersion > lastSyncVer
+        await transport.restore()
+        return .success(conflict: false)
     }
 
     // MARK: - 测试连接（添加 WebDAV 时验证账号/路径，坚果云友好提示）
@@ -321,99 +285,26 @@ enum WebDavSync {
         items: [BackupHelper.BackupItem],
         in context: ModelContext
     ) -> Bool {
-        // 阶段2: 覆盖前自动存本地快照（可恢复）
-        snapshotLocal(current)
-
-        // 先清空旧通知，避免被删提醒的「幽灵通知」继续到点弹出（保留的条目下面会重排）
-        NotificationManager.shared.removeAllPendingNotifications()
-
-        let existingByID = Dictionary(uniqueKeysWithValues: current.map { ($0.id, $0) })
-        let existingByFingerprint = Dictionary(
-            uniqueKeysWithValues: current.map {
-                ("\($0.title)|\(Int($0.nextTriggerAt.timeIntervalSince1970))", $0)
-            }
-        )
-        var upserted: [Reminder] = []
-
-        for item in items {
-            let fresh = BackupHelper.makeReminder(from: item)
-            let fingerprint = "\(fresh.title)|\(Int(fresh.nextTriggerAt.timeIntervalSince1970))"
-            // 匹配优先级：id（协议 v2）→ 指纹（旧协议文件无 id 时，识别上轮已导入的条目）
-            let existing = existingByID[fresh.id] ?? existingByFingerprint[fingerprint]
-
-            if let existing {
-                // 已存在：逐属性更新（保留对象 id → 通知/小组件/操作记录引用不失效；records 保留）
-                apply(fresh, to: existing)
-                // 阶段2: 状态随同步保留（makeReminder 已映射合法值；未知回落 pending）
-                upserted.append(existing)
-            } else {
-                // 新条目
-                context.insert(fresh)
-                upserted.append(fresh)
-            }
-        }
-
-        // 保存失败必须让调用方知道：否则版本号已对齐、本地又是旧数据，后续永远无法恢复
         do {
-            try context.save()
-        } catch {
-            print("[WebDAV] 合并保存失败: \(error)")
-            return false
-        }
-
-        // 合并后必须重排通知，否则提醒「存在但永不提醒」
-        Task {
-            for reminder in upserted where reminder.isEnabled {
-                await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
-            }
-        }
-
-        // 刷新小组件
-        Task {
+            try ReminderMerge.apply(items, current: current, context: context)
             WidgetCenter.shared.reloadAllTimelines()
-        }
-        return true
-    }
-
-    /// 把 fresh（makeReminder 产物，id 与 existing 相同）的持久化属性复制到 existing。
-    /// 不拷贝：id（必须相同）、retryStage/lastRetryAt/createdAt/records（协议无此字段，保留本地值）。
-    private static func apply(_ fresh: Reminder, to existing: Reminder) {
-        existing.title = fresh.title
-        existing.note = fresh.note
-        existing.kind = fresh.kind
-        existing.cycle = fresh.cycle
-        existing.customDays = fresh.customDays
-        existing.dateType = fresh.dateType
-        existing.targetMonth = fresh.targetMonth
-        existing.targetDay = fresh.targetDay
-        existing.advanceDays = fresh.advanceDays
-        existing.reminderHour = fresh.reminderHour
-        existing.reminderMinute = fresh.reminderMinute
-        existing.holidayID = fresh.holidayID
-        existing.rulePeriod = fresh.rulePeriod
-        existing.ruleWeek = fresh.ruleWeek
-        existing.ruleWeekday = fresh.ruleWeekday
-        existing.firstTriggerAt = fresh.firstTriggerAt
-        existing.nextTriggerAt = fresh.nextTriggerAt
-        existing.status = fresh.status
-        existing.priority = fresh.priority
-        existing.isEnabled = fresh.isEnabled
-        existing.updatedAt = Date()
+            return true
+        } catch { return false }
     }
 
     /// 阶段2: 合并前把当前本地全量导出为 JSON 快照（可恢复；保留最近 5 份）
-    private static func snapshotLocal(_ reminders: [Reminder]) {
+    private static func snapshotLocal(_ reminders: [Reminder]) throws {
         let fm = FileManager.default
         guard let dir = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("webdav_snapshots", isDirectory: true) else { return }
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            .appendingPathComponent("webdav_snapshots", isDirectory: true) else { throw SyncError.invalidURL }
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
 
         let stamp = DateFormatter()
         stamp.dateFormat = "yyyyMMdd_HHmmss"
         stamp.locale = Locale(identifier: "en_US_POSIX")
         let file = dir.appendingPathComponent("before_\(stamp.string(from: Date())).json")
         let json = BackupHelper.exportJSON(reminders)
-        try? json.write(to: file, atomically: true, encoding: .utf8)
+        try json.write(to: file, atomically: true, encoding: .utf8)
 
         // 只保留最近 5 份
         let entries = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?
@@ -494,7 +385,7 @@ enum WebDavSync {
         return "Basic \(encoded)"
     }
 
-    private static func download() async throws -> String? {
+    private static func download() async throws -> Remote {
         guard let url = URL(string: remoteURL()) else {
             throw SyncError.invalidURL
         }
@@ -505,7 +396,7 @@ enum WebDavSync {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if code == 404 { return nil }
+        if code == 404 { return Remote(json: nil, etag: nil) }
         guard (200...299).contains(code) else {
             throw SyncError.http(code)
         }
@@ -513,10 +404,10 @@ enum WebDavSync {
         guard let decoded = String(data: data, encoding: .utf8) else {
             throw SyncError.invalidUTF8
         }
-        return decoded
+        return Remote(json: decoded, etag: (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "ETag"))
     }
 
-    private static func upload(_ json: String) async throws {
+    private static func upload(_ json: String, replacing remote: Remote) async throws {
         guard let url = URL(string: remoteURL()) else {
             throw SyncError.invalidURL
         }
@@ -525,6 +416,9 @@ enum WebDavSync {
         request.timeoutInterval = 30
         request.setValue(authHeader(), forHTTPHeaderField: "Authorization")
         request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        if remote.json == nil { request.setValue("*", forHTTPHeaderField: "If-None-Match") }
+        else if let etag = remote.etag { request.setValue(etag, forHTTPHeaderField: "If-Match") }
+        else { throw NSError(domain: "WebDAV", code: 1, userInfo: [NSLocalizedDescriptionKey: "服务器未提供 ETag，无法安全覆盖现有备份。请启用 ETag 或导出本地备份。" ]) }
         request.httpBody = json.data(using: .utf8)
 
         let (_, response) = try await URLSession.shared.data(for: request)

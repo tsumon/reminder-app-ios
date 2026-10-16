@@ -23,7 +23,12 @@ enum SyncStore {
 
     /// 密码存于 Keychain，避免明文写入 UserDefaults
     static var password: String {
-        get { KeychainHelper.read(service: "reminder_webdav", account: "password") ?? "" }
+        get {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-uitest_auto_sync_conflict") { return "uitest" }
+            #endif
+            return KeychainHelper.read(service: "reminder_webdav", account: "password") ?? ""
+        }
         set { KeychainHelper.save(newValue, service: "reminder_webdav", account: "password") }
     }
 

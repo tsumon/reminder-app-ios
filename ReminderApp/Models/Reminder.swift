@@ -152,6 +152,17 @@ final class Reminder {
     /// v2.4.10: 避开节假日/周末——true 时触发日期落在周六日或法定节假日，顺延到下一个工作日
     /// v2.4.12 fix: 声明带默认值——SwiftData 轻量迁移要求新增属性有默认值，
     /// 否则旧版（2.4.9 及更早）数据升级时迁移失败，启动即闪退
+    var recurrenceMode: String = "fixed"
+    var reminderStyle: String = "persistent"
+    var retryIntervalsMinutes: [Int] = [60, 240, 720, 1440]
+    var maxReminderAttempts: Int = 5
+    var quietStartMinute: Int? = nil
+    var quietEndMinute: Int? = nil
+    var useAlarmKit: Bool = false
+    var policyMigrated: Bool = false
+    var actionRevision: Int = 0
+    var lastCompletedAt: Date? = nil
+    var undoCompletion: Data? = nil
     var holidayAware: Bool = false
     var createdAt: Date
     var updatedAt: Date
@@ -216,6 +227,12 @@ final class Reminder {
     }
 
     // MARK: - 计算属性
+
+    var actionToken: String { "\(id.uuidString):\(actionRevision)" }
+    var policy: ReminderPolicy {
+        ReminderPolicy(intervals: retryIntervalsMinutes, attempts: maxReminderAttempts,
+                       quietStart: quietStartMinute, quietEnd: quietEndMinute)
+    }
 
     var effectiveDays: Int {
         cycle == .custom ? customDays : cycle.days

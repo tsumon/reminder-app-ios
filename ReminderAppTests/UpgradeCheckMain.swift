@@ -1,0 +1,266 @@
+import Foundation
+import SwiftData
+
+@main struct UpgradeCheck {
+    @MainActor static func main() async throws {
+        let container = try ModelContainer(for: Reminder.self, ReminderRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let context = container.mainContext
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let r = Reminder(title: "Filter", cycle: .daily, firstTriggerAt: now, nextTriggerAt: now)
+        context.insert(r)
+        try context.save()
+        let token = r.actionToken
+        precondition(ReminderActions.complete(r, expectedToken: token, now: now, context: context) != nil)
+        precondition(ReminderActions.complete(r, expectedToken: token, now: now, context: context) == nil)
+        precondition(r.records.filter { $0.type == "confirm" }.count == 1)
+        precondition(ReminderActions.undo(r, expectedToken: r.actionToken, context: context))
+        precondition(r.records.isEmpty && r.nextTriggerAt == now)
+        precondition(ReminderActions.skip(r, expectedToken: r.actionToken, now: now, context: context))
+        precondition(r.records.allSatisfy { $0.type != "confirm" })
+        precondition(!ReminderActions.undo(r, expectedToken: r.actionToken, context: context))
+        let early = Reminder(title: "Early fixed", cycle: .daily,
+            firstTriggerAt: now.addingTimeInterval(86400), nextTriggerAt: now.addingTimeInterval(86400))
+        context.insert(early); try context.save()
+        let earlyToken = early.actionToken
+        precondition(ReminderActions.complete(early, expectedToken: earlyToken, now: now, context: context) != nil)
+        let firstAdvanced = early.nextTriggerAt
+        precondition(firstAdvanced > now.addingTimeInterval(86400), "Early completion must advance the future occurrence")
+        precondition(ReminderActions.complete(early, expectedToken: earlyToken, now: now, context: context) == nil)
+        let nextToken = early.actionToken
+        precondition(ReminderActions.complete(early, expectedToken: nextToken, now: now, context: context) != nil,
+            "A new displayed token may complete the next occurrence early")
+        precondition(early.nextTriggerAt > firstAdvanced && early.records.filter { $0.type == "confirm" }.count == 2)
+        let relativeEarly = Reminder(title: "Early relative", cycle: .daily,
+            firstTriggerAt: now.addingTimeInterval(86400 * 10), nextTriggerAt: now.addingTimeInterval(86400 * 10))
+        relativeEarly.recurrenceMode = "afterCompletion"
+        context.insert(relativeEarly); try context.save()
+        precondition(ReminderActions.complete(relativeEarly, expectedToken: relativeEarly.actionToken, now: now, context: context) != nil)
+        precondition(Calendar.current.dateComponents([.day], from: now, to: relativeEarly.nextTriggerAt).day == 1)
+        let retryFuture = Reminder(title: "Delivered with future retry", cycle: .daily,
+            firstTriggerAt: now, nextTriggerAt: now.addingTimeInterval(86400 * 7), status: .active, retryStage: 3)
+        context.insert(retryFuture); try context.save()
+        precondition(ReminderActions.complete(retryFuture, expectedToken: retryFuture.actionToken, now: now, context: context) != nil)
+        precondition(Calendar.current.dateComponents([.day], from: now, to: retryFuture.nextTriggerAt).day == 1,
+            "A future retry timestamp must not skip the next normal fixed anchor")
+        for status in [ReminderStatus.active, .snoozed, .pending] {
+            let skip = Reminder(title: "Skip state", cycle: .daily, firstTriggerAt: now,
+                nextTriggerAt: now.addingTimeInterval(86400 * 7), status: status,
+                retryStage: status == .pending ? 0 : 3)
+            context.insert(skip); try context.save()
+            let token = skip.actionToken
+            precondition(ReminderActions.skip(skip, expectedToken: token, now: now, context: context))
+            let expected = Calendar.current.date(byAdding: .day, value: status == .pending ? 8 : 1, to: now)!
+            precondition(skip.nextTriggerAt == expected && skip.records.isEmpty)
+            precondition(!ReminderActions.skip(skip, expectedToken: token, now: now, context: context))
+        }
+        r.reminderStyle = "gentle"; r.retryStage = 1; r.status = .snoozed
+        precondition(ReminderPolicy.deliveryDates(for: r, now: now.addingTimeInterval(-1)).count == 1)
+        let many = (0..<80).map { i in
+            Reminder(title: "\(i)", firstTriggerAt: now, nextTriggerAt: now.addingTimeInterval(Double(i + 1) * 60))
+        }
+        let queue = ReminderPolicy.allocate(many, now: now, limit: 64)
+        precondition(queue.count == 64 && queue.allSatisfy { $0.kind == .primary })
+        precondition(Set(queue.map(\.reminderID)).count == 64)
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        func date(_ month: Int, _ day: Int, hour: Int = 9) -> Date {
+            calendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: hour))!
+        }
+        let monthly = Reminder(title: "Monthly", cycle: .monthly, firstTriggerAt: date(1, 31), nextTriggerAt: date(1, 31))
+        precondition(ReminderPolicy.nextCycle(after: date(2, 1), reminder: monthly, calendar: calendar) == date(2, 28))
+        precondition(ReminderPolicy.nextCycle(after: date(2, 28), reminder: monthly, calendar: calendar) == date(3, 31))
+        monthly.recurrenceMode = "afterCompletion"
+        precondition(ReminderPolicy.nextCycle(after: date(2, 5), reminder: monthly, calendar: calendar) == date(3, 5))
+        let daily = Reminder(title: "Daily", cycle: .daily, firstTriggerAt: date(1, 1), nextTriggerAt: date(1, 1))
+        precondition(ReminderPolicy.nextCycle(after: date(1, 2, hour: 12), reminder: daily, calendar: calendar) == date(1, 3))
+        daily.recurrenceMode = "afterCompletion"
+        precondition(ReminderPolicy.nextCycle(after: date(1, 2, hour: 12), reminder: daily, calendar: calendar) == date(1, 3, hour: 12))
+        let quiet = ReminderPolicy(intervals: [15], attempts: 3, quietStart: 1320, quietEnd: 480)
+        precondition(quiet.adjust(date(1, 1, hour: 23), calendar: calendar) == date(1, 2, hour: 8))
+        precondition(quiet.adjust(date(1, 2, hour: 3), calendar: calendar) == date(1, 2, hour: 8))
+        precondition(ReminderPolicy(intervals: [0], attempts: 0, quietStart: -1, quietEnd: 480).intervals == [60, 240, 720, 1440])
+        let runtime = Reminder(title: "Original", cycle: .monthly, firstTriggerAt: date(1, 31), nextTriggerAt: date(2, 2), status: .snoozed, retryStage: 2)
+        runtime.lastCompletedAt = date(1, 1); runtime.lastRetryAt = date(2, 1)
+        context.insert(runtime); try context.save()
+        let editToken = runtime.actionToken
+        let draft = Reminder(title: "Renamed", note: "Metadata", cycle: .monthly, firstTriggerAt: date(1, 31), nextTriggerAt: now)
+        precondition(ReminderEdits.apply(draft, to: runtime, expectedToken: editToken, scheduleChanged: false, context: context,
+            calculate: { _, _ in fatalError("Metadata edit must never recalculate") }))
+        precondition(runtime.nextTriggerAt == date(2, 2) && runtime.firstTriggerAt == date(1, 31))
+        precondition(runtime.retryStage == 2 && runtime.status == .snoozed && runtime.lastCompletedAt == date(1, 1))
+        let advanceOnlyToken = runtime.actionToken
+        precondition(ReminderEdits.applyMetadata(to: runtime, expectedToken: advanceOnlyToken, advanceDays: 7, context: context))
+        precondition(runtime.advanceDays == 7 && runtime.nextTriggerAt == date(2, 2) && runtime.firstTriggerAt == date(1, 31)
+            && runtime.retryStage == 2 && runtime.status == .snoozed && runtime.actionToken != advanceOnlyToken)
+        let advanceWithMetadata = runtime.actionToken
+        precondition(ReminderEdits.applyMetadata(to: runtime, expectedToken: advanceWithMetadata, title: "Renamed", note: "AI note", advanceDays: 9, context: context))
+        precondition(runtime.advanceDays == 9 && runtime.note == "AI note" && runtime.nextTriggerAt == date(2, 2)
+            && runtime.firstTriggerAt == date(1, 31) && runtime.retryStage == 2 && runtime.status == .snoozed)
+        let advanceRow = Reminder(title: "Advance queue", kind: .date, firstTriggerAt: now,
+            nextTriggerAt: now.addingTimeInterval(20 * 86400))
+        advanceRow.advanceDays = 0; context.insert(advanceRow); try context.save()
+        precondition(ReminderPolicy.allocate([advanceRow], now: now).filter { $0.kind == .advance }.isEmpty)
+        precondition(ReminderEdits.applyMetadata(to: advanceRow, expectedToken: advanceRow.actionToken, advanceDays: 7, context: context))
+        precondition(ReminderPolicy.allocate([advanceRow], now: now).filter { $0.kind == .advance }.count == 7)
+        precondition(!ReminderEdits.apply(draft, to: runtime, expectedToken: editToken, scheduleChanged: false, context: context, calculate: { date, r in ReminderPolicy.nextCycle(after: date, reminder: r) }))
+        let chainToken = runtime.actionToken
+        let caught = ReminderPolicy.catchUp(runtime, now: runtime.nextTriggerAt.addingTimeInterval(60))
+        runtime.retryStage = caught.stage; runtime.nextTriggerAt = caught.dueAt; runtime.status = .active
+        precondition(ReminderActions.accepts(runtime, token: chainToken), "Reconciliation must retain pre-scheduled chain tokens")
+        precondition(ReminderActions.complete(runtime, expectedToken: chainToken, now: now, context: context) != nil)
+        precondition(!ReminderActions.accepts(runtime, token: chainToken))
+        _ = ReminderActions.changed(runtime, context: context)
+        precondition(!ReminderActions.undo(runtime, expectedToken: runtime.actionToken, context: context), "Edit supersedes undo")
+        let once = Reminder(title: "Once", cycle: .once, firstTriggerAt: now, nextTriggerAt: now)
+        context.insert(once); try context.save()
+        precondition(!ReminderActions.skip(once, expectedToken: once.actionToken, context: context))
+        precondition(ReminderActions.complete(once, expectedToken: once.actionToken, now: now, context: context) != nil && once.status == .confirmed)
+        precondition(ReminderActions.complete(once, expectedToken: once.actionToken, now: now, context: context) == nil)
+        let holidayCacheKey = "remote_holiday_cache_2026"
+        let oldHolidayCache = UserDefaults.standard.dictionary(forKey: holidayCacheKey)
+        defer { UserDefaults.standard.set(oldHolidayCache, forKey: holidayCacheKey) }
+        let holidayCache: [String: [String: Any]] = ["2026-10-01": ["holiday": true, "name": "国庆节"],
+                                                       "2026-09-30": ["holiday": false, "name": "工作日"]]
+        UserDefaults.standard.set(holidayCache, forKey: holidayCacheKey)
+        let holidayNow = Calendar.current.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 9))!
+        let holidayExpected = Calendar.current.date(from: DateComponents(year: 2026, month: 9, day: 30, hour: 9))!
+        let holiday = Reminder(title: "Holiday completion", cycle: .weekly, firstTriggerAt: holidayNow, nextTriggerAt: holidayNow)
+        holiday.reminderStyle = "important"; holiday.useAlarmKit = true
+        holiday.retryIntervalsMinutes = [5, 10]; holiday.maxReminderAttempts = 3
+        context.insert(holiday); try context.save()
+        HolidayNoteStore.setNote("Old occurrence note", for: holiday.id)
+        precondition(ReminderActions.complete(holiday, expectedToken: holiday.actionToken, now: holidayNow, context: context) != nil)
+        let holidayToken = holiday.actionToken; let nominalHoliday = holiday.nextTriggerAt
+        let alarmAdapter = AlarmAdapterProbe()
+        let alarmReconciler = AlarmDeliveryReconciler()
+        let nominalAlarms = ReminderPolicy.allocate([holiday], now: holidayNow, limit: Int.max)
+        alarmReconciler.reconcile(desired: nominalAlarms, cancel: alarmAdapter.cancel)
+        for delivery in nominalAlarms {
+            let installed = await alarmReconciler.schedule(delivery, exists: alarmAdapter.exists,
+                install: alarmAdapter.install, cancel: alarmAdapter.cancel)
+            precondition(installed)
+        }
+        let nominalIDs = Set(alarmAdapter.installed.keys)
+        precondition(nominalIDs.count == 3)
+        let adjusted = await HolidayPrecheck.adjust(holiday, expectedToken: holidayToken, expectedDue: nominalHoliday,
+            now: holidayNow, context: context, refresh: { _ in })
+        precondition(adjusted && holiday.nextTriggerAt == holidayExpected && holiday.firstTriggerAt == holidayNow)
+        precondition(holiday.actionToken == holidayToken && holiday.undoCompletion != nil)
+        let adjustedAlarms = ReminderPolicy.allocate([holiday], now: holidayNow, limit: Int.max)
+        alarmReconciler.reconcile(desired: adjustedAlarms, cancel: alarmAdapter.cancel)
+        for delivery in adjustedAlarms {
+            let installed = await alarmReconciler.schedule(delivery, exists: alarmAdapter.exists,
+                install: alarmAdapter.install, cancel: alarmAdapter.cancel)
+            precondition(installed)
+        }
+        precondition(nominalIDs.isSubset(of: alarmAdapter.cancelled))
+        precondition(nominalIDs.isDisjoint(with: Set(alarmAdapter.installed.keys)))
+        let adjustedKeys = Set(adjustedAlarms.map(AlarmDeliveryReconciler.Key.init))
+        precondition(Set(alarmAdapter.installed.values) == adjustedKeys && alarmAdapter.installed.count == 3)
+        precondition(Set(alarmReconciler.entries.map(\.key)) == adjustedKeys)
+        let inFlight = AlarmDeliveryReconciler()
+        let delayedAdapter = AlarmAdapterProbe()
+        inFlight.reconcile(desired: nominalAlarms, cancel: delayedAdapter.cancel)
+        let staleInstall = await inFlight.schedule(nominalAlarms[0], exists: delayedAdapter.exists, install: { id, delivery in
+            inFlight.reconcile(desired: adjustedAlarms, cancel: delayedAdapter.cancel)
+            await Task.yield()
+            // The system finishes installing AFTER its early cancellation attempt.
+            try await delayedAdapter.install(id, delivery)
+        }, cancel: delayedAdapter.cancel)
+        precondition(!staleInstall && delayedAdapter.installed.isEmpty && delayedAdapter.cancelled.count == 1)
+        for delivery in adjustedAlarms {
+            let installed = await inFlight.schedule(delivery, exists: delayedAdapter.exists,
+                install: delayedAdapter.install, cancel: delayedAdapter.cancel)
+            precondition(installed)
+        }
+        precondition(Set(delayedAdapter.installed.values) == adjustedKeys)
+        precondition(ReminderActions.undo(holiday, expectedToken: holidayToken, context: context))
+        precondition(holiday.nextTriggerAt == holidayNow && holiday.records.isEmpty && HolidayNoteStore.note(for: holiday.id) == "Old occurrence note")
+        HolidayNoteStore.setNote(nil, for: holiday.id)
+        precondition(ReminderActions.complete(holiday, expectedToken: holiday.actionToken, now: holidayNow, context: context) != nil)
+        let staleHolidayToken = holiday.actionToken; let staleHolidayDue = holiday.nextTriggerAt
+        let staleAdjusted = await HolidayPrecheck.adjust(holiday, expectedToken: staleHolidayToken, expectedDue: staleHolidayDue,
+            now: holidayNow, context: context, refresh: { _ in
+                _ = ReminderActions.snooze(holiday, until: holidayNow.addingTimeInterval(3600), expectedToken: staleHolidayToken, context: context)
+                await Task.yield()
+            })
+        precondition(!staleAdjusted && holiday.status == .snoozed && holiday.nextTriggerAt == holidayNow.addingTimeInterval(3600))
+        let frozen = SyncRevisionSnapshot(reminders: [runtime])
+        let concurrentEdit = Task { @MainActor in
+            runtime.title = "Edit during upload"; _ = ReminderActions.changed(runtime, context: context)
+        }
+        await concurrentEdit.value
+        frozen.acknowledge()
+        precondition(SyncStore.lastSyncVersion == frozen.generation && SyncStore.localVersion > frozen.generation)
+        precondition(BackupHelper.importJSON(frozen.json)!.first!.title == "Renamed", "Snapshot must contain immutable values")
+        let json = try String(contentsOfFile: "ReminderAppTests/fixtures/protocol_v3.json", encoding: .utf8)
+        let imported = BackupHelper.makeReminder(from: BackupHelper.importJSON(json)!.first!)
+        precondition(imported.retryStage == 2 && imported.status == .active)
+        precondition(imported.recurrenceMode == "afterCompletion" && imported.policy.attempts == 4)
+        precondition(imported.policy.intervals == [15, 60, 240])
+        let roundtrip = BackupHelper.makeReminder(from: BackupHelper.importJSON(BackupHelper.exportJSON([imported]))!.first!)
+        precondition(roundtrip.nextTriggerAt == imported.nextTriggerAt && roundtrip.retryStage == 2)
+        context.insert(imported); try context.save()
+        let another = Reminder(title: imported.title, firstTriggerAt: imported.firstTriggerAt, nextTriggerAt: imported.nextTriggerAt)
+        context.insert(another); try context.save()
+        var sameID = BackupHelper.importJSON(json)!.first!
+        sameID.syncId = imported.id.uuidString.uppercased(); sameID.title = "Stable ID wins over earlier fingerprint"
+        let merged = try ReminderMerge.apply([sameID], current: [another, imported, runtime], context: context)
+        precondition(merged.count == 3 && imported.title == sameID.title && another.title != sameID.title)
+        var differentID = sameID; differentID.syncId = UUID().uuidString; differentID.title = another.title
+        let mergedDistinct = try ReminderMerge.apply([differentID], current: merged, context: context)
+        precondition(mergedDistinct.count == 4, "Distinct known UUIDs cannot collapse by fingerprint")
+        precondition(mergedDistinct.contains { $0.id == runtime.id }, "Local-only reminder must survive merge")
+        var legacy = sameID; legacy.syncId = nil; legacy.id = nil; legacy.title = another.title
+        let mergedLegacy = try ReminderMerge.apply([legacy], current: mergedDistinct, context: context)
+        precondition(mergedLegacy.count == 4)
+        try BackupHelper.exportJSON([roundtrip], exportedAt: 1_792_112_400).write(toFile: "ios-export-v3.json", atomically: true, encoding: .utf8)
+        precondition(BackupHelper.importJSON(BackupHelper.exportJSON([imported]))!.first!.syncId == "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")
+        let androidJSON = try String(contentsOfFile: "ReminderAppTests/fixtures/android_export_v3_rich.json", encoding: .utf8)
+        let androidItem = BackupHelper.importJSON(androidJSON)!.first!
+        let androidModel = BackupHelper.makeReminder(from: androidItem)
+        let androidRoundtrip = BackupHelper.exportJSON([androidModel])
+        let androidWire = BackupHelper.importJSON(androidRoundtrip)!.first!
+        precondition(androidModel.lastCompletedAt?.timeIntervalSince1970 == 1_792_000_000)
+        precondition(androidWire.syncId == androidItem.syncId && androidWire.title == androidItem.title && androidWire.note == androidItem.note)
+        precondition(androidWire.kind == androidItem.kind && androidWire.cycle == androidItem.cycle && androidWire.customDays == androidItem.customDays)
+        precondition(androidWire.dateType == androidItem.dateType && androidWire.targetMonth == androidItem.targetMonth && androidWire.targetDay == androidItem.targetDay)
+        precondition(androidWire.holidayId == androidItem.holidayId && androidWire.holidayName == androidItem.holidayName)
+        precondition(androidWire.rulePeriod == androidItem.rulePeriod && androidWire.ruleWeek == androidItem.ruleWeek && androidWire.ruleWeekday == androidItem.ruleWeekday)
+        precondition(androidWire.advanceDays == androidItem.advanceDays && androidWire.reminderHour == androidItem.reminderHour && androidWire.reminderMinute == androidItem.reminderMinute)
+        precondition(androidWire.priority == androidItem.priority && androidWire.firstTriggerAt == androidItem.firstTriggerAt && androidWire.nextTriggerAt == androidItem.nextTriggerAt)
+        precondition(androidWire.status == "notifying" && androidWire.retryCount == 2 && androidWire.isActive == androidItem.isActive && androidWire.isCritical == androidItem.isCritical)
+        precondition(androidWire.holidayAware == androidItem.holidayAware && androidWire.createdAt == androidItem.createdAt)
+        precondition(androidWire.lastConfirmedAt == androidItem.lastConfirmedAt && androidWire.lastCompletedAt == androidItem.lastConfirmedAt)
+        precondition(androidWire.recurrenceMode == androidItem.recurrenceMode && androidWire.reminderStyle == androidItem.reminderStyle)
+        precondition(androidWire.retryIntervalsMinutes == androidItem.retryIntervalsMinutes && androidWire.maxReminderAttempts == androidItem.maxReminderAttempts)
+        precondition(androidWire.quietStartMinute == androidItem.quietStartMinute && androidWire.quietEndMinute == androidItem.quietEndMinute)
+        try androidRoundtrip.write(toFile: "android-ios-roundtrip-v3.json", atomically: true, encoding: .utf8)
+        let legacyID = UUID()
+        let legacyRow = Reminder(id: legacyID, title: "Legacy preferences", firstTriggerAt: now, nextTriggerAt: now)
+        LegacyPolicyStore.setCritical(true, for: legacyID)
+        UserDefaults.standard.set(1320, forKey: "quiet_hours_\(legacyID.uuidString)_start")
+        UserDefaults.standard.set(480, forKey: "quiet_hours_\(legacyID.uuidString)_end")
+        LegacyPolicyStore.migrate(legacyRow)
+        precondition(legacyRow.reminderStyle == "important" && legacyRow.quietStartMinute == 1320 && legacyRow.quietEndMinute == 480)
+        legacyRow.reminderStyle = "gentle"; legacyRow.quietStartMinute = nil; legacyRow.quietEndMinute = nil
+        LegacyPolicyStore.migrate(legacyRow)
+        precondition(legacyRow.reminderStyle == "gentle" && legacyRow.quietStartMinute == nil, "One-time migration cannot overwrite imported/edited policy")
+        LegacyPolicyStore.setCritical(false, for: legacyID)
+        UserDefaults.standard.removeObject(forKey: "quiet_hours_\(legacyID.uuidString)_start")
+        UserDefaults.standard.removeObject(forKey: "quiet_hours_\(legacyID.uuidString)_end")
+        try await FinalReviewChecks.run(context: context)
+        print("Upgrade policy/actions/global allocation/v3 checks passed")
+    }
+}
+
+/// Only the OS effects are substituted; all desired-set/cancellation/await logic is production code.
+@MainActor final class AlarmAdapterProbe {
+    var installed: [UUID: AlarmDeliveryReconciler.Key] = [:]
+    var cancelled = Set<UUID>()
+    func exists(_ id: UUID) -> Bool { installed[id] != nil }
+    func install(_ id: UUID, _ delivery: ReminderPolicy.Delivery) async throws {
+        installed[id] = AlarmDeliveryReconciler.Key(delivery)
+    }
+    func cancel(_ id: UUID) { cancelled.insert(id); installed.removeValue(forKey: id) }
+}

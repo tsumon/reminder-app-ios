@@ -190,7 +190,7 @@ struct ReminderWidgetEntryView: View {
                     .foregroundStyle(Color.widgetSnoozed)
             } else {
                 HStack(spacing: 8) {
-                    Button(intent: CompleteReminderIntent(reminderID: id)) {
+                    Button(intent: CompleteReminderIntent(reminderID: id, token: entry.data.nextActionToken ?? "")) {
                         Label("完成".localized, systemImage: "checkmark.circle")
                             .font(.caption.weight(.semibold))
                             .padding(.horizontal, 10)
@@ -199,7 +199,7 @@ struct ReminderWidgetEntryView: View {
                             .foregroundStyle(.green)
                     }
                     // v2.0.16: 小组件「稍后提醒」快捷按钮
-                    Button(intent: SnoozeReminderIntent(reminderID: id)) {
+                    Button(intent: SnoozeReminderIntent(reminderID: id, token: entry.data.nextActionToken ?? "")) {
                         Label("稍后".localized, systemImage: "clock")
                             .font(.caption.weight(.semibold))
                             .padding(.horizontal, 10)

@@ -23,6 +23,7 @@ enum WeeklyReportService {
         guard !records.isEmpty else {
             UNUserNotificationCenter.current()
                 .removePendingNotificationRequests(withIdentifiers: [identifier])
+            await ReminderEngine.shared.ensureRetryChains()
             return
         }
 
@@ -66,6 +67,8 @@ enum WeeklyReportService {
         let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
 
+        await NotificationManager.shared.reserveUnmanaged(identifier: identifier)
+        defer { NotificationManager.shared.releaseUnmanagedReservation(identifier: identifier) }
         do {
             try await UNUserNotificationCenter.current().add(request)
             print("[WeeklyReport] 周报通知已安排（本周完成 \(weekSummary.confirmCount) / 漏掉 \(weekSummary.missedCount)）")

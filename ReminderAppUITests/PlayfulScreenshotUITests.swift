@@ -12,6 +12,7 @@ final class PlayfulScreenshotUITests: XCTestCase {
 
     func testCapturePlayfulScreens() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         // -appLanguage: UserDefaults 启动参数覆盖，强制中文文案（模拟器系统语言是英文）
         app.launchArguments += ["-tab", "0", "-appLanguage", "zh-Hans"]
 
@@ -47,15 +48,22 @@ final class PlayfulScreenshotUITests: XCTestCase {
         }
 
         // 日历 Tab：热力密度 + 今日吉祥物 + 本周跑道
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        selectDock(app, title: "日历")
+        let nextMonth = app.buttons["下一月"]
+        XCTAssertTrue(nextMonth.waitForExistence(timeout: 5))
+        XCTAssertTrue(nextMonth.isHittable)
+        // MainTabView animates its tab switch; allow the final opaque frame to commit.
+        let settled = expectation(description: "Calendar transition committed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { settled.fulfill() }
+        wait(for: [settled], timeout: 2)
         snap(app, "04-calendar")
 
         // 统计 Tab：打卡城堡 + 本周花园
-        app.tabBars.buttons.element(boundBy: 2).tap()
+        selectDock(app, title: "统计")
         snap(app, "05-stats")
 
         // 创建页周期选择器（emoji 卡片 + 彩虹光晕）
-        app.tabBars.buttons.element(boundBy: 0).tap()
+        selectDock(app, title: "首页")
         openCreate(app)
         app.swipeUp()
         snap(app, "06-create-cycle")
@@ -65,6 +73,15 @@ final class PlayfulScreenshotUITests: XCTestCase {
     }
 
     // MARK: - 操作辅助
+
+    private func selectDock(_ app: XCUIApplication, title: String) {
+        let dock = app.otherElements["soft-tab-dock"]
+        XCTAssertTrue(dock.waitForExistence(timeout: 5), "底栏未出现")
+        let button = dock.buttons[title]
+        XCTAssertTrue(button.waitForExistence(timeout: 5), "底栏按钮未出现：\(title)")
+        XCTAssertTrue(button.isHittable, "底栏按钮不可点：\(title)")
+        button.tap()
+    }
 
     private func openCreate(_ app: XCUIApplication) {
         let create = app.buttons.containing(

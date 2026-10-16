@@ -8,6 +8,7 @@ struct ReminderDetailView: View {
 
     let reminder: Reminder
     var highlightConfirm: Bool = false
+    @State private var showEdit = false
     @State private var showDeleteAlert = false
     @State private var showShareSheet = false
     @State private var appeared = false
@@ -19,6 +20,7 @@ struct ReminderDetailView: View {
     @State private var checkInToken = 0
     // v2.1.0: 自定义稍后
     @State private var showCustomSnooze = false
+    @State private var customSnoozeToken = ""
     @State private var customSnoozeMinutes = "15"
     // v2.1.1: 勿扰时段
     @State private var quietHoursEnabled = false
@@ -26,6 +28,7 @@ struct ReminderDetailView: View {
     @State private var quietEnd = Calendar.current.date(bySettingHour: 8, minute: 0, second: 0, of: Date()) ?? Date()
 
     var body: some View {
+        let token = reminder.actionToken
         ScrollView {
             VStack(spacing: 20) {
                 // MARK: 状态大卡片
@@ -39,6 +42,16 @@ struct ReminderDetailView: View {
                 actionButtons
                     .padding(.horizontal)
 
+                HStack {
+                    if !(reminder.kind == .cycle && reminder.cycle == .once) {
+                        Button("跳过本次".localized) { ReminderEngine.shared.skipReminder(reminder, expectedToken: token) }
+                    }
+                    if reminder.undoCompletion != nil {
+                        Button("撤销完成".localized) { ReminderEngine.shared.undoCompletion(reminder, expectedToken: token) }
+                            .accessibilityIdentifier("undo-completion")
+                    }
+                    Button("编辑完整规则".localized) { showEdit = true }
+                }.buttonStyle(.bordered).padding(.horizontal)
                 // MARK: 信息卡片
                 infoCard
                     .padding(.horizontal)
@@ -74,6 +87,7 @@ struct ReminderDetailView: View {
                 .accessibilityIdentifier("share-reminder")
             }
         }
+        .sheet(isPresented: $showEdit) { CreateReminderView(editing: reminder) }
         .sheet(isPresented: $showShareSheet) {
             ActivityShareSheet(items: shareItems)
         }
@@ -98,7 +112,7 @@ struct ReminderDetailView: View {
             Button("取消".localized, role: .cancel) {}
             Button("确定".localized) {
                 let minutes = Int(customSnoozeMinutes) ?? 15
-                ReminderEngine.shared.snoozeReminder(reminder, afterMinutes: max(1, minutes))
+                ReminderEngine.shared.snoozeReminder(reminder, afterMinutes: max(1, minutes), expectedToken: customSnoozeToken)
             }
         } message: {
             Text("多少分钟后再次提醒？".localized)
@@ -107,8 +121,8 @@ struct ReminderDetailView: View {
             ReminderEngine.shared.configure(with: modelContext)
             appeared = true
             // v2.1.1: 从 QuietHoursStore 恢复勿扰时段
-            if let start = QuietHoursStore.startMinute(for: reminder.id),
-               let end = QuietHoursStore.endMinute(for: reminder.id) {
+            if let start = reminder.quietStartMinute,
+               let end = reminder.quietEndMinute {
                 quietHoursEnabled = true
                 quietStart = Calendar.current.date(
                     bySettingHour: start / 60, minute: start % 60, second: 0, of: Date()) ?? quietStart
@@ -241,7 +255,8 @@ struct ReminderDetailView: View {
             + Calendar.current.component(.minute, from: quietStart)
         let end = Calendar.current.component(.hour, from: quietEnd) * 60
             + Calendar.current.component(.minute, from: quietEnd)
-        QuietHoursStore.set(start: start, end: end, for: reminder.id)
+        reminder.quietStartMinute = start; reminder.quietEndMinute = end
+        _ = ReminderActions.changed(reminder, context: modelContext)
         if reminder.isEnabled {
             Task {
                 await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
@@ -251,11 +266,12 @@ struct ReminderDetailView: View {
 
     @ViewBuilder
     private var actionButtons: some View {
+        let token = reminder.actionToken
         if reminder.status == .active || reminder.status == .snoozed || reminder.status == .overdue {
             VStack(spacing: 12) {
                 HStack(spacing: 12) {
                     Button {
-                        performCheckIn()
+                        performCheckIn(expectedToken: token)
                     } label: {
                         Label("确认完成".localized, systemImage: "checkmark.circle.fill")
                             .frame(maxWidth: .infinity)
@@ -273,15 +289,16 @@ struct ReminderDetailView: View {
                     // v2.1.0: 统一稍后选项（15 分钟 / 1 小时 / 明天 / 自定义分钟）
                     Menu {
                         Button("15 分钟".localized) {
-                            ReminderEngine.shared.snoozeReminder(reminder, afterMinutes: 15)
+                            ReminderEngine.shared.snoozeReminder(reminder, afterMinutes: 15, expectedToken: token)
                         }
                         Button("1 小时".localized) {
-                            ReminderEngine.shared.snoozeReminder(reminder, afterMinutes: 60)
+                            ReminderEngine.shared.snoozeReminder(reminder, afterMinutes: 60, expectedToken: token)
                         }
                         Button("明天".localized) {
-                            ReminderEngine.shared.snoozeReminderTomorrow(reminder)
+                            ReminderEngine.shared.snoozeReminderTomorrow(reminder, expectedToken: token)
                         }
                         Button("自定义…".localized) {
+                            customSnoozeToken = token
                             showCustomSnooze = true
                         }
                     } label: {
@@ -295,7 +312,7 @@ struct ReminderDetailView: View {
                 // 已逾期：给一个明确的「补打今天」入口——按今天完成、推进周期、计入统计
                 if reminder.status == .overdue {
                     Button {
-                        performCheckIn(source: "补打卡")
+                        performCheckIn(source: "补打卡", expectedToken: token)
                     } label: {
                         Label("补打今天".localized, systemImage: "checkmark.circle.badge.questionmark")
                             .frame(maxWidth: .infinity)
@@ -322,8 +339,8 @@ struct ReminderDetailView: View {
     }
 
     /// 打卡（确认完成 / 补打今天共用）：确认 + 弹正向反馈卡片
-    private func performCheckIn(source: String = "手动确认") {
-        ReminderEngine.shared.confirmReminder(reminder, source: source)
+    private func performCheckIn(source: String = "手动确认", expectedToken: String) {
+        guard ReminderEngine.shared.confirmReminder(reminder, source: source, expectedToken: expectedToken) else { return }
         // 批次2 功能2: 打卡成功卡片（计算当前连续天数）
         let descriptor = FetchDescriptor<ReminderRecord>()
         let records = (try? modelContext.fetch(descriptor)) ?? []
@@ -399,7 +416,7 @@ struct ReminderDetailView: View {
                             reminder: reminder
                         )
                     }
-                    try? modelContext.save()
+                    _ = ReminderActions.changed(reminder, context: modelContext)
 
                     if newValue {
                         Task {
@@ -421,9 +438,10 @@ struct ReminderDetailView: View {
 
             // 批次3 功能5: 关键提醒开关（触发更激进的重复 alert 脉冲）
             Toggle(isOn: Binding(
-                get: { ReminderEngine.CriticalStore.isCritical(reminder.id) },
+                get: { reminder.reminderStyle == "important" },
                 set: { newValue in
-                    ReminderEngine.CriticalStore.setCritical(newValue, for: reminder.id)
+                    reminder.reminderStyle = newValue ? "important" : "persistent"
+                    _ = ReminderActions.changed(reminder, context: modelContext)
                     if reminder.isEnabled {
                         Task {
                             await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
@@ -434,7 +452,7 @@ struct ReminderDetailView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("关键提醒".localized)
                         .font(.subheadline)
-                    Text("重要事项，错过会重复提醒直到确认".localized)
+                    Text("重要事项按所选间隔重试，达到上限后停止".localized)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -450,9 +468,11 @@ struct ReminderDetailView: View {
                             + Calendar.current.component(.minute, from: quietStart)
                         let end = Calendar.current.component(.hour, from: quietEnd) * 60
                             + Calendar.current.component(.minute, from: quietEnd)
-                        QuietHoursStore.set(start: start, end: end, for: reminder.id)
+                        reminder.quietStartMinute = start; reminder.quietEndMinute = end
+        _ = ReminderActions.changed(reminder, context: modelContext)
                     } else {
-                        QuietHoursStore.set(start: nil, end: nil, for: reminder.id)
+                        reminder.quietStartMinute = nil; reminder.quietEndMinute = nil
+                        _ = ReminderActions.changed(reminder, context: modelContext)
                     }
                     if reminder.isEnabled {
                         Task {

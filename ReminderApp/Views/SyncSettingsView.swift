@@ -4,6 +4,7 @@ import UIKit
 
 /// WebDAV 同步设置
 struct SyncSettingsView: View {
+    @State private var showSyncConflict = false
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Query private var reminders: [Reminder]
@@ -114,6 +115,11 @@ struct SyncSettingsView: View {
                 }
             }
         }
+        .confirmationDialog("两边都有修改，已停止同步。选择前会保存本地快照；删除不会跨设备同步。", isPresented: $showSyncConflict) {
+            Button("使用本地并上传".localized) { resolveSync(.local) }
+            Button("使用远程并保留本机独有提醒".localized) { resolveSync(.remote) }
+            Button("取消".localized, role: .cancel) {}
+        }
         .navigationTitle("同步设置".localized)
         .navigationBarTitleDisplayMode(.inline)
         .alert("日历订阅链接".localized, isPresented: $icsAlertPresented) {
@@ -139,6 +145,16 @@ struct SyncSettingsView: View {
     @State private var icsAlertPresented = false
 
     /// 测试连接：用当前输入验证（不持久化——避免手滑填错覆盖已有好配置），通过后再「保存并立即同步」
+    private func resolveSync(_ choice: WebDavSync.ConflictChoice) {
+        Task {
+            switch await WebDavSync.resolve(choice, context: modelContext) {
+            case .success: resultMsg = "同步完成；本机独有提醒已保留。删除暂不跨设备同步。"
+            case .conflict: showSyncConflict = true
+            case .failure(let message): resultMsg = message
+            }
+        }
+    }
+
     private func testConnection() {
         testing = true
         resultMsg = nil
@@ -154,6 +170,8 @@ struct SyncSettingsView: View {
             case .success:
                 isError = false
                 resultMsg = "连接成功 ✓ 账号与路径可用，点「保存并立即同步」开始同步。"
+            case .conflict:
+                showSyncConflict = true
             case .failure(let msg):
                 isError = true
                 resultMsg = msg
@@ -174,6 +192,8 @@ struct SyncSettingsView: View {
                 isError = false
                 // v2.0.16: 双端都改过 → 提示已按版本覆盖
                 resultMsg = conflict ? "已用最新版本覆盖（检测到双端都有修改，未合并）" : "同步完成"
+            case .conflict:
+                showSyncConflict = true
             case .failure(let msg):
                 isError = true
                 resultMsg = msg

@@ -4,6 +4,7 @@ import XCTest
 final class ScrollToBottomUITests: XCTestCase {
     func testOpenScrollsToBottom() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         app.launchArguments += ["-uitest_ai_fixture", "1", "-uitest_skip_permission", "1"]
         app.launch()
 

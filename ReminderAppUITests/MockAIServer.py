@@ -12,10 +12,15 @@
   req4: 流式   → 文本「已按农历创建：mama生日（农历） 2月11日 9:00」
 """
 import json
+import threading
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = 8899
 entries = []
+dav_reads = 0
+dav_writes = 0
+dav_backup = json.loads((Path(__file__).parent.parent / "ReminderAppTests/fixtures/protocol_v3.json").read_text(encoding="utf-8"))
 
 
 def tool_call(name, args):
@@ -88,8 +93,23 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json(resp_text(payload))
 
+    def do_PUT(self):
+        global dav_writes, dav_backup
+        dav_writes += 1
+        dav_backup = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+        self._json({"ok": True})
+
     def do_GET(self):
-        if self.path.endswith("/state"):
+        global dav_reads, dav_writes
+        if self.path == "/dav-state":
+            self._json({"reads": dav_reads, "writes": dav_writes, "backup": dav_backup})
+        elif self.path == "/dav-reset":
+            dav_reads = 0; dav_writes = 0
+            self._json({"ok": True})
+        elif self.path == "/dav/reminder_backup.json":
+            dav_reads += 1
+            self._json(dav_backup)
+        elif self.path.endswith("/state"):
             self._json({"requests": len(entries), "entries": entries})
         elif self.path.endswith("/reset"):
             entries.clear()
@@ -100,6 +120,7 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, obj):
         data = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(200)
+        self.send_header("ETag", '"uitest-dav-v1"')
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
@@ -123,6 +144,25 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.flush()
 
 
+class ModelsHandler(Handler):
+    """Independent fixture: model/ping tests must not consume port8899's ask_user script."""
+    def do_GET(self):
+        if self.path.rstrip("/") == "/v1/models":
+            self._json({"object": "list", "data": [
+                {"id": "llama3.2", "object": "model"},
+                {"id": "qwen2.5", "object": "model"},
+            ]})
+        else:
+            self.send_error(404)
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        self.rfile.read(length)
+        self._json(resp_text("Mock model connection successful"))
+
+
 if __name__ == "__main__":
-    print("mock AI listening on 127.0.0.1:%d" % PORT)
+    models = ThreadingHTTPServer(("127.0.0.1", 8898), ModelsHandler)
+    threading.Thread(target=models.serve_forever, daemon=True).start()
+    print("mock models8898 and scripted AI/WebDAV8899 ready", flush=True)
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

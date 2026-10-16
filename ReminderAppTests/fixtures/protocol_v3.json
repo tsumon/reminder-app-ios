@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "schemaVersion": 3,
+  "exportedAt": 1792112400000,
+  "dataVersion": 10,
+  "reminders": [
+    {
+      "id": 42,
+      "syncId": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "title": "Filter replacement",
+      "note": "Shared v3 fixture",
+      "kind": "cycle",
+      "cycle": "monthly",
+      "firstTriggerAt": 1792112400000,
+      "nextTriggerAt": 1792123200000,
+      "status": "notifying",
+      "retryCount": 2,
+      "isActive": true,
+      "isCritical": true,
+      "recurrenceMode": "afterCompletion",
+      "reminderStyle": "important",
+      "retryIntervalsMinutes": [
+        15,
+        60,
+        240
+      ],
+      "maxReminderAttempts": 4,
+      "quietStartMinute": 1320,
+      "quietEndMinute": 480
+    }
+  ]
+}

@@ -37,6 +37,7 @@ final class SixFeaturesUITests: XCTestCase {
 
     func testPingAndModelSearch() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         app.launchArguments += [
             "-uitest_skip_permission", "1",
             "-ai_endpoint", "http://127.0.0.1:8898/v1",
@@ -72,6 +73,7 @@ final class SixFeaturesUITests: XCTestCase {
 
     func testReminderTemplatesFillForm() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-uitest_isolate_notifications"]
         app.launchArguments += ["-uitest_skip_permission", "1"]
         app.launch()
 

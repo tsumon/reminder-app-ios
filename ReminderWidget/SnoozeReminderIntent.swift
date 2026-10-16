@@ -14,14 +14,18 @@ struct SnoozeReminderIntent: AppIntent {
     @Parameter(title: "提醒 ID")
     var reminderID: String
 
-    init() {}
+    @Parameter(title: "操作令牌")
+    var token: String
 
-    init(reminderID: String) {
+    init() { token = "" }
+
+    init(reminderID: String, token: String) {
+        self.token = token
         self.reminderID = reminderID
     }
 
     func perform() async throws -> some IntentResult {
-        WidgetSnapshot.markSnoozed(reminderID: reminderID)
+        WidgetSnapshot.queue(reminderID: reminderID, token: token, snooze: true)
         WidgetSnapshot.markOpenDetail(reminderID: reminderID, highlightConfirm: true)
         // 刷新小组件：推迟后的下次提醒立即可见
         WidgetCenter.shared.reloadAllTimelines()

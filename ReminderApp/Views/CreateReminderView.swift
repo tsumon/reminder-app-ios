@@ -6,6 +6,27 @@ struct CreateReminderView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
+    var editing: Reminder? = nil
+    var initialSentence: String = ""
+    var onCreated: ((Reminder) -> Void)? = nil
+    @State private var expectedToken = ""
+    @State private var initialSchedule = ""
+    @State private var initialRuleStart: ReminderEdits.RuleStartInput?
+    @State private var saving = false
+    @State private var didSave = false
+    @State private var recurrenceMode = "fixed"
+    @State private var reminderStyle = "persistent"
+    @State private var intervalsText = "60,240,720,1440"
+    @State private var maxAttempts = 5
+    @State private var useAlarmKit = false
+    @State private var quietEnabled = false
+    @State private var quietStart = 1320
+    @State private var quietEnd = 480
+
+    private var scheduleKey: String {
+        "\(kind)|\(cycle)|\(customDays)|\(dateType)|\(targetMonth)|\(targetDay)|\(advanceDays)|\(reminderHour)|\(reminderMinute)|\(selectedHolidayID)|\(rulePeriod)|\(ruleWeek)|\(ruleWeekday)|\(holidayAware)|\(triggerDate.timeIntervalSince1970)|\(triggerTime.timeIntervalSince1970)"
+    }
+
     // MARK: - 基本输入
 
     @State private var title = ""
@@ -43,7 +64,6 @@ struct CreateReminderView: View {
 
     // MARK: - 关键提醒（批次3 功能5）
 
-    @State private var isCritical = false
 
     // MARK: - v2.4.10 避开节假日/周末（报税等工作日事务自动顺延）
 
@@ -77,6 +97,8 @@ struct CreateReminderView: View {
     @State private var nlText = ""
     @State private var nlHint: String?
     @State private var nlError = false
+    @State private var needsRuleReview = false
+    @State private var reviewedRule = false
 
     let months = Array(1...12)
     let days = Array(1...31)
@@ -89,6 +111,13 @@ struct CreateReminderView: View {
                 // MARK: 自然语言快速创建
                 naturalLanguageSection
 
+                if needsRuleReview {
+                    Section("确认完整规则".localized) {
+                        Text("请先选择下方类型、周期和时间，再确认规则。".localized)
+                        Toggle("我已检查并确认下方规则".localized, isOn: $reviewedRule)
+                            .accessibilityIdentifier("confirm-complex-rule")
+                    }
+                }
                 // MARK: 模板
                 templateSection
 
@@ -114,16 +143,6 @@ struct CreateReminderView: View {
                     }
                     .pickerStyle(.menu)
 
-                    // 批次3 功能5: 关键提醒开关（触发更激进的重复 alert 脉冲）
-                    Toggle(isOn: $isCritical) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("关键提醒".localized)
-                            Text("重要事项，错过会重复提醒直到确认".localized)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
                     // v2.4.10: 避开节假日/周末（报税、缴费等工作日事务）
                     Toggle(isOn: $holidayAware) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -135,6 +154,15 @@ struct CreateReminderView: View {
                     }
                 }
 
+                PolicyFields(recurrenceMode: $recurrenceMode, style: $reminderStyle, intervals: $intervalsText,
+                    attempts: $maxAttempts, useAlarmKit: $useAlarmKit, repeatingCycle: kind == .cycle && cycle != .once)
+                Section("勿扰时段".localized) {
+                    Toggle("启用每日勿扰".localized, isOn: $quietEnabled)
+                    if quietEnabled {
+                        Stepper("开始：\(quietStart / 60):\(String(format: "%02d", quietStart % 60))", value: $quietStart, in: 0...1439, step: 15)
+                        Stepper("结束：\(quietEnd / 60):\(String(format: "%02d", quietEnd % 60))", value: $quietEnd, in: 0...1439, step: 15)
+                    }
+                }
                 // MARK: 周期提醒设置
                 if kind == .cycle {
                     cycleSection
@@ -158,7 +186,8 @@ struct CreateReminderView: View {
                     }
                 }
             }
-            .navigationTitle("新建提醒".localized)
+            .navigationTitle(editing == nil ? "新建提醒".localized : "编辑提醒".localized)
+            .onAppear(perform: loadDraft)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -167,7 +196,7 @@ struct CreateReminderView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存".localized) { saveReminder() }
                         .fontWeight(.semibold)
-                        .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(saving || (needsRuleReview && !reviewedRule) || title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
             .alert("无法保存".localized, isPresented: errorAlertBinding) {
@@ -246,12 +275,18 @@ struct CreateReminderView: View {
     }
 
     private func applyNaturalLanguage() {
+        if nlText.range(of: "每季度|第[一二三四五1-5].*周|每隔|每[0-9]+[天周月]|(?:除了|排除|仅限|工作日|最后)", options: .regularExpression) != nil {
+            needsRuleReview = true; reviewedRule = false
+            nlError = true; nlHint = "复杂规则请在下面完整表单中确认，或返回首页使用 AI。未自动猜测日期。"
+            if title.isEmpty { title = nlText }
+            return
+        }
         guard let p = NaturalDateParser.parse(nlText) else {
             nlError = true
             nlHint = "没听懂，换个说法试试～"
             return
         }
-        nlError = false
+        nlError = false; needsRuleReview = false; reviewedRule = false
 
         // 标题
         if title.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -348,7 +383,7 @@ struct CreateReminderView: View {
                     suggestionText = s.reason
                 }
             } label: {
-                Label("智能建议频率", systemImage: "wand.and.stars")
+                Label("智能建议频率".localized, systemImage: "wand.and.stars")
             }
 
             if let tip = suggestionText {
@@ -550,28 +585,18 @@ struct CreateReminderView: View {
     // MARK: - 保存
 
     private func saveReminder() {
+        guard !saving && !didSave && (!needsRuleReview || reviewedRule) else { return }
+        guard let intervals = PolicyFields.parsed(intervalsText) else { errorMessage = "请填写有效重试间隔：1–10080 分钟，最多 10 个"; return }
+        saving = true
+        defer { if !didSave { saving = false } }
         let calendar = Calendar.current
 
+        let ruleStart = ReminderEdits.RuleStartInput(date: triggerDate, time: triggerTime, calendar: calendar)
         let reminder: Reminder
 
         switch kind {
         case .cycle:
-            let dateComponents = calendar.dateComponents([.year, .month, .day], from: triggerDate)
-            let timeComponents = calendar.dateComponents([.hour, .minute], from: triggerTime)
-
-            var merged = DateComponents()
-            merged.year = dateComponents.year
-            merged.month = dateComponents.month
-            merged.day = dateComponents.day
-            merged.hour = timeComponents.hour
-            merged.minute = timeComponents.minute
-
-            let firstTrigger = calendar.date(from: merged) ?? triggerDate
-            // v2.0.22: 保存前兜底——合并时间可能仍是过去（跨午夜/秒差），
-            // 统一顺延到下一分钟，避免「立即创建立即过期」的首个通知丢失
-            let finalTrigger = firstTrigger > Date()
-                ? firstTrigger
-                : (calendar.date(byAdding: .minute, value: 1, to: firstTrigger) ?? firstTrigger)
+            let finalTrigger = ReminderEdits.cycleAnchor(date: triggerDate, time: triggerTime, editing: editing != nil)
             // v2.0.22: 自定义周期留空/非法时禁止保存（原实现静默兜底成每天一次，
             // 用户没输入也会被高频打扰）；改成保存按钮直接拦截
             if cycle == .custom {
@@ -606,25 +631,8 @@ struct CreateReminderView: View {
 
         case .rule:
             // 用户选择的首次时间作为锚点，取锚点之后的下一个规则日
-            let dateComponents = calendar.dateComponents([.year, .month, .day], from: triggerDate)
-            let timeComponents = calendar.dateComponents([.hour, .minute], from: triggerTime)
-            var merged = DateComponents()
-            merged.year = dateComponents.year
-            merged.month = dateComponents.month
-            merged.day = dateComponents.day
-            merged.hour = timeComponents.hour
-            merged.minute = timeComponents.minute
-            let anchor = calendar.date(from: merged) ?? triggerDate
-
-            let engine = ReminderEngine.shared
-            let firstTrigger = engine.nextRuleDate(
-                period: rulePeriod,
-                week: ruleWeek.rawValue,
-                weekday: ruleWeekday.rawValue,
-                hour: reminderHour,
-                minute: reminderMinute,
-                from: anchor
-            )
+            let firstTrigger = ReminderEdits.ruleFirstTrigger(start: ruleStart, period: rulePeriod,
+                week: ruleWeek, weekday: ruleWeekday, hour: reminderHour, minute: reminderMinute, calendar: calendar)
             reminder = Reminder(
                 title: title.trimmingCharacters(in: .whitespaces),
                 note: note.trimmingCharacters(in: .whitespaces),
@@ -716,6 +724,27 @@ struct CreateReminderView: View {
             )
         }
 
+        reminder.recurrenceMode = recurrenceMode; reminder.reminderStyle = reminderStyle
+        reminder.retryIntervalsMinutes = intervals; reminder.maxReminderAttempts = maxAttempts
+        reminder.quietStartMinute = quietEnabled ? quietStart : nil; reminder.quietEndMinute = quietEnabled ? quietEnd : nil
+        reminder.useAlarmKit = useAlarmKit; reminder.policyMigrated = true
+        if let editing {
+            guard ReminderEdits.apply(reminder, to: editing, expectedToken: expectedToken,
+                scheduleChanged: ReminderEdits.scheduleChanged(reminder, from: editing,
+                    ruleStart: ruleStart, originalRuleStart: initialRuleStart), context: modelContext,
+                calculate: ReminderEngine.shared.calculateNextTrigger) else {
+                errorMessage = "提醒已被其他操作修改，请关闭后重新编辑"; return
+            }
+            Task {
+                if #available(iOS 26.0, *), editing.useAlarmKit { _ = await ImportantAlarmService.shared.requestAuthorization() }
+                await ReminderEngine.shared.scheduleAllNotifications(for: editing)
+            }
+            didSave = true
+            dismiss(); return
+        }
+        if reminder.holidayAware {
+            reminder.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(after: reminder.firstTriggerAt.addingTimeInterval(-1), reminder: reminder)
+        }
         modelContext.insert(reminder)
         // v2.0.22: 保存失败不再吞掉——保存成功后才推进同步版本、排通知、关页面；
         // 否则 UI 显示已创建但数据没落盘，同步还会上传不完整数据
@@ -725,16 +754,41 @@ struct CreateReminderView: View {
             errorMessage = Localized("保存失败，请重试：%@", error.localizedDescription)
             return
         }
+        didSave = true
         SyncStore.touchLocalChange()
 
         // 批次3 功能5: 关键提醒标记落 UserDefaults 侧存（避免改 SwiftData schema）
-        ReminderEngine.CriticalStore.setCritical(isCritical, for: reminder.id)
+        onCreated?(reminder)
 
         Task {
+            if #available(iOS 26.0, *), reminder.useAlarmKit { _ = await ImportantAlarmService.shared.requestAuthorization() }
             await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
         }
 
         dismiss()
+    }
+
+    private func loadDraft() {
+        guard expectedToken.isEmpty else { return }
+        if let r = editing {
+            LegacyPolicyStore.migrate(r)
+            expectedToken = r.actionToken
+            title = r.title; note = r.note; kind = r.kind; cycle = r.cycle
+            customDays = r.customDays > 0 ? String(r.customDays) : ""
+            dateType = r.dateType ?? .solarBirthday; targetMonth = r.targetMonth; targetDay = r.targetDay
+            advanceDays = Double(r.advanceDays); reminderHour = r.reminderHour; reminderMinute = r.reminderMinute
+            selectedHolidayID = r.holidayID ?? "chunjie"; rulePeriod = r.rulePeriod; ruleWeek = r.ruleWeek; ruleWeekday = r.ruleWeekday
+            priority = r.priority; holidayAware = r.holidayAware
+            triggerDate = r.firstTriggerAt; triggerTime = r.firstTriggerAt
+            initialRuleStart = ReminderEdits.RuleStartInput(date: triggerDate, time: triggerTime)
+            recurrenceMode = r.recurrenceMode; reminderStyle = r.reminderStyle
+            intervalsText = r.policy.intervals.map(String.init).joined(separator: ","); maxAttempts = r.policy.attempts
+            useAlarmKit = r.useAlarmKit; quietEnabled = r.quietStartMinute != nil
+            quietStart = r.quietStartMinute ?? 1320; quietEnd = r.quietEndMinute ?? 480
+            initialSchedule = scheduleKey
+        } else if !initialSentence.isEmpty {
+            expectedToken = "new"; nlText = initialSentence; applyNaturalLanguage()
+        } else { expectedToken = "new" }
     }
 
     /// v2.0.22: 保存校验/失败提示（自定义周期、保存错误等）
