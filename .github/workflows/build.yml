@@ -81,6 +81,14 @@ jobs:
           path: ios-export-v3.json
           if-no-files-found: warn
 
+      - name: Upload Android to iOS production roundtrip
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-ios-roundtrip-v3
+          path: android-ios-roundtrip-v3.json
+          if-no-files-found: warn
+
       - name: Download iOS Simulator runtime
         # actool (AssetCatalogSimulatorAgent) 需要 iOS 模拟器运行时才能编译 Assets.xcassets，
         # macOS runner 默认未安装，会导致 archive 阶段 "No simulator runtime version ... available" 失败。
@@ -128,6 +136,30 @@ jobs:
           with open('simulator-id.txt','w') as f: f.write(chosen)
           PY
           xcodebuild test -project ReminderApp.xcodeproj -scheme ReminderApp -destination "platform=iOS Simulator,id=$(cat simulator-id.txt)" -parallel-testing-enabled NO -resultBundlePath TestResults.xcresult CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+
+      - name: Export UI screenshot and failure attachments
+        if: always()
+        run: |
+          set -euo pipefail
+          # Apple documents export attachments and recommends CLI help for installed tool details.
+          # https://developer.apple.com/documentation/xcode-release-notes/xcode-16_3-release-notes
+          xcrun xcresulttool help export attachments | tee xcresult-attachments-help.txt
+          if [ -d TestResults.xcresult ]; then
+            xcrun xcresulttool export attachments --path TestResults.xcresult --output-path UIAttachments 2>&1 | tee xcresult-attachments-export.log
+          else
+            echo "No xcresult bundle was produced; retaining build and test failure logs."
+          fi
+
+      - name: Upload exported UI attachments
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ui-attachments
+          path: |
+            UIAttachments
+            xcresult-attachments-help.txt
+            xcresult-attachments-export.log
+          if-no-files-found: warn
 
       - name: Upload UI test results and mock log
         if: always()
