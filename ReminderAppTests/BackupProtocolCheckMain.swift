@@ -101,7 +101,7 @@ struct BackupProtocolCheck {
 
         // 7. 导出：schemaVersion=2 + syncId + 双写 isCritical
         let exported = BackupHelper.exportJSON([r0, r1], exportedAt: 1_755_255_000)
-        check("导出包含 schemaVersion: 3", exported.contains("\"schemaVersion\" : 3"))
+        check("导出包含 schemaVersion: 4", exported.contains("\"schemaVersion\" : 4"))
         check("导出包含跨端 syncId", exported.lowercased().contains("8f14e45f-ceea-4b5f-8d1a-9c3f2b7e5d01"))
         check("导出包含 holidayId", exported.contains("\"holidayId\" : \"zhongqiu\""))
         check("导出包含 isCritical", exported.contains("\"isCritical\" : false"))

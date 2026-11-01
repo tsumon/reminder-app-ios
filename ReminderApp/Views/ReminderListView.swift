@@ -27,16 +27,24 @@ struct ReminderBackupDocument: FileDocument {
 struct ReminderListView: View {
     @State private var showSyncConflict = false
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Query(sort: \Reminder.nextTriggerAt) private var reminders: [Reminder]
     // v2.3.0: 今日完成数（hero 完成率环）
     @Query(sort: \ReminderRecord.performedAt) private var records: [ReminderRecord]
-    @State private var showCreateSheet = false
+    private struct CreateRequest: Identifiable {
+        let id=UUID()
+        let sentence:String
+    }
+    @State private var createRequest:CreateRequest?
     @State private var quickSentence = ""
+    @FocusState private var quickFocused: Bool
     @State private var createdID: UUID?
     @State private var createdToken: String?
 
     // 智能清单筛选
     @State private var smartList: SmartList = .all
+    @State private var kindFilter = "all"
+    @State private var sortOrder = "time"
 
     // 搜索：默认收起，点工具栏放大镜再展开
     @State private var searchText = ""
@@ -85,26 +93,34 @@ struct ReminderListView: View {
     var body: some View {
         // v1.9.8: NavigationStack 由 MainTabView 的 Tab 提供，避免嵌套双层导航栏
         mainContentWrapped
-            .confirmationDialog("同步冲突：两边都有修改，已停止写入。选择前将保存本地快照。删除不会跨设备同步。", isPresented: $showSyncConflict) {
+            .confirmationDialog("同步冲突：两边都有修改，已停止写入。选择前将保存本地快照。双端升级后可同步删除。", isPresented: $showSyncConflict) {
                 Button("使用本地并上传".localized) { resolveSync(.local) }
                 Button("使用远程并保留本机独有提醒".localized) { resolveSync(.remote) }
                 Button("取消".localized, role: .cancel) {}
             }
     }
 
+    private func presentCreate(sentence:String) {
+        quickFocused=false;searchFocused=false
+        createRequest=CreateRequest(sentence:sentence)
+    }
+
     private var mainContent: some View {
         VStack(spacing: 0) {
             homeChromeHeader
             HStack {
-                TextField("输入一句话创建提醒".localized, text: $quickSentence)
-                    .textFieldStyle(.roundedBorder).accessibilityIdentifier("quick-reminder-input")
-                Button("检查规则".localized) { showCreateSheet = true }
+                TextField("", text: $quickSentence, prompt: Text("输入一句话创建提醒".localized).foregroundStyle(soft.muted))
+                    .textFieldStyle(.plain).foregroundStyle(soft.text)
+                    .padding(.horizontal, 12).frame(minHeight: 44)
+                    .background(soft.surface, in: RoundedRectangle(cornerRadius: 12))
+                    .focused($quickFocused).submitLabel(.done)
+                    .onSubmit { quickFocused=false }.accessibilityIdentifier("quick-reminder-input")
+                Button("检查规则".localized) { presentCreate(sentence:quickSentence) }
             }.padding(.horizontal).padding(.bottom, 8)
             if let id = createdID {
                 Button("撤销刚创建的提醒".localized) {
                     guard let r = reminders.first(where: { $0.id == id }), r.actionToken == createdToken, r.records.isEmpty else { createdID = nil; return }
-                    modelContext.delete(r)
-                    if ReminderActions.save(modelContext) { Task { await NotificationManager.shared.removePendingNotification(for: id); await ReminderEngine.shared.ensureRetryChains() } }
+                    if ReminderActions.delete(r, context: modelContext) { Task { await NotificationManager.shared.removePendingNotification(for: id); await ReminderEngine.shared.ensureRetryChains() } }
                     createdID = nil
                 }.buttonStyle(.bordered)
             }
@@ -130,7 +146,7 @@ struct ReminderListView: View {
 
     /// 顶栏：标题屏幕居中；左 AI、右 + / … 为两颗独立 40 圆钮（间距 8），不走 ToolbarItemGroup。
     private var homeChromeHeader: some View {
-        SoftScreenHeader(title: "提醒事项") {
+        SoftScreenHeader(title: "今天") {
             NavigationLink {
                 AIChatView()
             } label: {
@@ -145,7 +161,7 @@ struct ReminderListView: View {
             .accessibilityIdentifier("ai-entry")
         } trailing: {
             HStack(spacing: 8) {
-                SoftCircleButton(size: 40, action: { showCreateSheet = true }) {
+                SoftCircleButton(size: 40, action: { presentCreate(sentence:"") }) {
                     Image(systemName: "plus")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(soft.text)
@@ -202,7 +218,7 @@ struct ReminderListView: View {
     // v2.5.0: CI 端编译器对巨型 Menu 表达式 type-check 超时，抽成独立 @ViewBuilder
     @ViewBuilder private var overflowMenuContent: some View {
         Button {
-            menuAction { showCreateSheet = true }
+            menuAction { presentCreate(sentence:"") }
         } label: {
             Label("新建提醒".localized, systemImage: "plus.circle")
         }
@@ -469,9 +485,9 @@ struct ReminderListView: View {
 
     private var sheetsWrapped: some View {
         mainContent
-            .sheet(isPresented: $showCreateSheet) {
-                CreateReminderView(initialSentence: quickSentence, onCreated: { r in
-                    createdID = r.id; createdToken = r.actionToken; quickSentence = ""
+            .sheet(item:$createRequest,onDismiss:{quickFocused=false}) { request in
+                CreateReminderView(initialSentence:request.sentence, onCreated: { r in
+                    createdID = r.id; createdToken = r.actionToken; quickSentence = "";quickFocused=false
                 })
             }
             // 近场传输: 同一局域网互传提醒
@@ -606,7 +622,7 @@ struct ReminderListView: View {
     private func resolveSync(_ choice: WebDavSync.ConflictChoice) {
         Task {
             switch await WebDavSync.resolve(choice, context: modelContext) {
-            case .success: syncMessage = "同步完成；本机独有提醒已保留。删除暂不跨设备同步。"
+            case .success: syncMessage = "同步完成；本机独有提醒已保留。双端升级后支持删除同步。"
             case .conflict: showSyncConflict = true
             case .failure(let message): syncMessage = message
             }
@@ -639,7 +655,7 @@ struct ReminderListView: View {
             }
 
             // 通用导入（去重 / 过期重算 / 插入 / 保存 / touch 变更）
-            let result = BackupHelper.importItems(items, existing: reminders, into: modelContext)
+            let result = BackupHelper.importItems(items, existing: reminders, into: modelContext, json: json)
             // I8: 写入失败（区别于「重复跳过」）直接返回，不再调度空列表、不误报成功
             if let err = result.error {
                 print("[导入] 保存失败: \(err)")
@@ -690,7 +706,8 @@ struct ReminderListView: View {
                 SoftInsetSearch(text: $searchText, focused: $searchFocused)
                     .padding(.horizontal, 16)
                 smartListBar
-                WavingEmptyMascot(onCreate: { showCreateSheet = true })
+                NotificationHealthCard().padding(.horizontal,16)
+                WavingEmptyMascot(onCreate: { presentCreate(sentence:"") })
             }
             .padding(.top, 4)
         }
@@ -774,6 +791,27 @@ struct ReminderListView: View {
 
     // MARK: - 提醒列表
 
+    private var kindPicker: some View {
+        Picker("类型".localized, selection: $kindFilter) {
+            Text("全部类型".localized).tag("all")
+            ForEach(ReminderKind.allCases, id: \.self) { Text($0.rawValue.localized).tag($0.rawValue) }
+        }.labelsHidden().pickerStyle(.menu).accessibilityLabel("类型".localized)
+    }
+    private var sortPicker: some View {
+        Picker("排序".localized, selection: $sortOrder) {
+            Text("时间".localized).tag("time")
+            Text("优先级".localized).tag("priority")
+            Text("提醒标题".localized).tag("title")
+        }.labelsHidden().pickerStyle(.menu).accessibilityLabel("排序".localized)
+    }
+    private var pendingSummary: some View {
+        Text(Localized("待处理 %d", reminders.filter { $0.isEnabled && $0.status != .confirmed }.count))
+    }
+    private var sortSummary: some View {
+        Text((sortOrder == "time" ? "按到期时间排列" : sortOrder == "title" ? "提醒标题" : "优先级").localized)
+            .foregroundStyle(.secondary)
+    }
+
     private var listView: some View {
         List(selection: $selectedIDs) {
             Section {
@@ -791,10 +829,20 @@ struct ReminderListView: View {
             }
 
             Section {
-                HStack {
-                    Text("待处理 \(reminders.filter { $0.isEnabled && $0.status != .confirmed }.count)")
-                    Spacer()
-                    Text("按到期时间排列".localized).foregroundStyle(.secondary)
+                NotificationHealthCard().listRowBackground(Color.clear).listRowSeparator(.hidden)
+                Group {
+                    if dynamicTypeSize >= .xxxLarge {
+                        VStack(alignment: .leading, spacing: 8) { kindPicker; sortPicker }
+                    } else {
+                        HStack { kindPicker; Spacer(); sortPicker }
+                    }
+                }.listRowBackground(Color.clear)
+                Group {
+                    if dynamicTypeSize >= .xxxLarge {
+                        VStack(alignment: .leading, spacing: 4) { pendingSummary; sortSummary }
+                    } else {
+                        HStack { pendingSummary; Spacer(); sortSummary }
+                    }
                 }.font(.caption).listRowBackground(Color.clear)
             }
 
@@ -803,10 +851,14 @@ struct ReminderListView: View {
             // 应用智能清单筛选后的全集（叠加搜索）
             let query = searchText.trimmingCharacters(in: .whitespaces)
             let filtered = reminders.filter {
-                matchSmartList($0) &&
+                matchSmartList($0) && (kindFilter == "all" || $0.kind.rawValue == kindFilter) &&
                 (query.isEmpty ||
                  $0.title.localizedCaseInsensitiveContains(query) ||
                  $0.note.localizedCaseInsensitiveContains(query))
+            }.sorted {
+                if sortOrder == "title" { return $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+                if sortOrder == "priority" && $0.priority != $1.priority { return ($0.priority == .high ? 0 : $0.priority == .normal ? 1 : 2) < ($1.priority == .high ? 0 : $1.priority == .normal ? 1 : 2) }
+                return $0.nextTriggerAt < $1.nextTriggerAt
             }
 
             // 正在提醒中（active / snoozed / overdue）置顶，行内确认
@@ -820,7 +872,7 @@ struct ReminderListView: View {
                         Button {
                             pendingDetailID = reminder.id
                         } label: {
-                            ReminderRowView(reminder: reminder) {
+                            ReminderRowView(reminder: reminder, onSnooze: { _ = ReminderEngine.shared.snoozeReminder(reminder, afterMinutes:15, expectedToken:token) }) {
                                 ReminderEngine.shared.confirmReminder(reminder, expectedToken: token)
                             }
                         }
@@ -907,7 +959,10 @@ struct ReminderListView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: searchText)
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
+        .listSectionSpacing(8)
+        .listRowSpacing(8)
+        .listSectionSeparator(.hidden)
         .scrollContentBackground(.hidden)
         .refreshable {
             await ReminderEngine.shared.checkMissedReminders(reminders: reminders)
@@ -1047,38 +1102,14 @@ struct ReminderListView: View {
     }
 
     private func deleteReminders(_ offsets: IndexSet, from items: [Reminder]) {
-        for index in offsets {
-            guard index < items.count else { continue }
-            let reminder = items[index]
-            Task {
-                await NotificationManager.shared.removePendingNotification(for: reminder.id)
-            }
-            modelContext.delete(reminder)
-        }
-        // v2.0.22: 保存失败时回滚并提示，不推进同步版本（否则会上传不完整数据）
-        do {
-            try modelContext.save()
-        } catch {
-            modelContext.rollback()
-            deleteError = Localized("删除失败，请重试：%@", error.localizedDescription)
-            return
-        }
-        SyncStore.touchLocalChange()
+        for index in offsets where index < items.count { deleteReminder(items[index]) }
     }
 
     private func deleteReminder(_ reminder: Reminder) {
-        Task {
-            await NotificationManager.shared.removePendingNotification(for: reminder.id)
-        }
-        modelContext.delete(reminder)
-        do {
-            try modelContext.save()
-        } catch {
-            modelContext.rollback()
-            deleteError = Localized("删除失败，请重试：%@", error.localizedDescription)
-            return
-        }
-        SyncStore.touchLocalChange()
+        let id=reminder.id
+        guard ReminderActions.delete(reminder, context: modelContext) else { deleteError="删除失败，请重试".localized; return }
+        Task { await NotificationManager.shared.removePendingNotification(for: id) }
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     /// v2.4.2: 修正锚点到设定星期（保留原时分，重排通知）

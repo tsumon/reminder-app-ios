@@ -11,7 +11,10 @@ final class ReminderEngine: ObservableObject {
 
     func configure(with context: ModelContext) {
         self.modelContext = context
-        for r in (try? context.fetch(FetchDescriptor<Reminder>())) ?? [] { LegacyPolicyStore.migrate(r) }
+        for r in (try? context.fetch(FetchDescriptor<Reminder>())) ?? [] {
+            if SyncDeletionLedger.reminders.contains(r.id) { context.delete(r) }
+            else { LegacyPolicyStore.migrate(r) }
+        }
         try? context.save()
     }
 
@@ -329,8 +332,10 @@ final class ReminderEngine: ObservableObject {
 
     func skipReminder(_ reminder: Reminder, expectedToken: String) {
         guard let context = modelContext, ReminderActions.skip(reminder, expectedToken: expectedToken, context: context, next: calculateNextTrigger) else { return }
+        let token=reminder.actionToken, due=reminder.nextTriggerAt
         Task {
             await NotificationManager.shared.removePendingNotification(for: reminder.id)
+            await HolidayPrecheck.adjust(reminder,expectedToken:token,expectedDue:due,context:context)
             await self.scheduleAllNotifications(for: reminder)
         }
     }
@@ -496,6 +501,7 @@ final class ReminderEngine: ObservableObject {
             let stage = caught.stage
             let due = caught.dueAt
 
+            reminder.scheduledOccurrenceAt = reminder.scheduledOccurrenceAt ?? reminder.nextTriggerAt
             reminder.undoCompletion = nil
             reminder.retryStage = stage
             reminder.lastRetryAt = now

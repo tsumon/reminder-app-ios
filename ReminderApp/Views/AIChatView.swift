@@ -896,21 +896,15 @@ struct AIChatView: View {
     }
 
     private func handleDelete(args: [String: Any]) async -> String {
-        let keyword = (args["title_keyword"] as? String ?? "").lowercased()
+        let keyword=(args["title_keyword"] as? String ?? "").lowercased()
         guard !keyword.isEmpty else { return "请指定要删除的提醒标题（如：删除「交房租」）。" }
-        guard let match = await MainActor.run(body: { reminders.first(where: { $0.title.lowercased().contains(keyword) }) })
-        else { return Localized("未找到包含「%@」的提醒", keyword) }
-
-        let title = match.title
-        await MainActor.run {
-            modelContext.delete(match)
-            try? modelContext.save()
-            // v1.9.6 fix: 漏 touchLocalChange → AI 删除的提醒在远程仍然存在
-            SyncStore.touchLocalChange()
-        }
-        // 删除前必须取消已排期的本地通知，否则到点仍会弹出（幽灵通知）
-        await NotificationManager.shared.removePendingNotification(for: match.id)
-        return Localized("已删除「%@」", title)
+        guard let match=await MainActor.run(body:{ reminders.first { $0.title.lowercased().contains(keyword) }.map { ($0,$0.id,$0.title,$0.actionToken) } })
+        else { return Localized("未找到包含「%@」的提醒",keyword) }
+        let deleted=await MainActor.run { ReminderActions.delete(match.0,context:modelContext,expectedToken:match.3) }
+        guard deleted else { return "提醒已被其他操作修改，请重新确认" }
+        await NotificationManager.shared.removePendingNotification(for:match.1)
+        await ReminderEngine.shared.ensureRetryChains()
+        return Localized("已删除「%@」",match.2)
     }
 
     private func handleUpdate(args: [String: Any]) async -> String {

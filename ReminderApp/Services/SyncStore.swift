@@ -130,3 +130,20 @@ struct KeychainHelper {
     }
 }
 #endif
+
+/// Permanent, identity-based deletion ledger. Included in full backups and WebDAV snapshots.
+/// Write-ahead markers survive a process interruption before the row delete completes.
+/// A restore must use a new UUID, so stale offline peers cannot revive a deletion.
+enum SyncDeletionLedger {
+    private static let reminderKey = "sync_deleted_reminders_v4"
+    private static let recordKey = "sync_deleted_records_v4"
+    static var reminders: Set<UUID> { Set((UserDefaults.standard.stringArray(forKey: reminderKey) ?? []).compactMap(UUID.init(uuidString:))) }
+    static var records: Set<UUID> { Set((UserDefaults.standard.stringArray(forKey: recordKey) ?? []).compactMap(UUID.init(uuidString:))) }
+    static func store(reminders: Set<UUID>, records: Set<UUID>) {
+        UserDefaults.standard.set(reminders.map { $0.uuidString.lowercased() }.sorted(), forKey: reminderKey)
+        UserDefaults.standard.set(records.map { $0.uuidString.lowercased() }.sorted(), forKey: recordKey)
+    }
+    static func merge(reminders: [UUID] = [], records: [UUID] = []) {
+        store(reminders: self.reminders.union(reminders), records: self.records.union(records))
+    }
+}

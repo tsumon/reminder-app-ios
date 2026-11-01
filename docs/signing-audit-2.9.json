@@ -1,0 +1,17 @@
+{
+  "android_baseline": "850555d",
+  "ios_baseline": "1815516",
+  "source_version": "2.9.0 / 71",
+  "expected_android_certificate_sha256": "0ea509a1dc9461c291a2db47caf5f055d83e4108fb28c3e87ed4fa62bead7038",
+  "android_release_signing_block_identical": true,
+  "android_workflow_identical": true,
+  "ios_workflow_identical": true,
+  "ReminderApp/ReminderApp.entitlements_identical": true,
+  "ReminderWidget/ReminderWidget.entitlements_identical": true,
+  "android_identity_unchanged": true,
+  "ios_identities_unchanged": true,
+  "ReminderApp/Info.plist_version_match": true,
+  "ReminderWidget/Info.plist_version_match": true,
+  "all_configuration_checks_passed": true,
+  "release_artifact_certificate_comparison": "Not performed: original release signing environment is absent; original gate retained. iOS workflow remains unsigned."
+}

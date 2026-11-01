@@ -153,7 +153,7 @@ struct ReminderApp: App {
                     await refreshWeeklyReport()
                     #if DEBUG
                     // v1.9.8: 模拟器截图验证用演示数据（仅 Debug 构建）
-                    seedDemoDataIfNeeded()
+                    if ProcessInfo.processInfo.arguments.contains("-uitest_seed_demo") { seedDemoDataIfNeeded() }
                     #endif
                 }
         }

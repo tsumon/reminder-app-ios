@@ -302,7 +302,7 @@ struct NearbyShareView: View {
                 return
             }
 
-            let result = BackupHelper.importItems(items, existing: reminders, into: modelContext)
+            let result = BackupHelper.importItems(items, existing: reminders, into: modelContext, json: json)
             isReceiving = false
             // I8: 区分「写入失败」与「重复跳过」
             if let err = result.error {

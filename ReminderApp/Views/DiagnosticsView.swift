@@ -58,7 +58,7 @@ struct DiagnosticsView: View {
                 if !testResult.isEmpty { Text(testResult).font(.caption) }
             }
             Section("隐私".localized) {
-                Text("提醒和历史保存在此设备。使用 AI 时，对话与相关提醒会发送到你配置的服务地址；请检查供应商隐私政策。API 密钥和 WebDAV 密码保存在 Keychain。启用 WebDAV 后，备份会上传到你选择的服务器。附近分享和导出的备份也包含提醒内容，请只分享给信任的人。删除提醒暂不跨设备同步。".localized)
+                Text("提醒和历史保存在此设备。使用 AI 时，对话与相关提醒会发送到你配置的服务地址；请检查供应商隐私政策。API 密钥和 WebDAV 密码保存在 Keychain。启用 WebDAV 后，备份会上传到你选择的服务器。附近分享和导出的备份也包含提醒内容，请只分享给信任的人。双端升级后可同步删除提醒。".localized)
             }
             Section("数据".localized) {
                 row("提醒总数".localized, "\(reminders.count)")
@@ -201,5 +201,28 @@ struct DiagnosticsView: View {
             let requests = await UNUserNotificationCenter.current().pendingNotificationRequests()
             pendingCount = requests.count
         }
+    }
+}
+
+struct NotificationHealthCard: View {
+    @Environment(\.scenePhase) private var phase
+    @State private var status="检查中…".localized
+    @State private var count=0
+    var body: some View {
+        NavigationLink { DiagnosticsView() } label: {
+            VStack(alignment:.leading,spacing:6) {
+                Label(status, systemImage:"bell.badge").font(.headline)
+                Text(Localized("已排期 %d 条通知 · 点击自检", count)).font(.caption)
+                Text("授权与排期不代表已经送达".localized).font(.caption).foregroundStyle(.secondary)
+            }.frame(maxWidth:.infinity,alignment:.leading).padding(16)
+                .background(ThemeTokens.strong.opacity(0.08),in:RoundedRectangle(cornerRadius:16))
+        }.buttonStyle(.plain).accessibilityIdentifier("notification-health")
+        .task { await refresh() }.onChange(of:phase) { _, value in if value == .active { Task { await refresh() } } }
+    }
+    private func refresh() async {
+        let center=UNUserNotificationCenter.current()
+        let settings=await center.notificationSettings()
+        status = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional ? "通知已授权".localized : "通知需要设置".localized
+        count=await center.pendingNotificationRequests().count
     }
 }

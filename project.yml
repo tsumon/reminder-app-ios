@@ -181,8 +181,8 @@ targets:
       path: ReminderWidget/Info.plist
       properties:
         CFBundleDisplayName: 循环提醒小组件
-        CFBundleShortVersionString: "2.8.0"
-        CFBundleVersion: "70"
+        CFBundleShortVersionString: "2.9.0"
+        CFBundleVersion: "71"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
@@ -248,6 +248,46 @@ targets:
     settings:
       base:
         PRODUCT_NAME: "MigrationCheck"
+        PRODUCT_MODULE_NAME: ReminderMigrationFixture
+        GENERATE_INFOPLIST_FILE: "YES"
+    scheme: {}
+
+  Baseline28StoreProducer:
+    type: tool
+    platform: macOS
+    sources:
+      - path: ReminderAppTests/Baseline28/Reminder.swift
+      - path: ReminderApp/Services/ReminderPolicy.swift
+      - path: ReminderApp/Services/ReminderSchema.swift
+      - path: ReminderApp/Services/Localization.swift
+      - path: ReminderApp/Services/HolidayService.swift
+      - path: ReminderApp/Services/LunarCalendar.swift
+      - path: ReminderAppTests/MigrationValues.swift
+      - path: ReminderAppTests/Migration28Values.swift
+      - path: ReminderAppTests/Baseline28StoreProducer.swift
+    settings:
+      base:
+        PRODUCT_NAME: Baseline28StoreProducer
+        PRODUCT_MODULE_NAME: ReminderMigrationFixture
+        GENERATE_INFOPLIST_FILE: "YES"
+    scheme: {}
+
+  Migration28Check:
+    type: tool
+    platform: macOS
+    sources:
+      - path: ReminderApp/Models/Reminder.swift
+      - path: ReminderApp/Services/ReminderPolicy.swift
+      - path: ReminderApp/Services/ReminderSchema.swift
+      - path: ReminderApp/Services/Localization.swift
+      - path: ReminderApp/Services/HolidayService.swift
+      - path: ReminderApp/Services/LunarCalendar.swift
+      - path: ReminderAppTests/MigrationValues.swift
+      - path: ReminderAppTests/Migration28Values.swift
+      - path: ReminderAppTests/Migration28CheckMain.swift
+    settings:
+      base:
+        PRODUCT_NAME: Migration28Check
         PRODUCT_MODULE_NAME: ReminderMigrationFixture
         GENERATE_INFOPLIST_FILE: "YES"
     scheme: {}

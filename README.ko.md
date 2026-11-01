@@ -1,161 +1,97 @@
-[🇨🇳 简体中文](README.md) · [🇺🇸 English](README.en.md) · [🇹🇼 繁體中文](README.zh-TW.md) · [🇯🇵 日本語](README.ja.md) · [🇰🇷 한국어](README.ko.md)
+[简体中文](README.md) · [English](README.en.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
----
+<img src="assets/readme/hero.svg" width="100%" alt="Reminder — a calmer rhythm">
 
-# 반복 리마인더 — 네이티브 iOS 앱
+# 반복 알림
 
-![Home](docs/screenshots/home.png)
+**확인이 필요한 일을 한눈에.**
 
-![Calendar](docs/screenshots/calendar.png)
+iOS와 Android 네이티브 알림 앱입니다. 완료를 확인하면 다음 주기로 넘어가며, 확인하지 않으면 설정한 방식과 간격으로 다시 알립니다. 데이터는 기기에 저장하고 동기화는 선택합니다.
 
-![Stats](docs/screenshots/stats.png)
+소스 **2.9.0 / 71** · 개발 브랜치, 미출시. 공개 다운로드는 Releases를 확인하세요.
 
-## 🌐 다국어 지원 / Multi-language Support
+[**다운로드 및 변경 기록 ↗**](https://github.com/tsumon/reminder-app-ios/releases/latest) · [다른 플랫폼](https://github.com/tsumon/reminder-app-android)
 
-이 앱(iOS 및 Android 양쪽)은 시스템 언어 설정을 자동으로 따르는 다국어 지원을 내장하고 있습니다.
+## 주요 기능
 
-**지원 언어：**
-- 🇨🇳 간체 중국어（zh-Hans）— 기본 언어 & 폴백
-- 🇺🇸 English (en)
-- 🇹🇼 번체 중국어 (zh-Hant)
-- 🇯🇵 日本語 (ja)
-- 🇰🇷 한국어 (ko)
+| 기능 | iOS | Android |
+| :--- | :---: | :---: |
+| 주기·날짜·음력 생일·공휴일·N번째 주 규칙 | ✓ | ✓ |
+| 고정 주기 / 완료 후 다시 계산 | ✓ | ✓ |
+| 부드럽게 / 지속 / 중요, 재알림 및 방해 금지 | ✓ | ✓ |
+| 완료·나중에·내일·건너뛰기·실행 취소 | ✓ | ✓ |
+| 검색·유형 조합 필터·시간 / 제목 / 우선순위 정렬 | ✓ | ✓ |
+| 당일 일정·주 / 월 통계·위젯 | ✓ | ✓ |
+| 오프라인 자연어·음성·템플릿·설정 가능한 AI | ✓ | ✓ |
+| JSON·ICS·근처 전송·로컬 백업·WebDAV | ✓ | ✓ |
 
-**구현 방식 / Implementation：**
-- **iOS**：`Localizable.xcstrings` 다국어 카탈로그. SwiftUI는 `String(localized:)`로 다국어 문자열을 가져옵니다.
-- **Android**：`res/values/strings.xml`(간체 중국어 기준) + `values-en` / `values-zh-rTW` / `values-ja` / `values-ko` 리소스 한정자. 실행 시 `zh()` / `zhf()`를 통해 문자열을 조회합니다.
-- 양쪽 플랫폼은 "중국어 원문을 키로 사용"하는 방식을 공유하므로, 문자열 추가·수정 시 중국어 원문과 번역표만 관리하면 됩니다.
+## 세 단계로 시작
 
-> 사용자에게 보이는 문자열(약 330개)은 모두 다국어화되어 있으며, 번역이 없으면 간체 중국어 원문으로 폴백합니다.
-> All user-visible strings (~330) are localized; missing translations gracefully fall back to Simplified Chinese.
+1. 직접 입력하거나 자연어, 음성, 템플릿을 사용한 뒤 편집 화면에서 전체 규칙을 확인하세요.
+2. 알림 강도, 주기 기준, 재알림 간격과 방해 금지 시간을 정하고 다음 3회 일정을 미리 본 뒤 저장하세요.
+3. 홈에서 알림 점검을 열어 권한과 설정을 확인하고 테스트를 예약한 뒤 실제 기기를 잠가 확인하세요.
 
-## 기능 개요
+## 실행 화면
 
-순수 네이티브 SwiftUI iOS 리마인더 앱으로, 다음을 지원합니다：
-- 주기 설정：매일, 매주, 매월, 매분기, 매년, 임의 일수
-- 기한 푸시 알림에 "완료 확인"과 "나중에 알림" 두 개의 액션 버튼
-- 미확인 시 단계적 재알림(v1.9.7부터 양쪽 플랫폼 통일)：1시간 → 4시간 → 12시간 → 24시간 → 24시간
-  - 5회째 도달하면 `overdue`(미완료)로 표시하고 알림을 멈춘 뒤 수동 확인 / 재열기를 기다립니다
-- 주기 앵커 방지 드리프트：최초 발동 시각을 기준으로 하여 확인 지연으로 인한 어긋남이 발생하지 않습니다(월말 정렬, 윤년 처리 정확)
-- 전체 작업 이력
-- SwiftData 로컬 영속성, 오프라인 사용 가능
-- **날짜 알림 사전 예고**：N일 전부터 매일 미리보기 전송(상한 14일)
-- **AI 음성 비서**：자연어 알림 생성, Function Calling
-- **WebDAV 동기화**：Nutstore / 일반 WebDAV 양방향 동기화
-- **근거리 전송**：동일 LAN에서 QR 코드를 스캔하여 기기 간 리마인더 전송
-- **OTA 업데이트**：GitHub Releases를 확인하고 최신 .ipa 다운로드
+실제 실행 화면만 표시합니다. 예시 알림은 전용 테스트 기기의 데이터이며 기본 사용자 데이터가 아닙니다.
 
-## 방법 1：XcodeGen (추천, 1개 명령)
+<p align="center">
+  <img src="docs/screenshots/runtime-2.9/home.png" width="280" alt="Home — iOS 2.9">
+  <img src="docs/screenshots/runtime-2.9/calendar.png" width="280" alt="Calendar — iOS 2.9">
+</p>
+<p align="center">
+  <img src="docs/screenshots/runtime-2.9/stats.png" width="280" alt="Statistics — iOS 2.9">
+  <img src="docs/screenshots/runtime-2.9/settings.png" width="280" alt="Settings — iOS 2.9">
+</p>
 
-```bash
-# 1. XcodeGen 설치 (미설치 시)
-brew install xcodegen
+[Create form](docs/screenshots/runtime-2.9/create.png) · [Capture details](docs/screenshots/runtime-2.9/README.md)
 
-# 2. Xcode 프로젝트 생성
-cd reminder-app-ios
+## 반복 방식
+
+**고정 주기**는 늦게 완료해도 원래 일정을 유지합니다. 공휴일 때문에 앞당긴 알림을 일찍 완료하면 원래 주기가 소비됩니다. **완료 후 계산**은 실제 확인 시간을 기준으로 합니다. 기존 정책은 유지합니다.
+
+**부드럽게**는 자동 알림 1회. **지속**은 기본 60 → 240 → 720 → 1440분, 최초 포함 최대 5회이며 간격을 개별 편집합니다. **중요**도 OS 권한을 따릅니다. 재알림은 방해 금지 시간을 지킵니다.
+
+기기 달력과 저장된 기준 타임스탬프를 사용합니다. 시간대를 바꿔도 기존 기준은 변경하지 않으므로 다음 알림을 확인하세요. 미리보기는 정시 확인을 가정하며 공휴일 정보에 따라 바뀔 수 있습니다.
+
+완료와 건너뜀은 작업 횟수, 놓침은 재알림이 발생한 날짜 수로 구분합니다. 놓침 기록은 실제 전달을 증명하지 않습니다.
+
+## 동기화와 복원
+
+자신의 WebDAV 서버를 사용합니다. 양쪽 변경이 충돌하면 선택을 기다리고, 쓰기 전에 비공개 로컬 사본을 저장합니다. ETag 조건부 업로드를 유지합니다. v4는 안정적인 ID로 기록을 병합하고 삭제된 알림과 취소된 기록의 복귀를 막는 표식을 보관합니다.
+
+전체 기록 및 삭제 동기화는 양쪽 업데이트가 필요합니다. v1–v3 백업은 읽을 수 있지만 이전 앱은 새 메타데이터를 버립니다. 안정적인 ID가 없는 오래된 파일은 삭제를 확실히 구분할 수 없습니다. 표식은 만료되지 않으며 삭제된 알림은 새 ID로 복사해 복원하세요. v4 전체 백업을 보관하세요. 단일 공유 카드는 전체 삭제 표식을 포함하지 않습니다.
+
+## 설치 및 덮어쓰기 업데이트
+
+iOS 17+. Release 워크플로는 unsigned IPA를 만듭니다. 원래 서명 / 사이드로드 경로를 계속 사용하세요. App, Widget, App Group ID를 유지하지만 원래 서명 경로가 없으면 덮어쓰기 및 데이터 연속성을 보장할 수 없습니다.
+
+## 알림 상태의 의미
+
+권한과 예약 개수는 설정을 나타내며 실제 전달을 뜻하지 않습니다. 무음, 집중 / 방해 금지, 채널, 절전 및 제조사 백그라운드 제한의 영향을 받습니다. 실제 기기를 잠근 상태, 재부팅 후 및 백그라운드에서 테스트하세요.
+
+iOS 일반 알림에는 예약 개수 제한이 있습니다. iOS 26+ 중요 알림은 AlarmKit을 별도로 허용할 수 있고 사용할 수 없으면 일반 알림으로 돌아갑니다.
+
+## 로컬 빌드
+
+Xcode 26.3+ · XcodeGen · iOS 17+
+
+```sh
 xcodegen generate
-
-# 3. 프로젝트 열기
-open ReminderApp.xcodeproj
-
-# 4. iOS 시뮬레이터를 선택하고 Cmd+R로 실행
+xcodebuild build -project ReminderApp.xcodeproj -scheme ReminderApp \
+  -sdk iphonesimulator -destination "generic/platform=iOS Simulator" \
+  CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project ReminderApp.xcodeproj -scheme UpgradeCheck \
+  -destination "platform=macOS" -derivedDataPath DerivedDataChecks CODE_SIGNING_ALLOWED=NO
+./DerivedDataChecks/Build/Products/Debug/UpgradeCheck
 ```
 
-## 방법 2：Xcode 프로젝트 수동 생성
+App: `com.reminder.app` · Widget: `com.reminder.app.widget` · App Group: `group.com.reminder.app`
 
-1. Xcode 열기 → File → New → Project → iOS → App
-2. 제품 이름：`ReminderApp`, Interface：SwiftUI, Language：Swift, Use SwiftData 체크
-3. 생성 후 다음 파일을 프로젝트에 덮어쓰기 / 추가：
-   - `ReminderApp/ReminderApp.swift` → 자동 생성된 App 파일 교체
-   - `ReminderApp/Info.plist` → 프로젝트로 드래그
-   - `ReminderApp/Models/` → 폴더째 드래그
-   - `ReminderApp/Views/` → 폴더째 드래그
-   - `ReminderApp/Services/` → 폴더째 드래그
-4. Deployment Target을 iOS 17.0으로 설정
-5. Signing & Capabilities에서 Push Notifications와 Background Modes(remote-notification) 추가
-6. Cmd+R로 실행
+Release: `CODE_SIGNING_ALLOWED=NO` (unsigned IPA).
 
-## 프로젝트 구조
+## 개인정보
 
-```
-ReminderApp/
-├── ReminderApp.swift              # @main 진입점
-├── Info.plist                     # 앱 설정
-├── Models/
-│   └── Reminder.swift             # SwiftData 데이터 모델 + 열거형
-├── Views/
-│   ├── ReminderListView.swift     # 홈 목록 (그룹: 활성 / 대기 / 완료, 기한 초과 포함)
-│   ├── ReminderRowView.swift      # 목록 행 컴포넌트
-│   ├── CreateReminderView.swift   # 새 리마인더 폼
-│   ├── ReminderDetailView.swift   # 상세 페이지 + 확인 / 나중에 동작 + 이력
-│   ├── CalendarView.swift         # 캘린더 보기
-│   ├── StatsView.swift            # 통계 / 히트맵
-│   ├── AIChatView.swift           # AI 채팅
-│   ├── AISettingsView.swift       # AI 설정
-│   ├── NearbyShareView.swift      # 근거리 전송 (QR + TCP)
-│   ├── SyncSettingsView.swift     # WebDAV 동기화 설정
-│   └── SettingsView.swift         # 설정 (업데이트 확인 등)
-├── Services/
-│   ├── ReminderEngine.swift       # 주기 계산 / 확인 / 단계적 재알림 / 누락 확인
-│   ├── NotificationManager.swift  # 알림 권한 / 카테고리 등록 / 로컬 푸시
-│   ├── HolidayService.swift       # 공휴일 서비스 (온라인 폴백 포함)
-│   ├── LunarCalendarCheck.swift   # 음력 변환
-│   ├── BackupHelper.swift         # JSON 백업 가져오기 / 내보내기
-│   ├── WebDavSync.swift           # WebDAV 양방향 동기화
-│   ├── NearbyShareService.swift   # LAN TCP 전송 (47823)
-│   ├── QRCodeService.swift        # QR 생성 및 스캔 (AVFoundation)
-│   ├── UpdateService.swift        # GitHub releases.atom 업데이트 확인
-│   ├── TelemetryService.swift     # 분석 (confirm / escalate / ...)
-│   └── SoftShadowCard.swift          # 소프트 섀도 / donut / 히트맵
-└── Widgets/
-    └── ReminderWidget.swift       # 홈 화면 위젯
-```
+알림과 기록은 기기에 저장합니다. AI는 설정한 서비스로 대화와 관련 내용을 전송합니다. WebDAV, 근처 공유와 내보낸 파일에도 알림 데이터가 포함되므로 신뢰하는 연결을 선택하고 백업을 보호하세요.
 
-## 기술 스택
-
-| 모듈 | 기술 |
-|------|------|
-| UI | SwiftUI (iOS 17+) |
-| 데이터 영속성 | SwiftData |
-| 로컬 알림 | UserNotifications + UNNotificationAction |
-| 상태 관리 | @Observable / @StateObject / @Query |
-| 알림 이벤트 | NotificationCenter (앱 내 컴포넌트 간 통신용) |
-
-## 알림 버튼
-
-푸시를 받으면 iOS 알림 배너에 두 개의 액션 버튼이 표시됩니다：
-- **완료 확인** → 주기를 진행하고 `firstTriggerAt` 앵커를 기준으로 다음 시각 계산
-- **나중에 알림** → 15분 후 재푸시
-
-사용자가 아무 작업도 하지 않으면(스와이프로 닫으면) 단계적 재알림에 들어갑니다：
-
-| 단계 | 간격 | 상태 |
-|------|------|------|
-| 1회차 | 1시간 후 | active (알림 중) |
-| 2회차 | 4시간 후 | active |
-| 3회차 | 12시간 후 | active |
-| 4회차 | 24시간 후 | active |
-| 5회차 | 24시간 후 | **overdue** (미완료, 알림 중단) |
-
-> v1.9.7부터：단계적 재알림 중에는 주기를 진행하지 않습니다. `overdue`로 표시되면 자동 응답을 멈추고 수동 확인 또는 재열기를 기다립니다.
-
-## 시스템 요구 사항
-
-- Xcode 15.0+
-- iOS 17.0+
-- Swift 5.9+
-
-## 변경 이력
-
-| Version | Date | Changes |
-|---------|------|---------|
-| v2.7.1 | 2026-09 | soft-ui chrome: hammer 3D soft-shadow, dock fill to physical bottom (DockH 48 / selected 32), settings row 52 |
-| v2.7.0 | 2026-09 | soft-ui paper elevation; today card + pending ring; stats donut + monthly heatmap |
-| v2.6.0 | 2026-09 | In-row confirm, calendar day tasks, empty completion rate shows 0% |
-| v2.4.14 | 2026-08 | AI asks one question at a time; solar+lunar birthday rows merged |
-| v2.4.10 | 2026-08 | Skip weekends/holidays to next workday |
-| v2.4.0 | 2026-08 | Home timeline + 6-color themes |
-| v2.3.0 | 2026-08 | Brand color → teal |
-
-
-Earlier: [https://github.com/tsumon/reminder-app-ios/releases](https://github.com/tsumon/reminder-app-ios/releases).
+[**검증 및 프로토콜 →**](docs/upgrade-2.9.md) · [Validation](docs/validation-2.9.md)

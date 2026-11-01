@@ -40,110 +40,13 @@ private struct SoftElevation: ViewModifier {
     var kind: SoftShadowKind
     var radius: CGFloat
     var fill: Color
-    /// Bottom corners; `nil` matches `radius`. Dock uses 0 so fill can square off at the physical bottom.
     var bottomRadius: CGFloat? = nil
     @Environment(\.soft) private var soft
-
     func body(content: Content) -> some View {
-        let br = bottomRadius ?? radius
-        let shape = UnevenRoundedRectangle(
-            topLeadingRadius: radius,
-            bottomLeadingRadius: br,
-            bottomTrailingRadius: br,
-            topTrailingRadius: radius,
-            style: .continuous
-        )
-        content
-            .background {
-                ZStack {
-                    if soft.isDark {
-                        shape.fill(Color.white.opacity(hairlineOpacity))
-                            .padding(-1)
-                    }
-                    shape.fill(fill)
-                }
-            }
-            .overlay {
-                LinearGradient(
-                    stops: [
-                        .init(color: Color.white.opacity(insetOpacity), location: 0),
-                        .init(color: Color.white.opacity(insetOpacity * 0.35), location: 0.035),
-                        .init(color: Color.clear, location: 0.12)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .clipShape(shape)
-                .allowsHitTesting(false)
-            }
-            .shadow(color: drop1.color, radius: drop1.blur, x: 0, y: drop1.y)
-            .shadow(color: drop2.color, radius: drop2.blur, x: 0, y: drop2.y)
-            .shadow(color: drop3.color, radius: drop3.blur, x: 0, y: drop3.y)
-    }
-
-    private var hairlineOpacity: Double {
-        switch kind {
-        case .sm: return 0.05
-        case .card: return 0.08
-        case .elevated: return 0.10
-        }
-    }
-
-    private var insetOpacity: Double {
-        if soft.isDark {
-            switch kind {
-            case .sm: return 0
-            case .card: return 0.10
-            case .elevated: return 0.14
-            }
-        }
-        switch kind {
-        case .sm: return 0
-        case .card: return 0.85
-        case .elevated: return 0.95
-        }
-    }
-
-    private var drop1: (color: Color, blur: CGFloat, y: CGFloat) {
-        if soft.isDark {
-            switch kind {
-            case .sm: return (Color.black.opacity(0.40), 2, 1)
-            case .card: return (Color.black.opacity(0.45), 8, 4)
-            case .elevated: return (Color.black.opacity(0.50), 12, 6)
-            }
-        }
-        let ink = Color(hex: 0x111111)
-        switch kind {
-        case .sm: return (ink.opacity(0.05), 1, 1)
-        case .card: return (ink.opacity(0.06), 2, 1)
-        case .elevated: return (ink.opacity(0.06), 4, 2)
-        }
-    }
-
-    private var drop2: (color: Color, blur: CGFloat, y: CGFloat) {
-        if soft.isDark {
-            switch kind {
-            case .sm: return (.clear, 0, 0)
-            case .card: return (Color.black.opacity(0.50), 32, 12)
-            case .elevated: return (Color.black.opacity(0.55), 40, 16)
-            }
-        }
-        let ink = Color(hex: 0x111111)
-        switch kind {
-        case .sm: return (ink.opacity(0.05), 4, 2)
-        case .card: return (ink.opacity(0.06), 12, 6)
-        case .elevated: return (ink.opacity(0.07), 16, 8)
-        }
-    }
-
-    private var drop3: (color: Color, blur: CGFloat, y: CGFloat) {
-        if soft.isDark { return (.clear, 0, 0) }
-        let ink = Color(hex: 0x111111)
-        switch kind {
-        case .sm: return (.clear, 0, 0)
-        case .card: return (ink.opacity(0.08), 32, 14)
-        case .elevated: return (ink.opacity(0.08), 40, 16)
-        }
+        content.background(fill, in: UnevenRoundedRectangle(topLeadingRadius: radius,
+            bottomLeadingRadius: bottomRadius ?? radius, bottomTrailingRadius: bottomRadius ?? radius,
+            topTrailingRadius: radius, style: .continuous))
+            .shadow(color: .black.opacity(soft.isDark ? 0.12 : 0.035), radius: 5, x: 0, y: 2)
     }
 }
 
@@ -162,45 +65,10 @@ struct SoftCircleChrome<Content: View>: View {
     @Environment(\.soft) private var soft
 
     var body: some View {
-        ZStack {
-            Circle().fill(fill ?? soft.surface)
-            Circle()
-                .fill(
-                    LinearGradient(
-                        stops: soft.isDark
-                            ? [
-                                .init(color: Color.white.opacity(0.16), location: 0),
-                                .init(color: Color.white.opacity(0.06), location: 0.22),
-                                .init(color: Color.clear, location: 0.62)
-                            ]
-                            : [
-                                .init(color: Color.white.opacity(0.95), location: 0),
-                                .init(color: Color.white.opacity(0.50), location: 0.28),
-                                .init(color: Color.clear, location: 0.62)
-                            ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-            content
-        }
-        .frame(width: size, height: size)
-        .background {
-            if soft.isDark {
-                Circle().fill(Color.white.opacity(0.10)).padding(-1)
-            }
-        }
-        .shadow(
-            color: soft.isDark ? Color.black.opacity(0.50) : Color(hex: 0x111111).opacity(0.06),
-            radius: soft.isDark ? 20 : 2,
-            y: soft.isDark ? 8 : 1
-        )
-        .shadow(
-            color: soft.isDark ? .clear : Color(hex: 0x111111).opacity(0.10),
-            radius: 16,
-            y: 6
-        )
+        content.frame(width:max(44,size),height:max(44,size))
+            .background(fill ?? soft.surface,in:Circle())
     }
+
 }
 
 struct SoftCircleButton<Label: View>: View {
@@ -254,7 +122,7 @@ struct SoftInsetSearch: View {
             }
         }
         .padding(.horizontal, 14)
-        .frame(height: 40)
+        .frame(minHeight: 44)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(soft.isDark ? Color.black.opacity(0.35) : Color(hex: 0xE8E8E4))
@@ -283,7 +151,7 @@ struct SoftChip: View {
                 .font(SoftType.chip)
                 .foregroundStyle(selected ? ThemeTokens.onStrong : soft.muted)
                 .padding(.horizontal, 14)
-                .frame(height: ThemeTokens.chipH)
+                .frame(minHeight: 44)
                 .background {
                     ZStack {
                         if soft.isDark && !selected {
@@ -505,7 +373,7 @@ struct CheckInHeatmap: View {
         let cells = gridCells()
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("本月打卡".localized)
+                Text("完成记录".localized)
                     .font(SoftType.section)
                     .foregroundStyle(soft.text)
                 Spacer()

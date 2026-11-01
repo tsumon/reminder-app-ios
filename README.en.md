@@ -1,191 +1,97 @@
-[🇨🇳 简体中文](README.md) · [🇺🇸 English](README.en.md) · [🇹🇼 繁體中文](README.zh-TW.md) · [🇯🇵 日本語](README.ja.md) · [🇰🇷 한국어](README.ko.md)
+[简体中文](README.md) · [English](README.en.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
----
+<img src="assets/readme/hero.svg" width="100%" alt="Reminder — a calmer rhythm">
 
-# Recurring Reminder
+# Reminder
 
-Native iOS app.
+**Keep what needs a confirmation in view.**
 
-| Home | Calendar | Stats | Settings |
-|:---:|:---:|:---:|:---:|
-| ![Home](docs/screenshots/home.png) | ![Calendar](docs/screenshots/calendar.png) | ![Stats](docs/screenshots/stats.png) | ![Settings](docs/screenshots/settings.png) |
+Native reminders for iOS and Android. Confirm to move to the next cycle; use your chosen retry style and intervals while a task remains unconfirmed. Local data first, optional sync.
 
-## Current UI (v2.7.1)
+Source **2.9.0 / 71** · development branch, not released. See Releases for public downloads.
 
-Hammer-paper soft-shadow: light paper canvas / dark elevated surfaces. Cards have no stroke; actions are soft round buttons. Dock fills to the physical bottom (48pt). Four bottom tabs. Settings rows 52pt. AI lives in Settings, not as its own tab. iOS has no FAB.
+[**Downloads & releases ↗**](https://github.com/tsumon/reminder-app-ios/releases/latest) · [Other platform](https://github.com/tsumon/reminder-app-android)
 
-- **Home** (title 「提醒事项」): inset search; chips 全部 / 今天 / 本周; today card + soft ring for pending count; groups 提醒中 / 等待中. Due rows confirm in-line (no large confirm dialog). Retry subtitle 「还没确认 · HH:MM 再响」. 44 emoji wells; light-blue wash cycle badges.
-- **Calendar**: month as one elevated card; today as a vertical capsule + 🦊; solar + lunar + 班/休; adjacent-month dates dimmed; selecting a date lists that day's tasks. No weekly progress bar.
-- **Stats**: three tiles (this-month done / streak / completion rate) + thick-stroke soft donut (rate / confirmed / missed) + monthly check-in heatmap + check-in castle + most-forgotten hours. Weekly garden is a caption line on the heatmap card.
-- **Settings**: skins, etc.
+## What it does
 
-```mermaid
-flowchart TB
-  app[Recurring Reminder]
-  app --> home[Home]
-  app --> cal[Calendar]
-  app --> stats[Stats]
-  app --> set[Settings]
-```
+| Capability | iOS | Android |
+| :--- | :---: | :---: |
+| Cycles, dates, lunar birthdays, holidays, nth-week rules | ✓ | ✓ |
+| Fixed schedule / restart from completion | ✓ | ✓ |
+| Gentle / persistent / important, retries and quiet hours | ✓ | ✓ |
+| Complete, snooze, tomorrow, skip and undo | ✓ | ✓ |
+| Search, combined type filters, due / title / priority sorting | ✓ | ✓ |
+| Day agenda, week / month statistics, widgets | ✓ | ✓ |
+| Offline natural language, voice, templates, configurable AI | ✓ | ✓ |
+| JSON, ICS, nearby transfer, local backups, WebDAV | ✓ | ✓ |
 
-```mermaid
-flowchart LR
-  waiting[Waiting] --> due[Due]
-  due -->|Confirm| next[Next cycle]
-  due -->|Unconfirmed| retry[Escalating retry]
-  retry -->|Confirm| next
-  retry -->|Cap| overdue[Overdue]
-  overdue -->|Manual confirm| next
-```
+## Start in three steps
 
-Retry engine remains 1h → 4h → 12h → 24h → overdue (then stops auto-ringing). Notification actions are Confirm and Later.
+1. Create a reminder manually or fill the editable form with a sentence, voice or a template. Review the complete rule.
+2. Choose the style, recurrence anchor, retry intervals and quiet hours. Review the next three occurrences before saving.
+3. Open the notification check on Home, inspect permissions and system settings, then schedule a test and lock your device.
 
-## 🌐 Multi-language Support
+## Running app
 
-This app (iOS & Android) has built-in multi-language support that follows the system language automatically.
+Only actual runtime captures are shown. Example reminders belong to an isolated test device, not default user data.
 
-**Supported languages:**
-- 🇨🇳 Simplified Chinese (zh-Hans) — default & fallback
-- 🇺🇸 English (en)
-- 🇹🇼 Traditional Chinese (zh-Hant)
-- 🇯🇵 Japanese (ja)
-- 🇰🇷 Korean (ko)
+<p align="center">
+  <img src="docs/screenshots/runtime-2.9/home.png" width="280" alt="Home — iOS 2.9">
+  <img src="docs/screenshots/runtime-2.9/calendar.png" width="280" alt="Calendar — iOS 2.9">
+</p>
+<p align="center">
+  <img src="docs/screenshots/runtime-2.9/stats.png" width="280" alt="Statistics — iOS 2.9">
+  <img src="docs/screenshots/runtime-2.9/settings.png" width="280" alt="Settings — iOS 2.9">
+</p>
 
-**Implementation:**
-- **iOS**: `Localizable.xcstrings` localization catalog; SwiftUI retrieves strings via `String(localized:)`.
-- **Android**: `res/values/strings.xml` (zh-Hans base) + `values-en` / `values-zh-rTW` / `values-ja` / `values-ko` resource qualifiers; runtime code resolves strings through `zh()` / `zhf()`.
-- Both platforms share the "Chinese source string as key" approach — adding or modifying a string only requires maintaining the Chinese source and the translation table.
+[Create form](docs/screenshots/runtime-2.9/create.png) · [Capture details](docs/screenshots/runtime-2.9/README.md)
 
-> All user-visible strings (~330) are localized; missing translations gracefully fall back to Simplified Chinese.
+## How reminders repeat
 
-## Overview
+**Fixed** preserves the original schedule after a late completion; an early completion of a holiday-shifted reminder consumes its original slot. **After completion** starts a new interval from your confirmation. Existing reminders keep their policy.
 
-A pure native SwiftUI iOS reminder app that supports:
-- Set cycle: daily, weekly, monthly, quarterly, yearly, custom number of days
-- Due push notification with two action buttons: "Confirm" and "Later"
-- Unacknowledged escalating retry (aligned across platforms since v1.9.7): 1h → 4h → 12h → 24h → 24h
-  - After the 5th escalation it is marked `overdue`, stops nagging, and waits for manual confirmation / re-open
-- Cycle anchor anti-drift: computed from the first trigger time, won't shift due to delayed confirmation (month-end alignment, correct leap years)
-- Full operation history
-- SwiftData local persistence, available offline
-- **Date reminder early preview**: pushes a preview daily N days in advance (cap 14 days)
-- **AI voice assistant**: natural-language reminder creation, Function Calling
-- **WebDAV sync**: Nutstore / generic WebDAV two-way sync
-- **Nearby transfer**: scan a QR code on the same LAN to transfer reminders between devices
-- **OTA upgrade**: checks GitHub Releases and downloads the latest .ipa
+**Gentle** sends one automatic alert. **Persistent** defaults to 60 → 240 → 720 → 1440 minutes, up to 5 alerts including the first, with individually editable intervals. **Important** uses only capabilities granted by the OS. Retries respect quiet hours.
 
-## Method 1: XcodeGen (recommended, one command)
+Calculations use the device calendar and stored anchor timestamps. A time-zone change does not rewrite existing anchors: review the next alert. Previews assume on-time confirmation and may change with holiday data.
 
-```bash
-# 1. Install XcodeGen (if not installed)
-brew install xcodegen
+Completed and skipped count actions separately. Missed counts dates with retries; it does not prove notification delivery.
 
-# 2. Generate the Xcode project
-cd reminder-app-ios
+## Sync & recovery
+
+Use your own WebDAV server. Conflicting edits pause for an explicit choice. Private local snapshots are saved first, and uploads retain ETag preconditions. Schema v4 merges history by stable ID and keeps deletion markers for reminders and undone records.
+
+Upgrade both devices for full history and deletion sync. v1–v3 backups remain readable, but older clients discard the new metadata. Ancient files without stable IDs cannot reliably identify deletions. Markers do not expire; restore a deleted reminder under a new ID and keep complete v4 backups. Single-item share cards do not carry global deletions.
+
+## Install & upgrade in place
+
+iOS 17+. The release workflow produces an unsigned IPA. Continue using your original signing / sideloading channel. App, Widget and App Group identities are retained; without the original signing channel, in-place upgrade and data continuity cannot be promised.
+
+## What delivery status means
+
+Permissions and scheduled counts describe configuration, not confirmed delivery. Silent mode, Focus / Do Not Disturb, notification channels, power policies and vendor background restrictions can affect alerts. Test on a locked physical device, after reboot and in the background.
+
+iOS limits pending ordinary notifications. Important reminders can separately request AlarmKit on iOS 26+; unavailable or unauthorized alarms fall back to ordinary notifications.
+
+## Build locally
+
+Xcode 26.3+ · XcodeGen · iOS 17+
+
+```sh
 xcodegen generate
-
-# 3. Open the project
-open ReminderApp.xcodeproj
-
-# 4. Select an iOS simulator and press Cmd+R to run
+xcodebuild build -project ReminderApp.xcodeproj -scheme ReminderApp \
+  -sdk iphonesimulator -destination "generic/platform=iOS Simulator" \
+  CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project ReminderApp.xcodeproj -scheme UpgradeCheck \
+  -destination "platform=macOS" -derivedDataPath DerivedDataChecks CODE_SIGNING_ALLOWED=NO
+./DerivedDataChecks/Build/Products/Debug/UpgradeCheck
 ```
 
-## Method 2: Create the Xcode project manually
+App: `com.reminder.app` · Widget: `com.reminder.app.widget` · App Group: `group.com.reminder.app`
 
-1. Open Xcode → File → New → Project → iOS → App
-2. Product Name: `ReminderApp`, Interface: SwiftUI, Language: Swift, check Use SwiftData
-3. After creation, overwrite / add the following files to the project:
-   - `ReminderApp/ReminderApp.swift` → replace the auto-generated App file
-   - `ReminderApp/Info.plist` → drag into the project
-   - `ReminderApp/Models/` → drag the whole folder in
-   - `ReminderApp/Views/` → drag the whole folder in
-   - `ReminderApp/Services/` → drag the whole folder in
-4. Set Deployment Target to iOS 17.0
-5. In Signing & Capabilities add Push Notifications and Background Modes (remote-notification)
-6. Press Cmd+R to run
+Release: `CODE_SIGNING_ALLOWED=NO` (unsigned IPA).
 
-## Project Structure
+## Privacy
 
-```
-ReminderApp/
-├── ReminderApp.swift              # @main entry
-├── Info.plist                     # App configuration
-├── Models/
-│   └── Reminder.swift             # SwiftData data model + enums
-├── Views/
-│   ├── ReminderListView.swift     # Home list (groups: active / waiting / done, incl. overdue)
-│   ├── ReminderRowView.swift      # List row component
-│   ├── CreateReminderView.swift   # New reminder form
-│   ├── ReminderDetailView.swift   # Detail page + confirm / later actions + history
-│   ├── CalendarView.swift         # Calendar view
-│   ├── StatsView.swift            # Stats (month done / streak / completion rate)
-│   ├── AIChatView.swift           # AI chat
-│   ├── AISettingsView.swift       # AI config
-│   ├── NearbyShareView.swift      # Nearby transfer (QR + TCP)
-│   ├── SyncSettingsView.swift     # WebDAV sync settings
-│   └── SettingsView.swift         # Settings (check update, etc.)
-├── Services/
-│   ├── ReminderEngine.swift       # Cycle calculation / confirm / escalating retry / missed check
-│   ├── NotificationManager.swift  # Notification permission / category registration / local push
-│   ├── HolidayService.swift       # Holiday service (with online fallback)
-│   ├── LunarCalendarCheck.swift   # Lunar calendar conversion
-│   ├── BackupHelper.swift         # JSON backup import / export
-│   ├── WebDavSync.swift           # WebDAV two-way sync
-│   ├── NearbyShareService.swift   # LAN TCP transfer on 47823
-│   ├── QRCodeService.swift        # QR generation & scanning (AVFoundation)
-│   ├── UpdateService.swift        # GitHub releases.atom update check
-│   ├── TelemetryService.swift     # Analytics (confirm / escalate / ...)
-│   └── SoftShadowCard.swift       # paper soft-shadow / donut / heatmap
-└── Widgets/
-    └── ReminderWidget.swift       # Home screen widget
-```
+Reminders and history stay on-device. AI sends conversations and relevant content to your configured model service. WebDAV, nearby sharing and exported files contain reminder data. Choose trusted endpoints and protect your backups.
 
-## Tech Stack
-
-| Module | Technology |
-|--------|------------|
-| UI | SwiftUI (iOS 17+) |
-| Persistence | SwiftData |
-| Local notifications | UserNotifications + UNNotificationAction |
-| State management | @Observable / @StateObject / @Query |
-| Notification events | NotificationCenter (in-app cross-component communication) |
-
-## Notification Buttons
-
-When a push arrives, the iOS notification banner shows two action buttons:
-- **Confirm Complete** → advances the cycle, computing the next time based on the `firstTriggerAt` anchor
-- **Remind Later** → re-pushes after 15 minutes
-
-If the user does nothing (swipes it away), it enters escalating retry:
-
-| Stage | Interval | Status |
-|-------|----------|--------|
-| 1st | after 1 hour | active |
-| 2nd | after 4 hours | active |
-| 3rd | after 12 hours | active |
-| 4th | after 24 hours | active |
-| 5th | after 24 hours | **overdue** (stops nagging) |
-
-> Since v1.9.7: the cycle does not advance during escalating retry; once `overdue` is set it stops responding automatically, waiting for manual confirmation or re-open.
-
-## System Requirements
-
-- Xcode 15.0+
-- iOS 17.0+
-- Swift 5.9+
-
-## Changelog
-
-| Version | Date | Changes |
-|---------|------|---------|
-| v2.7.2 | 2026-09 | AI dock 修复；模型列表/测连通；模板；分享 ICS；小组件确认 |
-| v2.7.1 | 2026-09 | soft-ui chrome: hammer 3D soft-shadow, dock fill to physical bottom (DockH 48 / selected 32), settings row 52 |
-| v2.7.0 | 2026-09 | soft-ui paper elevation; today card + pending ring; stats donut + monthly heatmap |
-| v2.6.0 | 2026-09 | In-row confirm, calendar day tasks, empty completion rate shows 0% |
-| v2.4.14 | 2026-08 | AI asks one question at a time; solar+lunar birthday rows merged |
-| v2.4.10 | 2026-08 | Skip weekends/holidays to next workday |
-| v2.4.0 | 2026-08 | Home timeline + 6-color themes |
-| v2.3.0 | 2026-08 | Brand color → teal |
-
-
-Earlier releases: [https://github.com/tsumon/reminder-app-ios/releases](https://github.com/tsumon/reminder-app-ios/releases).
+[**Validation & protocol →**](docs/upgrade-2.9.md) · [Validation](docs/validation-2.9.md)

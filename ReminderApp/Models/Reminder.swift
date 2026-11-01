@@ -94,6 +94,7 @@ enum ReminderRecordType: String {
     case snooze = "snooze"
     case trigger = "trigger"
     case advance = "advance"
+    case skipped = "skipped"
 }
 
 /// 确认/操作记录
@@ -163,6 +164,7 @@ final class Reminder {
     var actionRevision: Int = 0
     var lastCompletedAt: Date? = nil
     var undoCompletion: Data? = nil
+    var scheduledOccurrenceAt: Date? = nil
     var holidayAware: Bool = false
     var createdAt: Date
     var updatedAt: Date

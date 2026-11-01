@@ -80,8 +80,12 @@ enum WebDavSync {
             pending = nil
             switch choice {
             case .local:
+                let deleted=BackupHelper.deletionIDs(latest.json ?? "")
+                let retained=try ReminderMerge.apply([],current:current,context:context,deletedReminders:deleted.reminders,deletedRecords:deleted.records)
                 SyncStore.setLocalVersion(max(conflict.generation, BackupHelper.dataVersion(of: latest.json ?? "")) + 1)
-                return try await uploadSnapshot(current, generation: SyncStore.localVersion, remote: latest, transport: transport)
+                let result=try await uploadSnapshot(retained, generation: SyncStore.localVersion, remote: latest, transport: transport)
+                await transport.restore()
+                return result
             case .remote:
                 guard let json = latest.json else { return .failure("远程备份已不存在，请重新同步") }
                 return try await applyRemote(json, current: current, remote: latest, context: context, transport: transport)
@@ -102,11 +106,13 @@ enum WebDavSync {
     private static func applyRemote(_ json: String, current: [Reminder], remote: Remote, context: ModelContext, transport: Transport) async throws -> SyncResult {
         guard let items = BackupHelper.importJSON(json) else { return .failure("远程文件解析失败") }
         try snapshotLocal(current)
-        guard mergeRemote(current, items: items, in: context) else { return .failure("本地写入失败，数据已回滚") }
+        guard mergeRemote(current, items: items, in: context, json: json) else { return .failure("本地写入失败，数据已回滚") }
         let incomingGeneration = BackupHelper.dataVersion(of: json)
         let previousGeneration = SyncStore.localVersion
         let incomingIDs = Set(items.compactMap(\.stableID))
-        let hasLocalOnly = current.contains { !incomingIDs.contains($0.id) }
+        let incomingRecords=Set(items.flatMap { ($0.records ?? []).map(\.id) })
+        let retainedHistory=current.flatMap(\.records).contains { !SyncDeletionLedger.records.contains($0.id) && !incomingRecords.contains($0.id) }
+        let hasLocalOnly = retainedHistory || current.contains { !SyncDeletionLedger.reminders.contains($0.id) && !incomingIDs.contains($0.id) } || !SyncDeletionLedger.reminders.isSubset(of: Set(BackupHelper.deletionIDs(json).reminders)) || !SyncDeletionLedger.records.isSubset(of: Set(BackupHelper.deletionIDs(json).records))
         // A selected lower counter or retained local rows create a new shared revision.
         let mustPublish = hasLocalOnly || incomingGeneration <= previousGeneration
         let mergedGeneration = mustPublish ? max(previousGeneration, incomingGeneration) + 1 : incomingGeneration
@@ -283,10 +289,11 @@ enum WebDavSync {
     private static func mergeRemote(
         _ current: [Reminder],
         items: [BackupHelper.BackupItem],
-        in context: ModelContext
+        in context: ModelContext, json: String
     ) -> Bool {
         do {
-            try ReminderMerge.apply(items, current: current, context: context)
+            let deleted=BackupHelper.deletionIDs(json)
+            try ReminderMerge.apply(items, current: current, context: context, deletedReminders: deleted.reminders, deletedRecords: deleted.records)
             WidgetCenter.shared.reloadAllTimelines()
             return true
         } catch { return false }

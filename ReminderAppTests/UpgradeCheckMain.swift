@@ -6,6 +6,22 @@ import SwiftData
         let container = try ModelContainer(for: Reminder.self, ReminderRecord.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true))
         let context = container.mainContext
+        let priorLedgerReminders=SyncDeletionLedger.reminders, priorLedgerRecords=SyncDeletionLedger.records
+        SyncDeletionLedger.store(reminders:[],records:[])
+        defer { SyncDeletionLedger.store(reminders:priorLedgerReminders,records:priorLedgerRecords) }
+
+        if CommandLine.arguments.count==3, CommandLine.arguments[1]=="--roundtrip-v4" {
+            let input=CommandLine.arguments[2]
+            let json=try String(contentsOfFile:input,encoding:.utf8)
+            let items=BackupHelper.importJSON(json)!
+            let deleted=BackupHelper.deletionIDs(json)
+            try ReminderMerge.apply(items,current:[],context:context,deletedReminders:deleted.reminders,deletedRecords:deleted.records)
+            let all=try context.fetch(FetchDescriptor<Reminder>())
+            try BackupHelper.exportJSON(all).write(toFile:input+".ios.json",atomically:true,encoding:.utf8)
+            print("Production v4 import / merge / export completed: \(all.count) reminders, \(all.flatMap(\.records).count) history records")
+            return
+        }
+
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let r = Reminder(title: "Filter", cycle: .daily, firstTriggerAt: now, nextTriggerAt: now)
         context.insert(r)
@@ -51,7 +67,7 @@ import SwiftData
             let token = skip.actionToken
             precondition(ReminderActions.skip(skip, expectedToken: token, now: now, context: context))
             let expected = Calendar.current.date(byAdding: .day, value: status == .pending ? 8 : 1, to: now)!
-            precondition(skip.nextTriggerAt == expected && skip.records.isEmpty)
+            precondition(skip.nextTriggerAt == expected && skip.records.count==1 && skip.records.first?.type=="skipped")
             precondition(!ReminderActions.skip(skip, expectedToken: token, now: now, context: context))
         }
         r.reminderStyle = "gentle"; r.retryStage = 1; r.status = .snoozed
@@ -250,7 +266,40 @@ import SwiftData
         UserDefaults.standard.removeObject(forKey: "quiet_hours_\(legacyID.uuidString)_start")
         UserDefaults.standard.removeObject(forKey: "quiet_hours_\(legacyID.uuidString)_end")
         try await FinalReviewChecks.run(context: context)
-        print("Upgrade policy/actions/global allocation/v3 checks passed")
+        // Schema v4: stable history, removal wins, and shifted holidays consume their nominal slot.
+        let oldDeleted=SyncDeletionLedger.reminders, oldRecords=SyncDeletionLedger.records
+        defer { SyncDeletionLedger.store(reminders:oldDeleted,records:oldRecords) }
+        let deletedID=UUID(), recordID=UUID()
+        let v4Reminder=Reminder(id:deletedID,title:"v4 history",firstTriggerAt:now,nextTriggerAt:now)
+        context.insert(v4Reminder)
+        v4Reminder.records.append(ReminderRecord(id:recordID,performedAt:now,type:.confirm))
+        try context.save()
+        let stale=BackupHelper.exportJSON([v4Reminder])
+        let decoded=BackupHelper.importJSON(stale)!
+        try ReminderMerge.apply(decoded,current:[v4Reminder],context:context)
+        precondition(v4Reminder.records.count==1)
+        try ReminderMerge.apply(decoded,current:[v4Reminder],context:context,deletedRecords:[recordID])
+        try ReminderMerge.apply(decoded,current:[v4Reminder],context:context)
+        precondition(v4Reminder.records.isEmpty,"undone completion must not return")
+        try ReminderMerge.apply(decoded,current:[v4Reminder],context:context,deletedReminders:[deletedID])
+        try ReminderMerge.apply(decoded,current:[],context:context)
+        let remainingV4=try context.fetch(FetchDescriptor<Reminder>())
+        precondition(!remainingV4.contains { $0.id==deletedID })
+        precondition(BackupHelper.deletionIDs(BackupHelper.exportJSON([])).reminders.contains(deletedID))
+        let shifted=Reminder(title:"Shifted weekly",cycle:.weekly,firstTriggerAt:now,nextTriggerAt:now.addingTimeInterval(6*86400))
+        shifted.scheduledOccurrenceAt=now.addingTimeInterval(7*86400)
+        context.insert(shifted);try context.save()
+        let shiftedToken=shifted.actionToken
+        precondition(ReminderActions.complete(shifted,expectedToken:shiftedToken,now:now.addingTimeInterval(6*86400+3600),context:context) != nil)
+        precondition(shifted.nextTriggerAt==now.addingTimeInterval(14*86400))
+        precondition(ReminderActions.complete(shifted,expectedToken:shiftedToken,context:context)==nil)
+        shifted.scheduledOccurrenceAt=now.addingTimeInterval(7*86400)
+        let v4EditDraft=Reminder(title:"Edited",cycle:.weekly,firstTriggerAt:now.addingTimeInterval(86400),nextTriggerAt:now.addingTimeInterval(86400))
+        precondition(ReminderEdits.apply(v4EditDraft,to:shifted,expectedToken:shifted.actionToken,scheduleChanged:false,context:context,now:now,calculate:{ ReminderPolicy.nextCycle(after:$0,reminder:$1) }))
+        precondition(shifted.scheduledOccurrenceAt != nil)
+        precondition(ReminderEdits.apply(v4EditDraft,to:shifted,expectedToken:shifted.actionToken,scheduleChanged:true,context:context,now:now,calculate:{ ReminderPolicy.nextCycle(after:$0,reminder:$1) }))
+        precondition(shifted.scheduledOccurrenceAt == nil)
+        print("Upgrade policy/actions/global allocation/v4 deletion and history checks passed")
     }
 }
 

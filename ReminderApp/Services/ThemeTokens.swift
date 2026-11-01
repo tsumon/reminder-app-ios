@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// 设计令牌 — soft-ui v2（Joe 2026-09-05）
 /// 双端对齐：iOS 本文件 / Android Tokens.kt
@@ -14,8 +15,8 @@ enum ThemeTokens {
     }
 
     static let palettes: [BrandPalette] = [
-        BrandPalette(primary: Color(hex: 0x159A9C), primaryDark: Color(hex: 0x0E6E70),
-                     gradientStart: Color(hex: 0x4DB6AC), container: Color(hex: 0xB2EBE4)),
+        BrandPalette(primary: Color(hex: 0x087F7A), primaryDark: Color(hex: 0x08635F),
+                     gradientStart: Color(hex: 0x53B9AD), container: Color(hex: 0xDDEEE8)),
         BrandPalette(primary: Color(hex: 0x3B82F6), primaryDark: Color(hex: 0x1E5BC4),
                      gradientStart: Color(hex: 0x7FB5FF), container: Color(hex: 0xC9E0FF)),
         BrandPalette(primary: Color(hex: 0xE0457B), primaryDark: Color(hex: 0xB02E5C),
@@ -33,21 +34,25 @@ enum ThemeTokens {
         return palettes.indices.contains(i) ? palettes[i] : palettes[0]
     }
 
-    static var brandPrimary: Color { palette.primary }
+    static var brandPrimary: Color { strong }
     static var brandPrimaryDark: Color { palette.primaryDark }
     static var brandGradientStart: Color { palette.gradientStart }
     static var brandContainer: Color { palette.container }
     /// `--strong`
-    static var strong: Color { palette.primary }
-    static var onStrong: Color { .white }
+    static var strong: Color { Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(palette.gradientStart) : UIColor(palette.primary) }) }
+    static var onStrong: Color { Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(red:16/255,green:29/255,blue:32/255,alpha:1) : .white }) }
+
+    private static func adaptive(_ light: UInt32,_ dark: UInt32) -> Color {
+        Color(uiColor:UIColor { trait in UIColor(Color(hex:trait.userInterfaceStyle == .dark ? dark : light)) })
+    }
 
     // MARK: 状态色
 
-    static let statusReminding = Color(hex: 0xE74C3C)
-    static let statusWaiting = Color(hex: 0x3498DB)
-    static let statusCompleted = Color(hex: 0x27AE60)
-    static let statusOverdue = Color(hex: 0xC0392B)
-    static let statusSnoozed = Color(hex: 0xF39C12)
+    static let statusReminding = adaptive(0xBD4436, 0xFF8A80)
+    static let statusWaiting = adaptive(0x25669A, 0x8DBEF0)
+    static let statusCompleted = adaptive(0x237A49, 0x66D99E)
+    static let statusOverdue = adaptive(0xC0392B, 0xFF8A80)
+    static let statusSnoozed = adaptive(0x9A5D08, 0xF9B649)
 
     static let holidayRest = Color(hex: 0xD32F2F)
     static let holidayWork = Color(hex: 0xEF6C00)
@@ -136,11 +141,11 @@ struct SoftPalette {
     static func of(_ scheme: ColorScheme) -> SoftPalette {
         if scheme == .dark {
             return SoftPalette(
-                canvas: Color(hex: 0x12121A),
-                surface: Color(hex: 0x1C1C26),
-                elevated: Color(hex: 0x2A2A36),
+                canvas: Color(hex: 0x101D20),
+                surface: Color(hex: 0x192A2D),
+                elevated: Color(hex: 0x22373B),
                 text: Color(hex: 0xEDEDF0),
-                muted: Color(hex: 0x8E8E9A),
+                muted: Color(hex: 0xA7BABD),
                 track: Color.white.opacity(0.08),
                 warn: Color(hex: 0xF39C12),
                 ok: Color(hex: 0x27AE60),
@@ -149,14 +154,14 @@ struct SoftPalette {
             )
         }
         return SoftPalette(
-            canvas: Color(hex: 0xF5F5F3),
-            surface: Color(hex: 0xFBFBFA),
+            canvas: Color(hex: 0xF6F7F2),
+            surface: Color(hex: 0xFFFFFF),
             elevated: Color.white,
-            text: Color(hex: 0x1A1A1C),
-            muted: Color(hex: 0x5E5E66),
+            text: Color(hex: 0x142D30),
+            muted: Color(hex: 0x596D70),
             track: Color(red: 26/255, green: 26/255, blue: 28/255).opacity(0.08),
-            warn: Color(hex: 0xC47A12),
-            ok: Color(hex: 0x1F8A4C),
+            warn: Color(hex: 0x9A5D08),
+            ok: Color(hex: 0x237A49),
             danger: Color(hex: 0xC0392B),
             isDark: false
         )
@@ -177,20 +182,17 @@ extension EnvironmentValues {
 // MARK: - 锁死字号
 
 enum SoftType {
-    /// 22/28 −0.7（仅拉丁/数字加 tracking）
-    static var title: Font { .system(size: 22, weight: .semibold) }
-    /// 19/24 +0.6
-    static var section: Font { .system(size: 19, weight: .semibold) }
-    /// 14.5/18 +0.3
-    static var body: Font { .system(size: 14.5, weight: .regular) }
-    static var bodyMedium: Font { .system(size: 14.5, weight: .medium) }
-    static var chip: Font { .system(size: 13, weight: .medium) }
-    static var caption: Font { .system(size: 11, weight: .regular) }
-    static var retry: Font { .system(size: 12.5, weight: .regular) }
-    static var tab: Font { .system(size: 10, weight: .medium) }
-    static var calendarLunar: Font { .system(size: 9, weight: .regular) }
-    static var confirm: Font { .system(size: 14.5, weight: .semibold) }
-    static var meter: Font { .system(size: 22, weight: .semibold) }
+    static var title: Font { .title.bold() }
+    static var section: Font { .headline }
+    static var body: Font { .body }
+    static var bodyMedium: Font { .body.weight(.medium) }
+    static var chip: Font { .subheadline.weight(.medium) }
+    static var caption: Font { .caption }
+    static var retry: Font { .subheadline }
+    static var tab: Font { .caption2.weight(.medium) }
+    static var calendarLunar: Font { .caption2 }
+    static var confirm: Font { .body.weight(.semibold) }
+    static var meter: Font { .title2.bold() }
 }
 
 extension View {

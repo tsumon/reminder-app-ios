@@ -1,161 +1,97 @@
-[🇨🇳 简体中文](README.md) · [🇺🇸 English](README.en.md) · [🇹🇼 繁體中文](README.zh-TW.md) · [🇯🇵 日本語](README.ja.md) · [🇰🇷 한국어](README.ko.md)
+[简体中文](README.md) · [English](README.en.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
----
+<img src="assets/readme/hero.svg" width="100%" alt="Reminder — a calmer rhythm">
 
 # 循環提醒
 
-![Home](docs/screenshots/home.png)
+**把待確認的事，放在第一眼。**
 
-![Calendar](docs/screenshots/calendar.png)
+原生 iOS 與 Android 提醒工具。確認後進入下一週期；尚未確認時，依你設定的強度與間隔再次提醒。資料先留在本機，同步由你選擇。
 
-![Stats](docs/screenshots/stats.png)
+原始碼 **2.9.0 / 71** · 開發分支，尚未發佈。公開下載版本以 Releases 為準。
 
-## 🌐 多語言支援 / Multi-language Support
+[**下載與版本記錄 ↗**](https://github.com/tsumon/reminder-app-ios/releases/latest) · [另一平台](https://github.com/tsumon/reminder-app-android)
 
-本應用（iOS 與 Android 雙端）內建多語言支援，跟隨系統語言自動切換。
+## 能做什麼
 
-**支援語言：**
-- 🇨🇳 簡體中文（zh-Hans）— 預設語言 / 回退語言 (default & fallback)
-- 🇺🇸 English (en)
-- 🇹🇼 繁體中文 (zh-Hant)
-- 🇯🇵 日本語 (ja)
-- 🇰🇷 한국어 (ko)
+| 能力 | iOS | Android |
+| :--- | :---: | :---: |
+| 週期、日期、農曆生日、節日、第 N 週規則 | ✓ | ✓ |
+| 固定週期 / 完成後重新計時 | ✓ | ✓ |
+| 輕柔 / 持續 / 重要、重試與每日勿擾 | ✓ | ✓ |
+| 確認、稍後、明天、略過、撤銷 | ✓ | ✓ |
+| 搜尋、類型組合篩選、時間 / 標題 / 優先級排序 | ✓ | ✓ |
+| 當日行程、週 / 月統計、小工具 | ✓ | ✓ |
+| 離線自然語言、語音、範本、可設定 AI 填表 | ✓ | ✓ |
+| JSON、ICS、附近分享、本機備份、WebDAV | ✓ | ✓ |
 
-**實作方式 / Implementation：**
-- **iOS**：`Localizable.xcstrings` 多語言目錄，SwiftUI 透過 `String(localized:)` 取得多語言文案。
-- **Android**：`res/values/strings.xml`（簡體中文基準）+ `values-en` / `values-zh-rTW` / `values-ja` / `values-ko` 資源限定符，執行時代碼統一透過 `zh()` / `zhf()` 查表。
-- 雙端共用「中文原串即 key」方案，新增 / 修改文案只需維護中文源串與譯文表。
+## 三步開始
 
-> 多語言文案已涵蓋全部使用者可見介面（約 330 條），翻譯缺失時自動回退為簡體中文原串。
-> All user-visible strings (~330) are localized; missing translations gracefully fall back to Simplified Chinese.
+1. 建立提醒，或用一句話、語音與範本填寫，再檢查完整規則。
+2. 選擇強度、週期起點、重試間隔與勿擾時段，預覽未來三次安排後儲存。
+3. 開啟首頁通知自檢，檢查權限與系統設定，安排測試提醒並鎖定螢幕驗證。
 
-## 功能概述
+## 實裝畫面
 
-一套純原生 SwiftUI iOS 提醒應用，支援：
-- 設定循環週期：每天、每週、每月、每季、每年、自訂天數
-- 到期推播通知，帶「確認完成」和「稍後提醒」兩個操作按鈕
-- 未確認遞增重試（v1.9.7 起雙端對齊）：1 小時 → 4 小時 → 12 小時 → 24 小時 → 24 小時
-  - 第 5 次到達後標 `overdue`（逾期），停止轟炸，等使用者手動確認 / 重新開啟
-- 週期錨點防漂移：基於首次觸發時間計算，不會因延遲確認而偏移（月末對齊、閏年正確）
-- 完整操作歷史記錄
-- SwiftData 本地持久化，離線可用
-- **日期提醒提前預告**：提前 N 天每日推送預告（上限 14 天）
-- **AI 語音助理**：自然語言建提醒、Function Calling
-- **WebDAV 同步**：堅果雲 / 通用 WebDAV 雙向同步
-- **近場傳輸**：同一區域網路掃描 QR Code 互傳提醒
-- **線上升級**：檢查 GitHub Releases 並下載最新 .ipa
+只展示真實執行畫面。範例提醒屬於獨立測試裝置，並非預設使用者資料。
 
-## 方式一：XcodeGen（推薦，一鍵生成）
+<p align="center">
+  <img src="docs/screenshots/runtime-2.9/home.png" width="280" alt="Home — iOS 2.9">
+  <img src="docs/screenshots/runtime-2.9/calendar.png" width="280" alt="Calendar — iOS 2.9">
+</p>
+<p align="center">
+  <img src="docs/screenshots/runtime-2.9/stats.png" width="280" alt="Statistics — iOS 2.9">
+  <img src="docs/screenshots/runtime-2.9/settings.png" width="280" alt="Settings — iOS 2.9">
+</p>
 
-```bash
-# 1. 安裝 XcodeGen（如未安裝）
-brew install xcodegen
+[Create form](docs/screenshots/runtime-2.9/create.png) · [Capture details](docs/screenshots/runtime-2.9/README.md)
 
-# 2. 生成 Xcode 專案
-cd reminder-app-ios
+## 提醒策略
+
+**固定週期**保留原定安排；假日前移後提前完成會消耗原定週期。**完成後重算**依實際確認時間重新計時。舊提醒保留原策略。
+
+**輕柔**只自動提醒一次；**持續**預設 60 → 240 → 720 → 1440 分鐘，最多 5 次（含首次），可逐項編輯；**重要**仍由系統權限決定。重試遵守勿擾。
+
+依裝置日曆與既有錨點時間戳計算。切換時區不會改寫舊錨點，請檢查下次提醒。預覽假設準時確認，假日資料更新後可能調整。
+
+完成與略過依操作次數分開計數；漏掉依出現重試的日期計數，不代表系統已送達通知。
+
+## 同步與恢復
+
+WebDAV 使用你自己的伺服器。雙方修改時暫停並等待選擇；寫入前保留私有本機快照，以上傳 ETag 條件避免覆蓋新版本。協定 v4 依穩定 ID 合併歷史，以刪除標記防止舊提醒或已撤銷的記錄回流。
+
+完整歷史與刪除同步需要雙端升級。v1–v3 備份仍可讀，但舊客戶端會丟棄新資料；無穩定 ID 的古老檔案無法可靠辨識刪除。標記長期保留，恢復需複製為新 ID，請保留 v4 完整備份。單條分享卡片不攜帶全域刪除標記。
+
+## 安裝與覆蓋升級
+
+iOS 17+。Release 工作流程輸出 unsigned IPA；繼續使用原有簽名 / 側載管道。App、Widget 與 App Group 保持原值；缺少原管道時，無法承諾覆蓋安裝或資料延續。
+
+## 通知的真實邊界
+
+權限與排程數量表示設定狀態，不代表已送達。靜音、專注 / 勿擾、通知管道、電源政策與廠商背景限制都可能影響提醒。請在真機鎖屏、重新啟動與背景狀態測試。
+
+iOS 普通通知有待通知數量限制；重要提醒可在 iOS 26+ 另行授權 AlarmKit，不可用時回退普通通知。
+
+## 本機建置
+
+Xcode 26.3+ · XcodeGen · iOS 17+
+
+```sh
 xcodegen generate
-
-# 3. 開啟專案
-open ReminderApp.xcodeproj
-
-# 4. 選擇 iOS 模擬器，按 Cmd+R 執行
+xcodebuild build -project ReminderApp.xcodeproj -scheme ReminderApp \
+  -sdk iphonesimulator -destination "generic/platform=iOS Simulator" \
+  CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project ReminderApp.xcodeproj -scheme UpgradeCheck \
+  -destination "platform=macOS" -derivedDataPath DerivedDataChecks CODE_SIGNING_ALLOWED=NO
+./DerivedDataChecks/Build/Products/Debug/UpgradeCheck
 ```
 
-## 方式二：手動建立 Xcode 專案
+App: `com.reminder.app` · Widget: `com.reminder.app.widget` · App Group: `group.com.reminder.app`
 
-1. 開啟 Xcode → File → New → Project → iOS → App
-2. 專案名：`ReminderApp`，Interface：SwiftUI，Language：Swift，勾選 Use SwiftData
-3. 建立後將以下檔案覆蓋 / 加入專案：
-   - `ReminderApp/ReminderApp.swift` → 替換自動生成的 App 檔案
-   - `ReminderApp/Info.plist` → 拖入專案
-   - `ReminderApp/Models/` → 整個資料夾拖入
-   - `ReminderApp/Views/` → 整個資料夾拖入
-   - `ReminderApp/Services/` → 整個資料夾拖入
-4. 設定 Deployment Target 為 iOS 17.0
-5. 在 Signing & Capabilities 中加入 Push Notifications 和 Background Modes（remote-notification）
-6. 按 Cmd+R 執行
+Release: `CODE_SIGNING_ALLOWED=NO` (unsigned IPA).
 
-## 專案結構
+## 隱私
 
-```
-ReminderApp/
-├── ReminderApp.swift              # @main 入口
-├── Info.plist                     # 應用設定
-├── Models/
-│   └── Reminder.swift             # SwiftData 資料模型 + 列舉
-├── Views/
-│   ├── ReminderListView.swift     # 首頁列表（分組：提醒中 / 等待中 / 已完成，含逾期）
-│   ├── ReminderRowView.swift      # 列表行元件
-│   ├── CreateReminderView.swift   # 新建提醒表單
-│   ├── ReminderDetailView.swift   # 詳情頁 + 確認 / 稍後操作 + 歷史記錄
-│   ├── CalendarView.swift         # 日曆視圖
-│   ├── StatsView.swift            # 統計 / 熱力圖
-│   ├── AIChatView.swift           # AI 對話
-│   ├── AISettingsView.swift       # AI 設定
-│   ├── NearbyShareView.swift      # 近場傳輸（QR Code + TCP）
-│   ├── SyncSettingsView.swift     # WebDAV 同步設定
-│   └── SettingsView.swift         # 設定（檢查更新等）
-├── Services/
-│   ├── ReminderEngine.swift       # 週期計算 / 確認 / 遞增重試 / 遺漏檢查
-│   ├── NotificationManager.swift  # 通知權限 / 分類註冊 / 本機推播
-│   ├── HolidayService.swift       # 節假日服務（含聯網兜底）
-│   ├── LunarCalendarCheck.swift   # 農曆轉換
-│   ├── BackupHelper.swift         # JSON 備份匯入匯出
-│   ├── WebDavSync.swift           # WebDAV 雙向同步
-│   ├── NearbyShareService.swift   # 區域網路 TCP 47823 互傳
-│   ├── QRCodeService.swift        # QR Code 生成與掃碼（AVFoundation）
-│   ├── UpdateService.swift        # GitHub releases.atom 檢查更新
-│   ├── TelemetryService.swift     # 埋點（confirm / escalate / ...）
-│   └── SoftShadowCard.swift          # 紙面軟影 / donut / 熱力
-└── Widgets/
-    └── ReminderWidget.swift       # 桌面小工具
-```
+提醒與歷史保存在本機。AI 對話與相關內容會傳送到你設定的模型服務；WebDAV、附近分享與匯出檔案包含提醒資料，請選擇可信端點並妥善保管備份。
 
-## 技術堆疊
-
-| 模組 | 技術 |
-|------|------|
-| UI | SwiftUI (iOS 17+) |
-| 資料持久化 | SwiftData |
-| 本機通知 | UserNotifications + UNNotificationAction |
-| 狀態管理 | @Observable / @StateObject / @Query |
-| 通知事件 | NotificationCenter（App 內通知跨元件通訊） |
-
-## 通知按鈕
-
-收到推播時，iOS 通知橫幅展示兩個操作按鈕：
-- **確認完成** → 週期前進，基於 firstTriggerAt 錨點計算下次時間
-- **稍後提醒** → 15 分鐘後重推
-
-如果使用者什麼都不做（滑動消除），進入遞增重試：
-
-| 階段 | 間隔 | 狀態 |
-|------|------|------|
-| 第 1 次 | 1 小時後 | active（提醒中） |
-| 第 2 次 | 4 小時後 | active |
-| 第 3 次 | 12 小時後 | active |
-| 第 4 次 | 24 小時後 | active |
-| 第 5 次 | 24 小時後 | **overdue**（逾期，停止轟炸） |
-
-> v1.9.7 起：遞增重試期間不推進週期；標 overdue 後不再自動響，等使用者手動確認或重新開啟。
-
-## 系統需求
-
-- Xcode 15.0+
-- iOS 17.0+
-- Swift 5.9+
-
-## 版本歷史
-
-| 版本 | 日期 | 更新內容 |
-|------|------|----------|
-| v2.7.1 | 2026-09 | soft-ui chrome：锤子立体软影、底栏铺物理底（DockH 48 / 选中圆 32）、设置行高 52 |
-| v2.7.0 | 2026-09 | soft-ui 纸面软影；首页今日卡+待处理环；统计 donut + 本月打卡热力 |
-| v2.6.0 | 2026-09 | 行内确认、日历当天任务、统计空完成率 0% |
-| v2.4.14 | 2026-08 | AI 一次只问一事；公历+农历生日合并显示 |
-| v2.4.10 | 2026-08 | 避开节假日/周末自动顺延到下一工作日 |
-| v2.4.0 | 2026-08 | 首页时间线 + 六色主题 |
-| v2.3.0 | 2026-08 | 品牌色改青碧 Teal |
-
-
-Earlier: [https://github.com/tsumon/reminder-app-ios/releases](https://github.com/tsumon/reminder-app-ios/releases).
+[**驗證與協定 →**](docs/upgrade-2.9.md) · [Validation](docs/validation-2.9.md)

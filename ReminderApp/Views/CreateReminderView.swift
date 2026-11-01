@@ -7,6 +7,7 @@ struct CreateReminderView: View {
     @Environment(\.dismiss) private var dismiss
 
     var editing: Reminder? = nil
+    var initialDate: Date? = nil
     var initialSentence: String = ""
     var onCreated: ((Reminder) -> Void)? = nil
     @State private var expectedToken = ""
@@ -177,6 +178,8 @@ struct CreateReminderView: View {
                 if kind == .date {
                     dateSection
                 }
+
+                schedulePreview
 
                 // MARK: 首次触发时间（周期类 + 规则类）
                 if kind == .cycle || kind == .rule {
@@ -570,6 +573,40 @@ struct CreateReminderView: View {
         }
     }
 
+    private var previewReminder: Reminder {
+        let anchor=ReminderEdits.cycleAnchor(date:triggerDate,time:triggerTime,editing:editing != nil)
+        let r=Reminder(title:title,kind:kind,cycle:cycle,customDays:Int(customDays) ?? 1,dateType:dateType,
+            targetMonth:targetMonth,targetDay:targetDay,advanceDays:Int(advanceDays),reminderHour:reminderHour,
+            reminderMinute:reminderMinute,holidayID:selectedHolidayID,rulePeriod:rulePeriod,ruleWeek:ruleWeek,
+            ruleWeekday:ruleWeekday,firstTriggerAt:anchor,nextTriggerAt:anchor,holidayAware:holidayAware)
+        r.recurrenceMode=recurrenceMode; r.reminderStyle=reminderStyle
+        r.retryIntervalsMinutes=PolicyFields.parsed(intervalsText) ?? ReminderPolicy.legacyIntervals; r.maxReminderAttempts=maxAttempts
+        r.quietStartMinute=quietEnabled ? quietStart : nil; r.quietEndMinute=quietEnabled ? quietEnd : nil
+        if kind == .rule {
+            r.nextTriggerAt=ReminderEdits.ruleFirstTrigger(start:.init(date:triggerDate,time:triggerTime,calendar:.current),period:rulePeriod,week:ruleWeek,weekday:ruleWeekday,hour:reminderHour,minute:reminderMinute,calendar:.current)
+        } else if kind == .date { r.nextTriggerAt=ReminderEngine.shared.calculateNextTrigger(after:Date(),reminder:r) }
+        return r
+    }
+    private var schedulePreview: some View {
+        let draft=previewReminder
+        let dates=ReminderEngine.shared.futureTriggers(for:draft,count:3)
+        return Section("提醒预览".localized) {
+            ForEach(Array(dates.enumerated()),id:\.offset) { index,date in
+                VStack(alignment:.leading,spacing:4) {
+                    Text(Localized("第 %d 次周期",index+1)).font(.caption).foregroundStyle(.secondary)
+                    Text(date.formatted(date:.abbreviated,time:.shortened))
+                }
+            }
+            if reminderStyle != "gentle", let first=dates.first {
+                let retries=ReminderPolicy.deliveryDates(for:draft,now:first.addingTimeInterval(-1))
+                ForEach(Array(retries.dropFirst().prefix(3).enumerated()),id:\.offset) { index,date in
+                    Text(Localized("重试 %d · %@",index+1,date.formatted(date:.abbreviated,time:.shortened))).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Text("按设备日历计算；更换时区不改写原始时间戳，请检查下次时间。预览假设按时确认，节假日数据更新后可能调整。".localized).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
     // MARK: - 农历预览
 
     private var lunarPreview: String {
@@ -788,7 +825,7 @@ struct CreateReminderView: View {
             initialSchedule = scheduleKey
         } else if !initialSentence.isEmpty {
             expectedToken = "new"; nlText = initialSentence; applyNaturalLanguage()
-        } else { expectedToken = "new" }
+        } else { expectedToken = "new"; if let date=initialDate { triggerDate=date } }
     }
 
     /// v2.0.22: 保存校验/失败提示（自定义周期、保存错误等）
@@ -827,41 +864,17 @@ struct CycleOptionCard: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Text(emoji)
-                    .font(.system(size: 22))
-                Text(option.rawValue.localized)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(isSelected ? Playful.purple : .primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isSelected
-                          ? AnyShapeStyle(LinearGradient(colors: [Playful.purple.opacity(0.14), Playful.coral.opacity(0.10)],
-                                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                          : AnyShapeStyle(Playful.ink.opacity(0.05)))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(
-                        isSelected
-                            ? AnyShapeStyle(AngularGradient(colors: [Playful.mint, Playful.gold, Playful.coral, Playful.purple, Playful.mint],
-                                                            center: .center))
-                            : AnyShapeStyle(Color.clear),
-                        lineWidth: 2
-                    )
-            )
-            .scaleEffect(isSelected ? 1.05 : 1.0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(option.rawValue.localized)
+        Button(action:action) {
+            VStack(spacing:5) {
+                Text(emoji).font(.title3)
+                Text(option.rawValue.localized).font(.caption.weight(.medium)).multilineTextAlignment(.center)
+            }.frame(maxWidth:.infinity,minHeight:64)
+                .foregroundStyle(isSelected ? ThemeTokens.strong : .primary)
+                .background(isSelected ? ThemeTokens.strong.opacity(0.10) : Color.secondary.opacity(0.06),in:RoundedRectangle(cornerRadius:14))
+        }.buttonStyle(.plain).accessibilityLabel(option.rawValue.localized)
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
+
 }
 
 /// 星期灯泡：点亮=选中（金色光晕），熄灭=灰色
@@ -871,26 +884,10 @@ struct WeekdayBulb: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 3) {
-                Text("💡")
-                    .font(.system(size: 17))
-                    .grayscale(isOn ? 0 : 1)
-                    .opacity(isOn ? 1 : 0.4)
-                    .shadow(color: isOn ? Playful.gold.opacity(0.85) : .clear, radius: 6)
-                Text(weekday.label.localized)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(isOn ? Playful.purple : .secondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(isOn ? Playful.gold.opacity(0.18) : Color.clear)
-            )
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isOn)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(weekday.label.localized)
+        Button(action:action) {
+            Text(weekday.label.localized).font(.caption.weight(.medium)).frame(maxWidth:.infinity,minHeight:44)
+                .foregroundStyle(isOn ? ThemeTokens.strong : .secondary)
+                .background(isOn ? ThemeTokens.strong.opacity(0.10) : Color.clear,in:RoundedRectangle(cornerRadius:10))
+        }.buttonStyle(.plain).accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }

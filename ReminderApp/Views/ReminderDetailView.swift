@@ -614,19 +614,11 @@ struct ReminderDetailView: View {
     }
 
     private func deleteReminder() {
-        Task {
-            await NotificationManager.shared.removePendingNotification(for: reminder.id)
+        let id=reminder.id
+        guard ReminderActions.delete(reminder,context:modelContext) else {
+            deleteErrorMessage="删除失败，请重试".localized;return
         }
-        modelContext.delete(reminder)
-        // v2.0.22: 保存失败不再吞掉后直接关页面——UI 已消失但数据还在，
-        // 用户会以为删掉了；失败时保留页面并提示
-        do {
-            try modelContext.save()
-        } catch {
-            deleteErrorMessage = Localized("删除失败，请重试：%@", error.localizedDescription)
-            return
-        }
-        SyncStore.touchLocalChange()
+        Task { await NotificationManager.shared.removePendingNotification(for:id);await ReminderEngine.shared.ensureRetryChains() }
         dismiss()
     }
 }

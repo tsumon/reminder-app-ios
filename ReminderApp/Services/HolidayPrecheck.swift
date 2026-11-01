@@ -33,6 +33,7 @@ enum HolidayNoteStore {
             if !off { target = cursor; break }
         }
         guard let target, target > now else { return false }
+        r.scheduledOccurrenceAt = expectedDue
         r.nextTriggerAt = target
         r.updatedAt = Date()
         // This is part of the completed occurrence's automatic scheduling, not a newer user action.

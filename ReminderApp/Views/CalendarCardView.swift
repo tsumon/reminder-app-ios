@@ -235,8 +235,6 @@ struct CalendarCardView: View {
         return VStack(spacing: 2) {
             if isToday {
                 VStack(spacing: 0) {
-                    Text("🦊")
-                        .font(.system(size: 11))
                     Text("\(cell.day)")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(ThemeTokens.onStrong)
@@ -267,6 +265,9 @@ struct CalendarCardView: View {
         }
         .frame(height: 56)
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(date.formatted(date:.complete,time:.omitted))
+        .accessibilityAddTraits(.isButton)
         .onTapGesture {
             selectedDate = date
             onDateTap(date)

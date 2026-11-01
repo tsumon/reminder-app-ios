@@ -15,6 +15,6 @@ import SwiftData
             precondition(r.quietStartMinute == nil && r.quietEndMinute == nil && r.actionRevision == 0)
         }
         try container.mainContext.save()
-        print("Real populated v2.7.2 -> v2.8 migration passed; every old property and record retained")
+        print("Real populated v2.7.2 -> v2.9 migration passed; every old property and record retained")
     }
 }

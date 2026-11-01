@@ -10,6 +10,7 @@ struct CalendarPageView: View {
     @State private var displayYear: Int = Calendar.current.component(.year, from: Date())
     @State private var displayMonth: Int = Calendar.current.component(.month, from: Date())
     @State private var pendingDetailID: UUID?
+    @State private var showCreate=false
     @Environment(\.soft) private var soft
 
     var body: some View {
@@ -42,12 +43,17 @@ struct CalendarPageView: View {
                     }
 
                     dayTasksSection
+                    Button { showCreate=true } label: {
+                        Label("添加当天提醒".localized,systemImage:"plus.circle").frame(maxWidth:.infinity,minHeight:44)
+                    }.buttonStyle(.bordered)
+
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 4)
                 .padding(.bottom, 24)
             }
         }
+        .sheet(isPresented:$showCreate) { CreateReminderView(initialDate:selectedDate) }
         .background(PaperCanvas())
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .navigationBar)

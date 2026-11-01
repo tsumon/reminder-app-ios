@@ -63,6 +63,7 @@ import SwiftData
         r.quietStartMinute = draft.quietStartMinute; r.quietEndMinute = draft.quietEndMinute
         r.policyMigrated = true; r.useAlarmKit = draft.useAlarmKit
         if scheduleChanged {
+            r.scheduledOccurrenceAt = nil
             r.kind = draft.kind; r.cycle = draft.cycle; r.customDays = draft.customDays
             r.dateType = draft.dateType; r.targetMonth = draft.targetMonth; r.targetDay = draft.targetDay
             r.holidayID = draft.holidayID; r.advanceDays = draft.advanceDays

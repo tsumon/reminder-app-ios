@@ -77,6 +77,8 @@ enum BackupHelper {
         var lastCompletedAt: Double? = nil
         var lastConfirmedAt: Double? = nil
         var records: [RecordItem]? = nil
+        var scheduledOccurrenceAt: Double? = nil
+        var timeZoneMode: String? = "deviceCalendar"
 
         var stableID: UUID? { syncId.flatMap(UUID.init(uuidString:)) ?? id?.stringValue.flatMap(UUID.init(uuidString:)) }
 
@@ -85,7 +87,7 @@ enum BackupHelper {
             case advanceDays, reminderHour, reminderMinute, rulePeriod, ruleWeek, ruleWeekday, priority
             case firstTriggerAt, nextTriggerAt, status, isActive, isCritical, holidayAware
             case retryCount, recurrenceMode, reminderStyle, retryIntervalsMinutes, maxReminderAttempts, quietStartMinute, quietEndMinute
-            case createdAt, updatedAt, lastRetryAt, lastCompletedAt, lastConfirmedAt, records
+            case createdAt, updatedAt, lastRetryAt, lastCompletedAt, lastConfirmedAt, records, scheduledOccurrenceAt, timeZoneMode
             case legacyCritical = "is_critical"
         }
         // Defaults must also apply while decoding minimal Android/legacy envelopes.
@@ -129,6 +131,8 @@ enum BackupHelper {
             lastRetryAt = try c.decodeIfPresent(Double.self, forKey: .lastRetryAt)
             lastConfirmedAt = try c.decodeIfPresent(Double.self, forKey: .lastConfirmedAt)
             lastCompletedAt = try c.decodeIfPresent(Double.self, forKey: .lastCompletedAt) ?? lastConfirmedAt
+            scheduledOccurrenceAt = try c.decodeIfPresent(Double.self, forKey: .scheduledOccurrenceAt)
+            timeZoneMode = try c.decodeIfPresent(String.self, forKey: .timeZoneMode) ?? "deviceCalendar"
             records = try c.decodeIfPresent([RecordItem].self, forKey: .records)
         }
     }
@@ -145,6 +149,8 @@ enum BackupHelper {
         /// v2.0.17: 本地单调版本（判新主依据；Optional 兼容旧文件缺字段）
         var dataVersion: Int?
         var reminders: [BackupItem]
+        var deletedReminderIds: [UUID]? = nil
+        var deletedRecordIds: [UUID]? = nil
     }
 
     /// 将 [Reminder] 导出为 JSON 字符串
@@ -154,7 +160,7 @@ enum BackupHelper {
 
     /// 批次3 功能6: 单条提醒分享卡片 —— 复用备份信封格式导出单条
     static func exportSingle(_ reminder: Reminder) -> String {
-        exportJSON([reminder])
+        exportJSON([reminder], exportedAt: Date().timeIntervalSince1970, includeDeletions: false)
     }
 
     /// 批次3 功能6: 从分享卡片 JSON 解析出单条（解析失败返回 nil）
@@ -163,8 +169,8 @@ enum BackupHelper {
     }
 
     /// 带指定 exportedAt（秒）的导出，用于同步时保证版本递增
-    static func exportJSON(_ reminders: [Reminder], exportedAt: TimeInterval) -> String {
-        let items = reminders.map { r in
+    static func exportJSON(_ reminders: [Reminder], exportedAt: TimeInterval, includeDeletions: Bool = true) -> String {
+        let items = reminders.filter { !includeDeletions || !SyncDeletionLedger.reminders.contains($0.id) }.map { r in
             var item = BackupItem()
             item.syncId = r.id.uuidString.lowercased()
             item.title = r.title
@@ -197,22 +203,25 @@ enum BackupHelper {
             item.maxReminderAttempts = r.policy.attempts
             item.quietStartMinute = r.policy.quietStart
             item.quietEndMinute = r.policy.quietEnd
+            item.scheduledOccurrenceAt = r.scheduledOccurrenceAt.map { $0.timeIntervalSince1970 * 1000 }
             item.createdAt = r.createdAt.timeIntervalSince1970 * 1000
             item.updatedAt = r.updatedAt.timeIntervalSince1970 * 1000
             item.lastRetryAt = r.lastRetryAt.map { $0.timeIntervalSince1970 * 1000 }
             item.lastCompletedAt = r.lastCompletedAt.map { $0.timeIntervalSince1970 * 1000 }
             item.lastConfirmedAt = item.lastCompletedAt
-            item.records = r.records.map { RecordItem(id: $0.id, performedAt: $0.performedAt.timeIntervalSince1970 * 1000, type: $0.type, note: $0.note) }
+            item.records = r.records.filter { !SyncDeletionLedger.records.contains($0.id) }.map { RecordItem(id: $0.id, performedAt: $0.performedAt.timeIntervalSince1970 * 1000, type: $0.type, note: $0.note) }
             return item
         }
         let root = BackupRoot(
             version: 1,
             // 阶段2: 协议版本 2（id/holidayId/isCritical camelCase）
-            schemaVersion: 3,
+            schemaVersion: 4,
             exportedAt: exportedAt * 1000,
             // v2.0.17: 单调版本随导出带上（判新主依据）
             dataVersion: SyncStore.localVersion,
-            reminders: items
+            reminders: items,
+            deletedReminderIds: includeDeletions ? Array(SyncDeletionLedger.reminders) : nil,
+            deletedRecordIds: includeDeletions ? Array(SyncDeletionLedger.records) : nil
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -256,6 +265,11 @@ enum BackupHelper {
         return root.schemaVersion ?? 1
     }
 
+    static func deletionIDs(_ json: String) -> (reminders: [UUID], records: [UUID]) {
+        guard let data=json.data(using: .utf8), let root=try? JSONDecoder().decode(BackupRoot.self,from:data) else { return ([],[]) }
+        return (root.deletedReminderIds ?? [],root.deletedRecordIds ?? [])
+    }
+
     /// 从 JSON 解析提醒列表
     static func importJSON(_ json: String) -> [BackupItem]? {
         guard let data = json.data(using: .utf8) else { return nil }
@@ -266,7 +280,9 @@ enum BackupHelper {
     /// 通用导入（文件导入 / 近场接收共用）：
     /// 去重（id + 标题|触发时间指纹）→ 过期重算（once 标记逾期）→ 插入 → 保存 → touch 本地变更
     @MainActor
-    static func importItems(_ items: [BackupItem], existing: [Reminder], into context: ModelContext) -> ImportResult {
+    static func importItems(_ items: [BackupItem], existing: [Reminder], into context: ModelContext, json: String? = nil) -> ImportResult {
+        let deleted = json.map(deletionIDs) ?? (reminders: [], records: [])
+        let blocked = SyncDeletionLedger.reminders.union(deleted.reminders)
         var existingIDs = Set(existing.map(\.id))
         var existingFingerprints = Set(
             existing.map { "\($0.title)|\(Int($0.nextTriggerAt.timeIntervalSince1970))" }
@@ -279,7 +295,11 @@ enum BackupHelper {
             let reminder = makeReminder(from: item)
             let fingerprint = "\(reminder.title)|\(Int(reminder.nextTriggerAt.timeIntervalSince1970))"
 
-            if existingIDs.contains(reminder.id) || (item.stableID == nil && existingFingerprints.contains(fingerprint)) {
+            if blocked.contains(reminder.id) || existingIDs.contains(reminder.id) || (item.stableID == nil && existingFingerprints.contains(fingerprint)) {
+                if !blocked.contains(reminder.id), let target=existing.first(where: { $0.id==reminder.id }) {
+                    var recordIDs=Set(target.records.map(\.id))
+                    target.records.append(contentsOf:reminder.records.filter { !SyncDeletionLedger.records.contains($0.id) && !deleted.records.contains($0.id) && recordIDs.insert($0.id).inserted })
+                }
                 skippedCount += 1
                 continue
             }
@@ -290,15 +310,21 @@ enum BackupHelper {
             inserted.append(reminder)
             importedCount += 1
         }
-        // E3: save 失败不能 touch——否则本地版本抬高 → 下轮 WebDAV 判「本地新」→
-        // 上传不含这批提醒的 JSON 覆盖远程（丢数据链）；导入应报失败
-        do {
-            try context.save()
-        } catch {
-            // I8: 写入失败 → 回滚已 insert 但未保存的对象，避免后续任意成功 save 意外落库；
-            //     并返回 error 区分于「重复跳过」，调用方据此提示而非误报「已存在」
+        let oldDeleted=SyncDeletionLedger.reminders, oldRecords=SyncDeletionLedger.records
+        if json != nil {
+            SyncDeletionLedger.merge(reminders:deleted.reminders,records:deleted.records)
+            for r in existing + inserted {
+                if SyncDeletionLedger.reminders.contains(r.id) { context.delete(r);continue }
+                let removed=r.records.filter { SyncDeletionLedger.records.contains($0.id) }
+                r.records.removeAll { SyncDeletionLedger.records.contains($0.id) }
+                removed.forEach { context.delete($0) }
+            }
+        }
+        do { try context.save() }
+        catch {
             context.rollback()
-            return ImportResult(imported: 0, skipped: 0, inserted: [], error: "导入保存失败：\(error.localizedDescription)")
+            SyncDeletionLedger.store(reminders:oldDeleted,records:oldRecords)
+            return ImportResult(imported:0,skipped:0,inserted:[],error:error.localizedDescription)
         }
         SyncStore.touchLocalChange()
 
@@ -433,6 +459,7 @@ enum BackupHelper {
         reminder.policyMigrated = true
         if let date = item.createdAt { reminder.createdAt = Date(timeIntervalSince1970: date / 1000) }
         if let date = item.updatedAt { reminder.updatedAt = Date(timeIntervalSince1970: date / 1000) }
+        reminder.scheduledOccurrenceAt = item.scheduledOccurrenceAt.map { Date(timeIntervalSince1970:$0/1000) }
         reminder.lastRetryAt = item.lastRetryAt.map { Date(timeIntervalSince1970: $0 / 1000) }
         reminder.lastCompletedAt = item.lastCompletedAt.map { Date(timeIntervalSince1970: $0 / 1000) }
         var recordIDs = Set<UUID>()

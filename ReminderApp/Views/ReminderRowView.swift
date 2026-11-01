@@ -4,84 +4,40 @@ import SwiftUI
 struct ReminderRowView: View {
     let reminder: Reminder
     /// 提醒中（active / snoozed / overdue）行内确认。等待中不传。
+    var onSnooze: (() -> Void)? = nil
     var onConfirm: (() -> Void)? = nil
     @Environment(\.soft) private var soft
 
     var body: some View {
-        SoftShadowCard(kind: .card, radius: ThemeTokens.radiusCard) {
-            HStack(spacing: 13) {
-                SoftEmojiWell(emoji: reminder.typeEmoji, tint: wellTint)
-                    .accessibilityLabel(Localized("提醒类型"))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(reminder.title)
-                        .font(SoftType.bodyMedium)
-                        .lineLimit(1)
-                        .strikethrough(isDone, color: soft.muted)
-                        .foregroundStyle(isDone ? soft.muted : soft.text)
-
-                    HStack(spacing: 6) {
-                        if reminder.kind == .date {
-                            dateTypeBadge
-                        } else {
-                            RepeatRuleBadge(reminder: reminder)
+        SoftShadowCard(kind:.card,radius:ThemeTokens.radiusCard) {
+            VStack(alignment:.leading,spacing:12) {
+                HStack(alignment:.top,spacing:12) {
+                    SoftEmojiWell(emoji:reminder.typeEmoji,tint:wellTint).accessibilityHidden(true)
+                    VStack(alignment:.leading,spacing:5) {
+                        Text(reminder.title).font(.headline).foregroundStyle(isDone ? soft.muted : soft.text).strikethrough(isDone)
+                        if reminder.kind == .date { dateTypeBadge } else { RepeatRuleBadge(reminder:reminder) }
+                        if let original=reminder.scheduledOccurrenceAt {
+                            Text(Localized("原定 %@",original.formatted(date:.abbreviated,time:.shortened))).font(.caption).foregroundStyle(soft.muted)
                         }
-                    }
-
-                    if reminder.retryStage > 0 && !isDone {
-                        Text(reminder.status == .overdue ? "已达提醒次数上限，等待手动处理".localized : Localized("还没确认 · %@ 再响", retryClock))
-                            .font(SoftType.retry)
-                            .foregroundStyle(soft.warn)
-                    }
-
-                    if reminder.note.isNotEmpty && reminder.retryStage == 0 {
-                        Text(reminder.note)
-                            .font(SoftType.caption)
-                            .foregroundStyle(soft.muted)
-                            .lineLimit(1)
+                        if !isDone && reminder.status != .overdue { Text(Localized("下次提醒 %@",reminder.nextTriggerAt.formatted(date:.abbreviated,time:.shortened))).font(.subheadline).foregroundStyle(soft.muted) }
+                        if reminder.retryStage>0 && !isDone {
+                            Text(reminder.status == .overdue ? "已达提醒次数上限，等待手动处理".localized : Localized("还没确认 · %@ 再响",retryClock)).font(.subheadline).foregroundStyle(soft.warn)
+                        }
+                        if !reminder.note.isEmpty { Text(reminder.note).font(.caption).foregroundStyle(soft.muted).lineLimit(2) }
+                    }.frame(maxWidth:.infinity,alignment:.leading)
+                    Image(systemName:"chevron.right").font(.caption).foregroundStyle(soft.muted).accessibilityHidden(true)
+                }
+                if let onConfirm {
+                    HStack(spacing:10) {
+                        Button(action:onConfirm) { Text("确认完成".localized).font(.body.weight(.semibold)).frame(maxWidth:.infinity,minHeight:44).foregroundStyle(ThemeTokens.onStrong).background(ThemeTokens.strong,in:RoundedRectangle(cornerRadius:10)) }
+                            .buttonStyle(.borderless).accessibilityIdentifier("row-confirm")
+                        if let onSnooze {
+                            Button(action:onSnooze) { Text("稍后".localized).font(.body).frame(maxWidth:.infinity,minHeight:44).background(soft.track,in:RoundedRectangle(cornerRadius:10)) }.buttonStyle(.borderless)
+                        }
                     }
                 }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 8) {
-                    HStack(spacing: 4) {
-                        Text(timeText)
-                            .font(.system(size: 12.5, weight: .semibold))
-                            .foregroundStyle(isDone ? soft.muted : timeColor)
-                            .multilineTextAlignment(.trailing)
-                        if onConfirm == nil {
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(soft.muted)
-                        }
-                    }
-                    if let onConfirm {
-                        Button(action: onConfirm) {
-                            Text("确认".localized)
-                                .font(SoftType.confirm)
-                                .foregroundStyle(ThemeTokens.onStrong)
-                                .padding(.horizontal, 14)
-                                .frame(height: 32)
-                                .background(ThemeTokens.strong, in: Capsule())
-                                .overlay(alignment: .top) {
-                                    Capsule()
-                                        .fill(Color.white.opacity(0.28))
-                                        .frame(height: 1)
-                                        .padding(.horizontal, 8)
-                                        .offset(y: 1)
-                                }
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("确认".localized)
-                        .accessibilityIdentifier("row-confirm")
-                    }
-                }
-            }
-            .padding(ThemeTokens.cardPad)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .opacity(reminder.isEnabled ? 1 : 0.5)
+            }.padding(16).frame(maxWidth:.infinity,alignment:.leading)
+        }.opacity(reminder.isEnabled ? 1 : 0.55)
     }
 
     private var isDone: Bool { reminder.status == .confirmed }
@@ -191,7 +147,7 @@ struct MergedBirthdayRow: View {
                     Text(baseTitle)
                         .font(SoftType.bodyMedium)
                         .foregroundStyle(soft.text)
-                        .lineLimit(1)
+                        .lineLimit(2)
 
                     HStack(spacing: 6) {
                         Text(Localized("公历 %@", solar.dateDisplayText))

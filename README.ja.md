@@ -1,161 +1,97 @@
-[🇨🇳 简体中文](README.md) · [🇺🇸 English](README.en.md) · [🇹🇼 繁體中文](README.zh-TW.md) · [🇯🇵 日本語](README.ja.md) · [🇰🇷 한국어](README.ko.md)
+[简体中文](README.md) · [English](README.en.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
----
+<img src="assets/readme/hero.svg" width="100%" alt="Reminder — a calmer rhythm">
 
-# 繰り返しリマインダー — ネイティブ iOS アプリ
+# 繰り返しリマインダー
 
-![Home](docs/screenshots/home.png)
+**確認が必要なことを、ひと目で。**
 
-![Calendar](docs/screenshots/calendar.png)
+iOS と Android のネイティブ通知アプリ。完了を確認すると次の周期へ進み、未確認なら設定した間隔で再通知します。データは端末に保存し、同期は任意です。
 
-![Stats](docs/screenshots/stats.png)
+ソース **2.9.0 / 71** · 開発ブランチ、未リリース。公開ダウンロードは Releases を参照してください。
 
-## 🌐 多言語対応 / Multi-language Support
+[**ダウンロード・更新履歴 ↗**](https://github.com/tsumon/reminder-app-ios/releases/latest) · [別のプラットフォーム](https://github.com/tsumon/reminder-app-android)
 
-本アプリ（iOS と Android の両方）は端末の言語設定に自動的に追従する多言語対応を内蔵しています。
+## 主な機能
 
-**対応言語：**
-- 🇨🇳 簡体字中国語（zh-Hans）— デフォルト & フォールバック
-- 🇺🇸 English (en)
-- 🇹🇼 繁体字中国語 (zh-Hant)
-- 🇯🇵 日本語 (ja)
-- 🇰🇷 한국어 (ko)
+| 機能 | iOS | Android |
+| :--- | :---: | :---: |
+| 周期・日付・旧暦誕生日・祝日・第 N 週のルール | ✓ | ✓ |
+| 固定周期 / 完了から再計算 | ✓ | ✓ |
+| 軽め / 継続 / 重要、再通知とおやすみ時間 | ✓ | ✓ |
+| 完了・後で・明日・スキップ・取り消し | ✓ | ✓ |
+| 検索・種類の絞り込み・期限 / 名前 / 優先度順 | ✓ | ✓ |
+| 当日の予定・週 / 月の統計・ウィジェット | ✓ | ✓ |
+| オフライン自然文・音声・テンプレート・任意の AI | ✓ | ✓ |
+| JSON・ICS・近くの端末へ転送・ローカル保存・WebDAV | ✓ | ✓ |
 
-**実装 / Implementation：**
-- **iOS**：`Localizable.xcstrings` ローカリゼーションカタログ。SwiftUI は `String(localized:)` で多言語文字列を取得します。
-- **Android**：`res/values/strings.xml`（簡体字中国語ベース）+ `values-en` / `values-zh-rTW` / `values-ja` / `values-ko` のリソース修飾子。実行時は `zh()` / `zhf()` を通じて文字列を検索します。
-- 両プラットフォームで「中国語の原文をキーとする」方式を共有しており、文字列の追加・変更は中国語の原文と翻訳表を管理するだけで済みます。
+## 3 ステップで開始
 
-> ユーザーに表示される文字列（約 330 件）はすべて多言語化されており、翻訳が欠落している場合は簡体字中国語の原文にフォールバックします。
-> All user-visible strings (~330) are localized; missing translations gracefully fall back to Simplified Chinese.
+1. 手入力、自然文、音声またはテンプレートで入力し、編集画面でルール全体を確認します。
+2. 通知の強さ、周期の起点、再通知間隔、おやすみ時間を選び、次の 3 回を確認して保存します。
+3. ホームから通知診断を開き、権限と設定を確認します。テストを予約し、実機をロックして確認してください。
 
-## 機能概要
+## 実行画面
 
-純粋なネイティブ SwiftUI の iOS リマインダーアプリで、以下をサポートしています：
-- 周期の設定：毎日、毎週、毎月、四半期ごと、毎年、任意の日数
-- 期限のプッシュ通知に「完了確認」と「後で通知」の 2 つのアクションボタン
-- 未確認時の段階的再通知（v1.9.7 以降は両プラットフォームで統一）：1 時間 → 4 時間 → 12 時間 → 24 時間 → 24 時間
-  - 5 回目に達すると `overdue`（未完了）とマークし、通知を止めて手動での確認 / 再オープンを待ちます
-- 周期アンカーによるズレ防止：初回発火時刻を基準とするため、確認遅れによるズレは発生しません（月末の調整やうるう年の処理も正確）
-- 完全な操作履歴
-- SwiftData によるローカル永続化、オフラインで利用可能
-- **日付リマインダーの事前お知らせ**：N 日前から毎日プレビューを送信（上限 14 日）
-- **AI 音声アシスタント**：自然言語でのリマインダー作成、Function Calling
-- **WebDAV 同期**：Nutstore / 汎用 WebDAV の双方向同期
-- **近距離転送**：同じローカルネットワークで QR コードを読み取り、デバイス間でリマインダーを転送
-- **OTA アップデート**：GitHub Releases を確認し、最新の .ipa をダウンロード
+実際に動作した画面のみ掲載。サンプルは専用テスト端末のデータで、既定のユーザーデータではありません。
 
-## 方法 1：XcodeGen（推奨、1 コマンド）
+<p align="center">
+  <img src="docs/screenshots/runtime-2.9/home.png" width="280" alt="Home — iOS 2.9">
+  <img src="docs/screenshots/runtime-2.9/calendar.png" width="280" alt="Calendar — iOS 2.9">
+</p>
+<p align="center">
+  <img src="docs/screenshots/runtime-2.9/stats.png" width="280" alt="Statistics — iOS 2.9">
+  <img src="docs/screenshots/runtime-2.9/settings.png" width="280" alt="Settings — iOS 2.9">
+</p>
 
-```bash
-# 1. XcodeGen をインストール（未導入の場合）
-brew install xcodegen
+[Create form](docs/screenshots/runtime-2.9/create.png) · [Capture details](docs/screenshots/runtime-2.9/README.md)
 
-# 2. Xcode プロジェクトを生成
-cd reminder-app-ios
+## 繰り返しの仕組み
+
+**固定周期**は遅れて完了しても元の予定を維持します。祝日前に移動した通知を早く完了すると、元の周期を消化します。**完了から再計算**は実際の確認時刻を起点にします。既存の設定は維持します。
+
+**軽め**は自動通知 1 回。**継続**の初期値は 60 → 240 → 720 → 1440 分、初回を含め最大 5 回で、各間隔を編集できます。**重要**も OS の権限に従います。再通知はおやすみ時間を守ります。
+
+端末の暦と保存済みの基準タイムスタンプで計算します。時区を変えても既存の時刻は書き換えません。次の通知を確認してください。プレビューは定刻の確認を想定し、休日データで変わる場合があります。
+
+完了とスキップは操作回数、未確認は再通知があった日数を別々に表示します。未確認の記録は通知の実配信を証明しません。
+
+## 同期と復元
+
+自分の WebDAV サーバーを使用します。両端の変更が競合すると選択を待ち、書き込み前に非公開のローカルコピーを保存します。ETag 条件付き更新を維持。v4 は固定 ID で履歴を統合し、削除済みの通知や取り消した記録の復活を防ぐマーカーを保持します。
+
+履歴と削除の完全な同期には両端の更新が必要です。v1–v3 は読み込めますが、旧クライアントは新メタデータを保持しません。ID のない古いファイルでは削除を確実に識別できません。マーカーは失効せず、復元時は新 ID にコピーします。v4 の完全バックアップを保管してください。単体共有カードは全体の削除情報を含みません。
+
+## インストールと上書き更新
+
+iOS 17+。Release は unsigned IPA を生成します。元の署名・サイドロード経路を継続してください。App、Widget、App Group の ID は維持しますが、元の署名経路がなければ上書き更新やデータ継続は保証できません。
+
+## 通知状態の意味
+
+権限や予約数は設定状態を示し、配信済みを意味しません。消音、集中モード、通知チャンネル、省電力、メーカーのバックグラウンド制限の影響を受けます。実機のロック中・再起動後・バックグラウンドで確認してください。
+
+iOS の通常通知には予約数の制限があります。iOS 26+ の重要通知は AlarmKit を別途許可でき、利用不可なら通常通知に戻ります。
+
+## ローカルビルド
+
+Xcode 26.3+ · XcodeGen · iOS 17+
+
+```sh
 xcodegen generate
-
-# 3. プロジェクトを開く
-open ReminderApp.xcodeproj
-
-# 4. iOS シミュレータを選択し、Cmd+R で実行
+xcodebuild build -project ReminderApp.xcodeproj -scheme ReminderApp \
+  -sdk iphonesimulator -destination "generic/platform=iOS Simulator" \
+  CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project ReminderApp.xcodeproj -scheme UpgradeCheck \
+  -destination "platform=macOS" -derivedDataPath DerivedDataChecks CODE_SIGNING_ALLOWED=NO
+./DerivedDataChecks/Build/Products/Debug/UpgradeCheck
 ```
 
-## 方法 2：Xcode プロジェクトを手動で作成
+App: `com.reminder.app` · Widget: `com.reminder.app.widget` · App Group: `group.com.reminder.app`
 
-1. Xcode を開く → File → New → Project → iOS → App
-2. プロダクト名：`ReminderApp`、Interface：SwiftUI、Language：Swift、Use SwiftData にチェック
-3. 作成後、以下のファイルをプロジェクトに上書き / 追加：
-   - `ReminderApp/ReminderApp.swift` → 自動生成された App ファイルを置き換え
-   - `ReminderApp/Info.plist` → プロジェクトにドラッグ
-   - `ReminderApp/Models/` → フォルダごとドラッグ
-   - `ReminderApp/Views/` → フォルダごとドラッグ
-   - `ReminderApp/Services/` → フォルダごとドラッグ
-4. Deployment Target を iOS 17.0 に設定
-5. Signing & Capabilities で Push Notifications と Background Modes（remote-notification）を追加
-6. Cmd+R で実行
+Release: `CODE_SIGNING_ALLOWED=NO` (unsigned IPA).
 
-## プロジェクト構成
+## プライバシー
 
-```
-ReminderApp/
-├── ReminderApp.swift              # @main エントリ
-├── Info.plist                     # アプリ設定
-├── Models/
-│   └── Reminder.swift             # SwiftData データモデル + 列挙型
-├── Views/
-│   ├── ReminderListView.swift     # ホームリスト（グループ：アクティブ / 待機 / 完了、期限超過含む）
-│   ├── ReminderRowView.swift      # リスト行コンポーネント
-│   ├── CreateReminderView.swift   # 新規リマインダーフォーム
-│   ├── ReminderDetailView.swift   # 詳細ページ + 確認 / 後で操作 + 履歴
-│   ├── CalendarView.swift         # カレンダービュー
-│   ├── StatsView.swift            # 統計 / ヒートマップ
-│   ├── AIChatView.swift           # AI チャット
-│   ├── AISettingsView.swift       # AI 設定
-│   ├── NearbyShareView.swift      # 近距離転送（QR + TCP）
-│   ├── SyncSettingsView.swift     # WebDAV 同期設定
-│   └── SettingsView.swift         # 設定（アップデート確認など）
-├── Services/
-│   ├── ReminderEngine.swift       # 周期計算 / 確認 / 段階的再通知 / 見落としチェック
-│   ├── NotificationManager.swift  # 通知権限 / カテゴリ登録 / ローカルプッシュ
-│   ├── HolidayService.swift       # 祝日サービス（オンライン兜底付き）
-│   ├── LunarCalendarCheck.swift   # 旧暦変換
-│   ├── BackupHelper.swift         # JSON バックアップのインポート / エクスポート
-│   ├── WebDavSync.swift           # WebDAV 双方向同期
-│   ├── NearbyShareService.swift   # LAN TCP 転送（47823）
-│   ├── QRCodeService.swift        # QR 生成と読み取り（AVFoundation）
-│   ├── UpdateService.swift        # GitHub releases.atom アップデート確認
-│   ├── TelemetryService.swift     # アクセス解析（confirm / escalate / ...）
-│   └── SoftShadowCard.swift          # ソフトシャドウ / donut / ヒートマップ
-└── Widgets/
-    └── ReminderWidget.swift       # ホーム画面ウィジェット
-```
+通知と履歴は端末に保存します。AI は設定したサービスへ会話と関連データを送信します。WebDAV・近くへの共有・エクスポートにも通知データを含むため、信頼できる接続先を選び、バックアップを保管してください。
 
-## 技術スタック
-
-| モジュール | 技術 |
-|------------|------|
-| UI | SwiftUI (iOS 17+) |
-| データ永続化 | SwiftData |
-| ローカル通知 | UserNotifications + UNNotificationAction |
-| 状態管理 | @Observable / @StateObject / @Query |
-| 通知イベント | NotificationCenter（アプリ内のコンポーネント間通信用） |
-
-## 通知ボタン
-
-プッシュを受信すると、iOS の通知バナーに 2 つのアクションボタンが表示されます：
-- **完了確認** → 周期を進め、`firstTriggerAt` アンカーに基づいて次回の時刻を計算
-- **後で通知** → 15 分後に再プッシュ
-
-何もしない（スワイプして消去）場合は、段階的再通知に入ります：
-
-| 段階 | 間隔 | 状態 |
-|------|------|------|
-| 1 回目 | 1 時間後 | active（提醒中） |
-| 2 回目 | 4 時間後 | active |
-| 3 回目 | 12 時間後 | active |
-| 4 回目 | 24 時間後 | active |
-| 5 回目 | 24 時間後 | **overdue**（未完了、通知停止） |
-
-> v1.9.7 以降：段階的再通知中は周期を進めません。`overdue` が設定されると自動的な応答を停止し、手動確認または再オープンを待ちます。
-
-## システム要件
-
-- Xcode 15.0+
-- iOS 17.0+
-- Swift 5.9+
-
-## 変更履歴
-
-| Version | Date | Changes |
-|---------|------|---------|
-| v2.7.1 | 2026-09 | soft-ui chrome: hammer 3D soft-shadow, dock fill to physical bottom (DockH 48 / selected 32), settings row 52 |
-| v2.7.0 | 2026-09 | soft-ui paper elevation; today card + pending ring; stats donut + monthly heatmap |
-| v2.6.0 | 2026-09 | In-row confirm, calendar day tasks, empty completion rate shows 0% |
-| v2.4.14 | 2026-08 | AI asks one question at a time; solar+lunar birthday rows merged |
-| v2.4.10 | 2026-08 | Skip weekends/holidays to next workday |
-| v2.4.0 | 2026-08 | Home timeline + 6-color themes |
-| v2.3.0 | 2026-08 | Brand color → teal |
-
-
-Earlier: [https://github.com/tsumon/reminder-app-ios/releases](https://github.com/tsumon/reminder-app-ios/releases).
+[**検証とプロトコル →**](docs/upgrade-2.9.md) · [Validation](docs/validation-2.9.md)

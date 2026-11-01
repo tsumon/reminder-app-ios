@@ -115,7 +115,7 @@ struct SyncSettingsView: View {
                 }
             }
         }
-        .confirmationDialog("两边都有修改，已停止同步。选择前会保存本地快照；删除不会跨设备同步。", isPresented: $showSyncConflict) {
+        .confirmationDialog("两边都有修改，已停止同步。选择前会保存本地快照；双端升级后可同步删除。", isPresented: $showSyncConflict) {
             Button("使用本地并上传".localized) { resolveSync(.local) }
             Button("使用远程并保留本机独有提醒".localized) { resolveSync(.remote) }
             Button("取消".localized, role: .cancel) {}
@@ -148,7 +148,7 @@ struct SyncSettingsView: View {
     private func resolveSync(_ choice: WebDavSync.ConflictChoice) {
         Task {
             switch await WebDavSync.resolve(choice, context: modelContext) {
-            case .success: resultMsg = "同步完成；本机独有提醒已保留。删除暂不跨设备同步。"
+            case .success: resultMsg = "同步完成；本机独有提醒已保留。双端升级后支持删除同步。"
             case .conflict: showSyncConflict = true
             case .failure(let message): resultMsg = message
             }

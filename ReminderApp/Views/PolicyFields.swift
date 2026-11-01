@@ -21,8 +21,23 @@ struct PolicyFields: View {
                 Text("重要 · 可使用系统闹钟".localized).tag("important")
             }
             if style != "gentle" {
-                TextField("重试间隔（分钟，以逗号分隔）".localized, text: $intervals)
-                    .keyboardType(.numbersAndPunctuation)
+                ForEach(Array((Self.parsed(intervals) ?? ReminderPolicy.legacyIntervals).enumerated()), id: \.offset) { index, minutes in
+                    Stepper(value: Binding(get: { let values=Self.parsed(intervals) ?? ReminderPolicy.legacyIntervals; return values.indices.contains(index) ? values[index] : 60 }, set: { new in
+                        var values=Self.parsed(intervals) ?? ReminderPolicy.legacyIntervals
+                        guard values.indices.contains(index) else { return }
+                        values[index]=new; intervals=values.map(String.init).joined(separator:",")
+                    }), in: 1...10080) {
+                        Text(Localized("第 %d 次重试 · %d 分钟", index+1, minutes))
+                    }
+                    Button("移除此间隔".localized, role: .destructive) {
+                        var values=Self.parsed(intervals) ?? ReminderPolicy.legacyIntervals
+                        if values.count>1 && values.indices.contains(index) { values.remove(at:index); intervals=values.map(String.init).joined(separator:",") }
+                    }.disabled((Self.parsed(intervals)?.count ?? 0)<=1)
+                }
+                Button("添加重试间隔".localized) {
+                    var values=Self.parsed(intervals) ?? ReminderPolicy.legacyIntervals
+                    if values.count<10 { values.append(values.last ?? 60); intervals=values.map(String.init).joined(separator:",") }
+                }.disabled((Self.parsed(intervals)?.count ?? 0)>=10)
                 Stepper("最多提醒 \(attempts) 次", value: $attempts, in: 1...10)
                 Text("间隔 1–10080 分钟，最多 10 个；用完后重复最后一个。所有重试遵守勿扰时段。".localized)
                     .font(.caption).foregroundStyle(.secondary)
