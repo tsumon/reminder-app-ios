@@ -8,7 +8,9 @@
 
 原生 iOS 与 Android 提醒工具。确认后进入下一周期；未确认时按你设定的强度与间隔再次提醒。数据先留在本机，同步由你选择。
 
-源码 **2.9.0 / 71** · 开发分支，尚未发布。公开下载版本以 Releases 为准。
+版本 **2.9.1 / 72** · unsigned IPA。下载状态与更新记录以 Releases 为准。
+
+2.9.1 修复同步内容未变时的重复冲突提示及失败上传的重试状态；真实冲突仍需选择。[更新说明](docs/releases/v2.9.1.md)。
 
 [**下载与版本记录 ↗**](https://github.com/tsumon/reminder-app-ios/releases/latest) · [另一平台](https://github.com/tsumon/reminder-app-android)
 

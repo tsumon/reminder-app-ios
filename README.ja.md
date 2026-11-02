@@ -8,7 +8,9 @@
 
 iOS と Android のネイティブ通知アプリ。完了を確認すると次の周期へ進み、未確認なら設定した間隔で再通知します。データは端末に保存し、同期は任意です。
 
-ソース **2.9.0 / 71** · 開発ブランチ、未リリース。公開ダウンロードは Releases を参照してください。
+バージョン **2.9.1 / 72** · unsigned IPA。ダウンロード状況と更新履歴は Releases を参照してください。
+
+2.9.1 では、内容が変わらない同期での競合の繰り返しと、アップロード失敗後の再試行状態を修正しました。実際の競合は引き続き選択が必要です。[更新内容](docs/releases/v2.9.1.md)。
 
 [**ダウンロード・更新履歴 ↗**](https://github.com/tsumon/reminder-app-ios/releases/latest) · [別のプラットフォーム](https://github.com/tsumon/reminder-app-android)
 

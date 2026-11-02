@@ -8,7 +8,9 @@
 
 iOS와 Android 네이티브 알림 앱입니다. 완료를 확인하면 다음 주기로 넘어가며, 확인하지 않으면 설정한 방식과 간격으로 다시 알립니다. 데이터는 기기에 저장하고 동기화는 선택합니다.
 
-소스 **2.9.0 / 71** · 개발 브랜치, 미출시. 공개 다운로드는 Releases를 확인하세요.
+버전 **2.9.1 / 72** · unsigned IPA. 다운로드 상태와 변경 내역은 Releases를 확인하세요.
+
+2.9.1은 내용이 바뀌지 않은 동기화의 반복 충돌 알림과 업로드 실패 후 재시도 상태를 수정합니다. 실제 충돌은 계속 선택이 필요합니다. [업데이트 안내](docs/releases/v2.9.1.md).
 
 [**다운로드 및 변경 기록 ↗**](https://github.com/tsumon/reminder-app-ios/releases/latest) · [다른 플랫폼](https://github.com/tsumon/reminder-app-android)
 

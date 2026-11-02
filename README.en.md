@@ -8,7 +8,9 @@
 
 Native reminders for iOS and Android. Confirm to move to the next cycle; use your chosen retry style and intervals while a task remains unconfirmed. Local data first, optional sync.
 
-Source **2.9.0 / 71** · development branch, not released. See Releases for public downloads.
+Version **2.9.1 / 72** · unsigned IPA. See Releases for download availability and release history.
+
+2.9.1 fixes repeated sync conflicts caused by unchanged content and preserves failed-upload retries. Real conflicts still require a choice. [Release notes](docs/releases/v2.9.1.md).
 
 [**Downloads & releases ↗**](https://github.com/tsumon/reminder-app-ios/releases/latest) · [Other platform](https://github.com/tsumon/reminder-app-android)
 
