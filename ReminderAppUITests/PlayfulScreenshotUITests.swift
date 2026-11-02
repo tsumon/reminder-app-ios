@@ -19,7 +19,7 @@ final class PlayfulScreenshotUITests: XCTestCase {
         // 全新安装会弹通知权限系统弹窗（SpringBoard 层），拦下来点允许
         addUIInterruptionMonitor(withDescription: "notification-permission") { alert in
             for label in ["Allow", "允许", "好", "OK"] {
-                let button = alert.buttons[label]
+                let button = alert.buttons[label].firstMatch
                 if button.exists {
                     button.tap()
                     return true

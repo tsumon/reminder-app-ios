@@ -23,7 +23,15 @@ final class UpgradeUITests: XCTestCase {
         let before = try XCTUnwrap(JSONSerialization.jsonObject(with: beforeData) as? [String: Any])
         XCTAssertGreaterThan(before["reads"] as? Int ?? 0, 0)
         XCTAssertEqual(before["writes"] as? Int, 0)
-        app.buttons["取消"].tap()
+        let cancel = app.buttons["取消"]
+        if cancel.waitForExistence(timeout: 2) {
+            cancel.tap()
+        } else {
+            // iOS 27 renders this confirmation as a dismissible native popover.
+            let dismiss = app.otherElements["PopoverDismissRegion"]
+            XCTAssertTrue(dismiss.waitForExistence(timeout: 2))
+            dismiss.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap()
+        }
         XCTAssertFalse(chooseLocal.exists)
         let localRow = app.staticTexts["Automatic sync local revision"]
         for _ in 0..<6 where !localRow.exists { app.swipeUp() }
