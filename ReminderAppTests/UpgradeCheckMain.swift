@@ -3,6 +3,8 @@ import SwiftData
 
 @main struct UpgradeCheck {
     @MainActor static func main() async throws {
+        if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--sync-conflict-child" { try await SyncConflictChecks.runChild(CommandLine.arguments[2]); return }
+        if CommandLine.arguments.contains("--sync-conflict-check") { try await SyncConflictChecks.run(); return }
         let container = try ModelContainer(for: Reminder.self, ReminderRecord.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true))
         let context = container.mainContext
@@ -299,6 +301,7 @@ import SwiftData
         precondition(shifted.scheduledOccurrenceAt != nil)
         precondition(ReminderEdits.apply(v4EditDraft,to:shifted,expectedToken:shifted.actionToken,scheduleChanged:true,context:context,now:now,calculate:{ ReminderPolicy.nextCycle(after:$0,reminder:$1) }))
         precondition(shifted.scheduledOccurrenceAt == nil)
+        try await SyncConflictChecks.run()
         print("Upgrade policy/actions/global allocation/v4 deletion and history checks passed")
     }
 }
