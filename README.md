@@ -8,9 +8,7 @@
 
 原生 iOS 与 Android 提醒工具。确认后进入下一周期；未确认时按你设定的强度与间隔再次提醒。数据先留在本机，同步由你选择。
 
-版本 **2.9.1 / 72** · unsigned IPA。下载状态与更新记录以 Releases 为准。
-
-2.9.1 修复同步内容未变时的重复冲突提示及失败上传的重试状态；真实冲突仍需选择。[更新说明](docs/releases/v2.9.1.md)。
+版本 **2.10.0 / 73** · unsigned IPA。下载状态与更新记录以 Releases 为准。[更新说明](docs/releases/v2.10.0.md)。
 
 [**下载与版本记录 ↗**](https://github.com/tsumon/reminder-app-ios/releases/latest) · [另一平台](https://github.com/tsumon/reminder-app-android)
 
@@ -38,15 +36,17 @@
 只展示真实运行截图；示例提醒属于独立测试设备，非默认用户数据。
 
 <p align="center">
-  <img src="docs/screenshots/runtime-2.9/home.png" width="280" alt="Home — iOS 2.9">
-  <img src="docs/screenshots/runtime-2.9/calendar.png" width="280" alt="Calendar — iOS 2.9">
+  <img src="docs/screenshots/runtime-2.10/home.png" width="280" alt="Home — iOS 2.10">
+  <img src="docs/screenshots/runtime-2.10/home-dark.png" width="280" alt="Home Dark — iOS 2.10">
 </p>
 <p align="center">
-  <img src="docs/screenshots/runtime-2.9/stats.png" width="280" alt="Statistics — iOS 2.9">
-  <img src="docs/screenshots/runtime-2.9/settings.png" width="280" alt="Settings — iOS 2.9">
+  <img src="docs/screenshots/runtime-2.10/calendar.png" width="280" alt="Calendar — iOS 2.10">
+  <img src="docs/screenshots/runtime-2.10/stats.png" width="280" alt="Statistics — iOS 2.10">
 </p>
-
-[Create form](docs/screenshots/runtime-2.9/create.png) · [Capture details](docs/screenshots/runtime-2.9/README.md)
+<p align="center">
+  <img src="docs/screenshots/runtime-2.10/settings.png" width="280" alt="Settings — iOS 2.10">
+  <img src="docs/screenshots/runtime-2.10/create.png" width="280" alt="Create Form — iOS 2.10">
+</p>
 
 ## 提醒策略
 

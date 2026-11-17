@@ -61,7 +61,7 @@ final class ChatHistoryUITests: XCTestCase {
     }
 
     static func saveDesktopShot(_ name: String) {
-        let dir = URL(fileURLWithPath: "/Users/mac/Desktop/循环提醒-ai-dock-fix")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("reminder-ai-dock-fix", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let data = XCUIScreen.main.screenshot().pngRepresentation
         try? data.write(to: dir.appendingPathComponent(name))
@@ -216,7 +216,7 @@ final class MultiTurnHistoryUITests: XCTestCase {
 
     /// AI 设置：空地址提示；OpenAI 兼容 GET /v1/models 列出并写入模型字段。
     func testFetchModelsListAndSelect() throws {
-        let shotDir = URL(fileURLWithPath: "/Users/mac/Desktop/循环提醒-ai-models")
+        let shotDir = FileManager.default.temporaryDirectory.appendingPathComponent("reminder-ai-models", isDirectory: true)
         try? FileManager.default.createDirectory(at: shotDir, withIntermediateDirectories: true)
         func shot(_ name: String) {
             let data = XCUIScreen.main.screenshot().pngRepresentation

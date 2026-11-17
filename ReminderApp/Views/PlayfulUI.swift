@@ -208,95 +208,68 @@ struct StreakCastleView: View {
     let streak: Int
     var compact = false
 
-    /// 楼层数：0 天=空地小旗，每 3 天 +1 层，最多 7 层
+    @Environment(\.soft) private var soft
     private var floors: Int { StreakCastleView.level(forStreak: streak) }
 
-    /// 城堡等级（=楼层数），供统计页文案等处复用
     static func level(forStreak streak: Int) -> Int {
         guard streak > 0 else { return 0 }
         return min(7, 1 + (streak - 1) / 3)
     }
 
-    private var floorHeight: CGFloat { compact ? 11 : 16 }
-    private var towerWidth: CGFloat { compact ? 46 : 64 }
+    private var floorHeight: CGFloat { compact ? 10 : 14 }
+    private var towerWidth: CGFloat { compact ? 44 : 60 }
 
     var body: some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 4) {
             if streak > 0 {
-                StreakFlag(days: streak)
+                Text(Localized("%d 天", streak))
+                    .font(.system(size: compact ? 10 : 11, weight: .bold))
+                    .foregroundStyle(ThemeTokens.onStrong)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(ThemeTokens.strong))
             } else {
-                Text("🌱")
-                    .font(.system(size: compact ? 14 : 18))
+                Image(systemName: "leaf.fill")
+                    .font(.system(size: compact ? 13 : 16))
+                    .foregroundStyle(ThemeTokens.strong)
             }
 
             castle
         }
-        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: floors)
+        .animation(.spring(response: 0.45, dampingFraction: 0.8), value: floors)
     }
 
     private var castle: some View {
-        VStack(spacing: 1) {
-            // 塔顶：金冠（满级）/ 小旗
-            if floors >= 7 {
-                Text("👑").font(.system(size: compact ? 13 : 17))
-            } else {
-                Text("🚩").font(.system(size: compact ? 11 : 13))
-            }
+        VStack(spacing: 2) {
+            Image(systemName: floors >= 7 ? "crown.fill" : "flag.fill")
+                .font(.system(size: compact ? 11 : 13))
+                .foregroundStyle(floors >= 7 ? ThemeTokens.statusSnoozed : ThemeTokens.strong)
 
-            // 层层堆叠的塔身（自上而下渐宽），每层一扇小窗
-            VStack(spacing: 1) {
+            VStack(spacing: 2) {
                 ForEach(1...max(floors, 1), id: \.self) { floor in
                     let isTop = floor == 1
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: floorColors(floor),
-                                startPoint: .top, endPoint: .bottom
-                            )
-                        )
-                        .frame(width: towerWidth * (isTop ? 0.72 : 1.0),
-                               height: floorHeight)
-                        .overlay(alignment: .center) {
+                        .fill(ThemeTokens.strong.opacity(0.35 + 0.55 * Double(floor) / Double(max(floors, 1))))
+                        .frame(width: towerWidth * (isTop ? 0.72 : 1.0), height: floorHeight)
+                        .overlay(
                             Circle()
-                                .fill(Playful.ink.opacity(0.55))
-                                .frame(width: 5, height: 5)
-                                .offset(y: 1)
-                        }
+                                .fill(soft.canvas.opacity(0.85))
+                                .frame(width: 4, height: 4)
+                        )
                 }
             }
 
-            // 城堡底座 + 城门
             ZStack(alignment: .bottom) {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(LinearGradient(colors: [Playful.gold, Playful.coral.opacity(0.85)],
-                                         startPoint: .leading, endPoint: .trailing))
-                    .frame(width: towerWidth + 14, height: floorHeight + 4)
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(Playful.ink)
-                    .frame(width: 12, height: floorHeight - 1)
+                    .fill(ThemeTokens.strong.opacity(soft.isDark ? 0.45 : 0.25))
+                    .frame(width: towerWidth + 12, height: floorHeight + 4)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(ThemeTokens.strong)
+                    .frame(width: 11, height: floorHeight - 1)
                     .offset(y: -1)
             }
         }
         .opacity(floors == 0 ? 0.55 : 1)
-    }
-
-    /// 楼层配色：低层薄荷 → 高层星星金
-    private func floorColors(_ floor: Int) -> [Color] {
-        let ratio = floors > 1 ? Double(floor - 1) / Double(floors - 1) : 0
-        let top = interpolate(from: Playful.mint, to: Playful.gold, t: ratio)
-        return [top.opacity(0.95), top.opacity(0.7)]
-    }
-
-    private func interpolate(from a: Color, to b: Color, t: Double) -> Color {
-        let clamped = min(max(t, 0), 1)
-        let f = { (c: Color) in
-            UIColor(c).rgba
-        }
-        let (r1, g1, b1, _) = f(a)
-        let (r2, g2, b2, _) = f(b)
-        return Color(red: r1 + (r2 - r1) * clamped,
-                     green: g1 + (g2 - g1) * clamped,
-                     blue: b1 + (b2 - b1) * clamped)
     }
 }
 
@@ -334,15 +307,14 @@ struct ConfettiBurst: View {
             seed = seed &* 6364136223846793005 &+ 1442695040888963407
             return Double((seed >> 33) & 0xFFFFFF) / Double(0xFFFFFF)
         }
-        let palette: [Color] = [Playful.gold, Playful.coral, Playful.mint, Playful.purple, Color(hex: 0xFFD9E8)]
-        let emojis = ["⭐️", "✨", "🎉", "💫", nil]
-        return (0..<46).map { i in
+        let palette: [Color] = [ThemeTokens.strong, ThemeTokens.statusCompleted, ThemeTokens.statusSnoozed, Color(hex: 0x5EEAD4), Color(hex: 0x94A3B8)]
+        return (0..<38).map { _ in
             Particle(
                 angle: Double.pi / 2 + (rand() - 0.5) * Double.pi * 1.3,
                 speed: 320 + rand() * 360,
                 spin: (rand() - 0.5) * 12,
-                size: 6 + rand() * 8,
-                emoji: i % 3 == 0 ? emojis[Int(rand() * 4.99)] : nil,
+                size: 6 + rand() * 7,
+                emoji: nil,
                 color: palette[Int(rand() * 4.99)],
                 delay: rand() * 0.12
             )
@@ -405,33 +377,28 @@ struct ConfettiBurst: View {
 struct OrbCheckButton: View {
     let done: Bool
     let action: () -> Void
+    @Environment(\.soft) private var soft
     @State private var bounce = false
 
     var body: some View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(done
-                          ? AnyShapeStyle(LinearGradient(colors: [Playful.mint, Playful.gold],
-                                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                          : AnyShapeStyle(LinearGradient(colors: [.white, Playful.cream.opacity(0.9)],
-                                                         startPoint: .topLeading, endPoint: .bottomTrailing)))
+                    .fill(done ? ThemeTokens.strong : soft.surface)
                 Circle()
-                    .strokeBorder(done ? Color.clear : Playful.purple.opacity(0.35),
-                                  style: StrokeStyle(lineWidth: 1.6, dash: [4, 3]))
+                    .strokeBorder(done ? Color.clear : ThemeTokens.strong.opacity(0.45), lineWidth: 1.5)
                 if done {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.white)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(ThemeTokens.onStrong)
                 } else {
-                    Text("✨")
-                        .font(.system(size: 10))
+                    Circle()
+                        .fill(ThemeTokens.strong.opacity(0.20))
+                        .frame(width: 10, height: 10)
                 }
             }
             .frame(width: 34, height: 34)
-            .shadow(color: done ? Playful.gold.opacity(0.75) : Playful.purple.opacity(0.12),
-                    radius: done ? 9 : 4, y: 2)
-            .scaleEffect(bounce ? 1.18 : 1.0)
+            .scaleEffect(bounce ? 1.15 : 1.0)
             .animation(.spring(response: 0.28, dampingFraction: 0.55), value: bounce)
             .animation(.spring(response: 0.35, dampingFraction: 0.7), value: done)
         }
@@ -603,56 +570,49 @@ func todayDoneCount(records: [ReminderRecord]) -> Int {
 struct WavingEmptyMascot: View {
     var onCreate: () -> Void
 
-    @State private var wave = false
-    @State private var floatUp = false
+    @Environment(\.soft) private var soft
 
     var body: some View {
-        VStack(spacing: 16) {
-            ZStack(alignment: .topTrailing) {
-                MascotView(mood: .sleepy, size: 92)
-                Text("👋")
-                    .font(.system(size: 30))
-                    .rotationEffect(.degrees(wave ? 18 : -12))
-                    .offset(x: 16, y: wave ? -4 : 4)
-                    .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: wave)
-            }
-            .offset(y: floatUp ? -3 : 3)
-            .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true), value: floatUp)
-
-            Text("今天想做什么呀？".localized)
-                .font(.title3.weight(.bold))
-
-            Text("创建你的第一个循环提醒，小狐狸帮你记住".localized)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
-            Button(action: onCreate) {
-                HStack(spacing: 8) {
-                    Text("✨")
-                    Text("创建提醒".localized)
-                        .font(.headline)
+        SoftShadowCard(kind: .card, radius: ThemeTokens.radiusElevated) {
+            VStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(ThemeTokens.strong.opacity(soft.isDark ? 0.20 : 0.12))
+                        .frame(width: 72, height: 72)
+                    Image(systemName: "bell.badge.fill")
+                        .font(.system(size: 30, weight: .semibold))
+                        .foregroundStyle(ThemeTokens.strong)
                 }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 26)
-                .padding(.vertical, 13)
-                .background(
-                    Capsule().fill(
-                        LinearGradient(colors: [Playful.purple, Playful.coral],
-                                       startPoint: .leading, endPoint: .trailing)
-                    )
-                )
-                .overlay(Capsule().strokeBorder(.white.opacity(0.5), lineWidth: 1.5))
-                .shadow(color: Playful.purple.opacity(0.35), radius: 10, y: 5)
+
+                VStack(spacing: 6) {
+                    Text("今天想做什么呀？".localized)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(soft.text)
+
+                    Text("创建你的第一个循环提醒，到点准时记住每件重要的事".localized)
+                        .font(.subheadline)
+                        .foregroundStyle(soft.muted)
+                        .multilineTextAlignment(.center)
+                }
+
+                Button(action: onCreate) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                        Text("创建提醒".localized)
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .foregroundStyle(ThemeTokens.onStrong)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Capsule().fill(ThemeTokens.strong))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
             }
-            .buttonStyle(.plain)
-            .padding(.top, 6)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 36)
-        .onAppear {
-            wave = true
-            floatUp = true
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 28)
         }
     }
 }

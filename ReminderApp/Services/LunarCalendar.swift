@@ -3022,25 +3022,35 @@ struct LunarCalendar {
     // MARK: - 便捷方法：获取农历生日对应的下一个公历日期
 
     /// 计算农历生日（月日）在当前/下一个农历年对应的公历日期
-    /// 返回从 now 开始最近的一个匹配日期（保持旧行为：普通月优先，其次闰月）
-    static func nextLunarBirthday(month: Int, day: Int, from now: Date = Date()) -> Date? {
+    /// 返回从 now 开始最近的一个匹配日期（支持当天按目标时分比较，避免当日清晨建提醒误跳明年；找不到则回退腊月廿九）
+    static func nextLunarBirthday(month: Int, day: Int, hour: Int = 23, minute: Int = 59, from now: Date = Date()) -> Date? {
         guard (1...12).contains(month), (1...30).contains(day) else { return nil }
 
+        let cal = Calendar.current
         let currentLunarYear = solarToLunar(now).year // 绝对农历年
+        let clampedHour = min(max(hour, 0), 23)
+        let clampedMinute = min(max(minute, 0), 59)
 
-        // 普通月：今年与明年
-        for tryYear in currentLunarYear...(currentLunarYear + 1) {
-            if let d = lunarToSolar(lunarYear: tryYear, lunarMonth: month, lunarDay: day),
-               d > now {
-                return d
-            }
+        let matchForYear: (Int, Int, Bool) -> Date? = { tryYear, targetDay, leap in
+            guard let base = lunarToSolar(lunarYear: tryYear, lunarMonth: month, lunarDay: targetDay, isLeapMonth: leap) else { return nil }
+            let candidate = cal.date(bySettingHour: clampedHour, minute: clampedMinute, second: 0, of: base) ?? base
+            return candidate > now ? base : nil
         }
 
-        // 闰月：今年与明年（若当年该月是闰月）
-        for tryYear in currentLunarYear...(currentLunarYear + 1) {
-            if let d = lunarToSolar(lunarYear: tryYear, lunarMonth: month, lunarDay: day, isLeapMonth: true),
-               d > now {
-                return d
+        // 普通月：涵盖上年腊月落入公历年初及未来 8 年
+        for tryYear in (currentLunarYear - 1)...(currentLunarYear + 8) {
+            if let d = matchForYear(tryYear, day, false) { return d }
+        }
+
+        // 闰月
+        for tryYear in (currentLunarYear - 1)...(currentLunarYear + 8) {
+            if let d = matchForYear(tryYear, day, true) { return d }
+        }
+
+        // 农历 30 日在连续小月年份缺失时回退 29 日
+        if day == 30 {
+            for tryYear in (currentLunarYear - 1)...(currentLunarYear + 8) {
+                if let d = matchForYear(tryYear, 29, false) { return d }
             }
         }
 

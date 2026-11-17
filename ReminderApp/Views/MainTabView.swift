@@ -33,7 +33,7 @@ extension View {
 
 /// 四 Tab + 悬浮 pill dock。iOS 无 FAB。
 struct MainTabView: View {
-    @State private var selectedTab: Int
+    @Binding var selectedTab: Int
     @State private var hideTabDockCount = 0
     @Environment(\.colorScheme) private var scheme
     @AppStorage(ThemeStore.key) private var themeMode = 0
@@ -48,26 +48,8 @@ struct MainTabView: View {
         }
     }
 
-    init() {
-        var initial = 0
-        #if DEBUG
-        let args = ProcessInfo.processInfo.arguments
-        if let idx = args.firstIndex(of: "-tab"),
-           args.indices.contains(idx + 1),
-           let t = Int(args[idx + 1]) {
-            initial = min(max(t, 0), 3)
-        }
-        #endif
-        _selectedTab = State(initialValue: initial)
-    }
-
-    /// Home-indicator pill ~5pt, ~8pt from the physical bottom.
-    private var contentBottomPad: CGFloat {
-        ThemeTokens.dockPadBottom + ThemeTokens.dockIndicator
-    }
-
-    private var dockReserve: CGFloat {
-        ThemeTokens.dockPadTop + ThemeTokens.dockH + contentBottomPad
+    init(selectedTab: Binding<Int> = .constant(0)) {
+        _selectedTab = selectedTab
     }
 
     private var dockItems: [SoftTabItem] {
@@ -80,35 +62,21 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        // ZStack to the physical bottom so the icon row can sit 4pt above the
-        // indicator pill. TabView / safeAreaInset would park the row above the
-        // whole 34pt safe area and leave icons hanging in the upper half of the fill.
-        // AI chat hides the dock: skip overlay + reserve, and restore the
-        // system bottom safe area so the input bar sits above the home indicator.
-        ZStack(alignment: .bottom) {
-            Group {
-                switch selectedTab {
-                case 0: NavigationStack { ReminderListView() }
-                case 1: NavigationStack { CalendarPageView() }
-                case 2: NavigationStack { StatsView() }
-                default: NavigationStack { SettingsView() }
-                }
+        Group {
+            switch selectedTab {
+            case 0: NavigationStack { ReminderListView() }
+            case 1: NavigationStack { CalendarPageView() }
+            case 2: NavigationStack { StatsView() }
+            default: NavigationStack { SettingsView() }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if hideTabDock {
-                    Color.clear.frame(height: 0)
-                } else {
-                    Color.clear.frame(height: dockReserve)
-                }
-            }
-
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             if !hideTabDock {
                 SoftTabDock(
                     selection: $selectedTab,
                     items: dockItems,
-                    bottomPad: contentBottomPad
+                    bottomPad: 6
                 )
-                .padding(.bottom, ThemeTokens.dockBottomGap)
                 .environment(\.soft, SoftPalette.of(resolvedScheme))
             }
         }
@@ -116,7 +84,6 @@ struct MainTabView: View {
         .environment(\.soft, SoftPalette.of(resolvedScheme))
         .environment(\.hideTabDockCount, $hideTabDockCount)
         .preferredColorScheme(themeMode == 1 ? .light : themeMode == 2 ? .dark : nil)
-        .ignoresSafeArea(edges: hideTabDock ? [] : .bottom)
         .onReceive(NotificationCenter.default.publisher(for: .openReminderDetail)) { _ in
             selectedTab = 0
         }

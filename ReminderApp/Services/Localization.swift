@@ -32,6 +32,12 @@ enum AppLanguageManager {
         AppLanguage(rawValue: UserDefaults.standard.string(forKey: key) ?? "system") ?? .system
     }
 
+    static var currentLocale: Locale {
+        let lang = current
+        guard lang != .system else { return .autoupdatingCurrent }
+        return Locale(identifier: lang.rawValue)
+    }
+
     /// 生效的本地化 bundle：跟随系统时用主 bundle（NSLocalizedString 按系统语言挑选）；
     /// 手动指定时查对应 lproj（由 Localizable.xcstrings 编译生成），缺失回退主 bundle。
     static var bundle: Bundle {

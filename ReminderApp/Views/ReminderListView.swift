@@ -70,6 +70,7 @@ struct ReminderListView: View {
     @State private var icsDocument: ReminderBackupDocument?
     // 批次2 功能1: 通知点击直达确认面板 —— 待 push 的提醒 id
     @State private var pendingDetailID: UUID?
+    @State private var showDiagnostics = false
     // 批次2 功能2: 打卡成功 → 正向反馈卡片文案（非空即展示）
     @State private var checkInText: String?
     // v2.0.21 G3: 每次打卡自增，作为自动消失计时器的 id（换值即取消上一条的计时，防提前清空）
@@ -445,6 +446,9 @@ struct ReminderListView: View {
                     )
                 }
             }
+            .navigationDestination(isPresented: $showDiagnostics) {
+                DiagnosticsView()
+            }
             .onReceive(NotificationCenter.default.publisher(for: .openReminderDetail)) { note in
                 guard let idString = note.object as? String,
                       let uuid = UUID(uuidString: idString) else { return }
@@ -706,7 +710,7 @@ struct ReminderListView: View {
                 SoftInsetSearch(text: $searchText, focused: $searchFocused)
                     .padding(.horizontal, 16)
                 smartListBar
-                NotificationHealthCard().padding(.horizontal,16)
+                NotificationHealthCard { showDiagnostics = true }.padding(.horizontal,16)
                 WavingEmptyMascot(onCreate: { presentCreate(sentence:"") })
             }
             .padding(.top, 4)
@@ -829,21 +833,25 @@ struct ReminderListView: View {
             }
 
             Section {
-                NotificationHealthCard().listRowBackground(Color.clear).listRowSeparator(.hidden)
+                NotificationHealthCard { showDiagnostics = true }
+                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 Group {
                     if dynamicTypeSize >= .xxxLarge {
-                        VStack(alignment: .leading, spacing: 8) { kindPicker; sortPicker }
+                        VStack(alignment: .leading, spacing: 8) { pendingSummary; kindPicker; sortPicker }
                     } else {
-                        HStack { kindPicker; Spacer(); sortPicker }
+                        HStack(spacing: 10) {
+                            pendingSummary.font(.caption.weight(.medium)).foregroundStyle(soft.muted)
+                            Spacer()
+                            kindPicker
+                            sortPicker
+                        }
                     }
-                }.listRowBackground(Color.clear)
-                Group {
-                    if dynamicTypeSize >= .xxxLarge {
-                        VStack(alignment: .leading, spacing: 4) { pendingSummary; sortSummary }
-                    } else {
-                        HStack { pendingSummary; Spacer(); sortSummary }
-                    }
-                }.font(.caption).listRowBackground(Color.clear)
+                }
+                .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 4, trailing: 16))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
 
             // v1.9.8: 日历卡片移到「日历」Tab（CalendarPageView），首页只保留列表
@@ -872,7 +880,11 @@ struct ReminderListView: View {
                         Button {
                             pendingDetailID = reminder.id
                         } label: {
-                            ReminderRowView(reminder: reminder, onSnooze: { _ = ReminderEngine.shared.snoozeReminder(reminder, afterMinutes:15, expectedToken:token) }) {
+                            ReminderRowView(reminder: reminder, onSnooze: {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                _ = ReminderEngine.shared.snoozeReminder(reminder, afterMinutes: 15, expectedToken: token)
+                            }) {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                 ReminderEngine.shared.confirmReminder(reminder, expectedToken: token)
                             }
                         }
@@ -1054,13 +1066,24 @@ struct ReminderListView: View {
         .tint(ThemeTokens.statusSnoozed)
     }
 
-    /// 左滑 → 删除
+    /// 左滑 → 跳过（非一次性）+ 删除
     @ViewBuilder
     private func deleteSwipe(for reminder: Reminder) -> some View {
         Button(role: .destructive) {
             deleteReminder(reminder)
         } label: {
             Label("删除".localized, systemImage: "trash")
+        }
+        if reminder.status != .confirmed && !(reminder.kind == .cycle && reminder.cycle == .once) {
+            let token = reminder.actionToken
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                ReminderActions.skip(reminder, expectedToken: token, context: modelContext)
+                Task { await ReminderEngine.shared.scheduleAllNotifications(for: reminder) }
+            } label: {
+                Label("跳过".localized, systemImage: "forward")
+            }
+            .tint(ThemeTokens.statusSnoozed)
         }
     }
 
@@ -1254,7 +1277,7 @@ struct OverviewCard: View {
     /// 今天日期标题（如「9月3日」）
     private var dateTitle: String {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
+        f.locale = AppLanguageManager.currentLocale
         f.dateFormat = "M月d日"
         return f.string(from: Date())
     }
@@ -1262,7 +1285,7 @@ struct OverviewCard: View {
     /// 今天周几（如「星期四」）
     private var weekdayTitle: String {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
+        f.locale = AppLanguageManager.currentLocale
         f.dateFormat = "EEEE"
         return f.string(from: Date())
     }

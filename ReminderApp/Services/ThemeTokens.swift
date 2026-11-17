@@ -15,18 +15,18 @@ enum ThemeTokens {
     }
 
     static let palettes: [BrandPalette] = [
-        BrandPalette(primary: Color(hex: 0x087F7A), primaryDark: Color(hex: 0x08635F),
-                     gradientStart: Color(hex: 0x53B9AD), container: Color(hex: 0xDDEEE8)),
-        BrandPalette(primary: Color(hex: 0x3B82F6), primaryDark: Color(hex: 0x1E5BC4),
-                     gradientStart: Color(hex: 0x7FB5FF), container: Color(hex: 0xC9E0FF)),
-        BrandPalette(primary: Color(hex: 0xE0457B), primaryDark: Color(hex: 0xB02E5C),
-                     gradientStart: Color(hex: 0xF58FB0), container: Color(hex: 0xFCD3E1)),
-        BrandPalette(primary: Color(hex: 0xF07B2F), primaryDark: Color(hex: 0xC05A16),
-                     gradientStart: Color(hex: 0xF7B27D), container: Color(hex: 0xFDE3CC)),
-        BrandPalette(primary: Color(hex: 0x2E9E5B), primaryDark: Color(hex: 0x1D7A42),
-                     gradientStart: Color(hex: 0x74C99B), container: Color(hex: 0xD1F0DE)),
-        BrandPalette(primary: Color(hex: 0x6C5CE7), primaryDark: Color(hex: 0x4A3FB8),
-                     gradientStart: Color(hex: 0xA69CF5), container: Color(hex: 0xE1DDFC))
+        BrandPalette(primary: Color(hex: 0x0F766E), primaryDark: Color(hex: 0x115E59),
+                     gradientStart: Color(hex: 0x2DD4BF), container: Color(hex: 0xCCFBF1)),
+        BrandPalette(primary: Color(hex: 0x2563EB), primaryDark: Color(hex: 0x1D4ED8),
+                     gradientStart: Color(hex: 0x60A5FA), container: Color(hex: 0xDBEAFE)),
+        BrandPalette(primary: Color(hex: 0xD9467A), primaryDark: Color(hex: 0xBE185D),
+                     gradientStart: Color(hex: 0xF472B6), container: Color(hex: 0xFCE7F3)),
+        BrandPalette(primary: Color(hex: 0xEA580C), primaryDark: Color(hex: 0xC2410C),
+                     gradientStart: Color(hex: 0xFB923C), container: Color(hex: 0xFFEDD5)),
+        BrandPalette(primary: Color(hex: 0x16A34A), primaryDark: Color(hex: 0x15803D),
+                     gradientStart: Color(hex: 0x4ADE80), container: Color(hex: 0xDCFCE7)),
+        BrandPalette(primary: Color(hex: 0x6D28D9), primaryDark: Color(hex: 0x5B21B6),
+                     gradientStart: Color(hex: 0xA78BFA), container: Color(hex: 0xEDE9FE))
     ]
 
     static var palette: BrandPalette {
@@ -40,7 +40,7 @@ enum ThemeTokens {
     static var brandContainer: Color { palette.container }
     /// `--strong`
     static var strong: Color { Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(palette.gradientStart) : UIColor(palette.primary) }) }
-    static var onStrong: Color { Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(red:16/255,green:29/255,blue:32/255,alpha:1) : .white }) }
+    static var onStrong: Color { Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(Color(hex: 0x091917)) : .white }) }
 
     private static func adaptive(_ light: UInt32,_ dark: UInt32) -> Color {
         Color(uiColor:UIColor { trait in UIColor(Color(hex:trait.userInterfaceStyle == .dark ? dark : light)) })
@@ -62,10 +62,10 @@ enum ThemeTokens {
     static func heat(_ level: Int, scheme: ColorScheme) -> Color {
         let clamped = min(max(level, 0), 4)
         if scheme == .dark {
-            let hex: [UInt32] = [0x252422, 0x0E3D28, 0x0A6B38, 0x22A34A, 0x3DD15F]
+            let hex: [UInt32] = [0x22262B, 0x11423D, 0x0F6B62, 0x14B8A6, 0x2DD4BF]
             return Color(hex: hex[clamped])
         } else {
-            let hex: [UInt32] = [0xE8E4DC, 0xC8EBD4, 0x86D4A4, 0x3AAD72, 0x1B7A4C]
+            let hex: [UInt32] = [0xEBE6DC, 0xCCFBF1, 0x5EEAD4, 0x0D9488, 0x0F766E]
             return Color(hex: hex[clamped])
         }
     }
@@ -132,6 +132,7 @@ struct SoftPalette {
     let elevated: Color
     let text: Color
     let muted: Color
+    let border: Color
     let track: Color
     let warn: Color
     let ok: Color
@@ -141,28 +142,30 @@ struct SoftPalette {
     static func of(_ scheme: ColorScheme) -> SoftPalette {
         if scheme == .dark {
             return SoftPalette(
-                canvas: Color(hex: 0x101D20),
-                surface: Color(hex: 0x192A2D),
-                elevated: Color(hex: 0x22373B),
-                text: Color(hex: 0xEDEDF0),
-                muted: Color(hex: 0xA7BABD),
+                canvas: Color(hex: 0x111315),
+                surface: Color(hex: 0x1A1D20),
+                elevated: Color(hex: 0x22262B),
+                text: Color(hex: 0xF4F4F5),
+                muted: Color(hex: 0x94A3B8),
+                border: Color(hex: 0x2A2F35),
                 track: Color.white.opacity(0.08),
-                warn: Color(hex: 0xF39C12),
-                ok: Color(hex: 0x27AE60),
-                danger: Color(hex: 0xE74C3C),
+                warn: Color(hex: 0xF59E0B),
+                ok: Color(hex: 0x34D399),
+                danger: Color(hex: 0xF87171),
                 isDark: true
             )
         }
         return SoftPalette(
-            canvas: Color(hex: 0xF6F7F2),
+            canvas: Color(hex: 0xF6F4EF),
             surface: Color(hex: 0xFFFFFF),
-            elevated: Color.white,
-            text: Color(hex: 0x142D30),
-            muted: Color(hex: 0x596D70),
-            track: Color(red: 26/255, green: 26/255, blue: 28/255).opacity(0.08),
-            warn: Color(hex: 0x9A5D08),
-            ok: Color(hex: 0x237A49),
-            danger: Color(hex: 0xC0392B),
+            elevated: Color(hex: 0xFFFFFF),
+            text: Color(hex: 0x18181B),
+            muted: Color(hex: 0x64748B),
+            border: Color(hex: 0xE7E2D8),
+            track: Color(hex: 0x18181B).opacity(0.08),
+            warn: Color(hex: 0xD97706),
+            ok: Color(hex: 0x059669),
+            danger: Color(hex: 0xDC2626),
             isDark: false
         )
     }

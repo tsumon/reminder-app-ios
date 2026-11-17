@@ -64,7 +64,7 @@ jobs:
       - name: Run protocol, policy, action and populated migration checks
         run: |
           set -euo pipefail
-          for SCHEME in BackupProtocolCheck SixFeaturesCheck UpgradeCheck LegacyStoreProducer MigrationCheck; do
+          for SCHEME in BackupProtocolCheck SixFeaturesCheck UpgradeCheck LegacyStoreProducer MigrationCheck Baseline28StoreProducer Migration28Check; do
             xcodebuild build -project ReminderApp.xcodeproj -scheme "$SCHEME" -destination 'platform=macOS' -derivedDataPath ./DerivedDataChecks CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
           done
           ./DerivedDataChecks/Build/Products/Debug/BackupProtocolCheck
@@ -72,6 +72,8 @@ jobs:
           ./DerivedDataChecks/Build/Products/Debug/UpgradeCheck
           ./DerivedDataChecks/Build/Products/Debug/LegacyStoreProducer "$RUNNER_TEMP/reminder-v272.store"
           ./DerivedDataChecks/Build/Products/Debug/MigrationCheck "$RUNNER_TEMP/reminder-v272.store"
+          ./DerivedDataChecks/Build/Products/Debug/Baseline28StoreProducer "$RUNNER_TEMP/reminder-v280.store"
+          ./DerivedDataChecks/Build/Products/Debug/Migration28Check "$RUNNER_TEMP/reminder-v280.store"
 
       - name: Upload actual cross-platform backup export
         if: always()
@@ -215,6 +217,25 @@ jobs:
           fi
           rm -rf Payload SwiftSupport
 
+      - name: Verify unsigned IPA metadata and bundle identities
+        run: |
+          set -euo pipefail
+          VERIFY_DIR="$RUNNER_TEMP/ipa-verify"
+          rm -rf "$VERIFY_DIR"
+          unzip -q ReminderApp.ipa -d "$VERIFY_DIR"
+          APP_BUNDLE=$(find "$VERIFY_DIR/Payload" -maxdepth 1 -name '*.app' -type d | head -1)
+          WIDGET_BUNDLE=$(find "$APP_BUNDLE/PlugIns" -maxdepth 1 -name '*.appex' -type d | head -1)
+          test -n "$APP_BUNDLE" && test -n "$WIDGET_BUNDLE"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_BUNDLE/Info.plist")" = "com.reminder.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Info.plist")" = "2.10.0"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_BUNDLE/Info.plist")" = "73"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$WIDGET_BUNDLE/Info.plist")" = "com.reminder.app.widget"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$WIDGET_BUNDLE/Info.plist")" = "2.10.0"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$WIDGET_BUNDLE/Info.plist")" = "73"
+          codesign -dv "$APP_BUNDLE" 2>&1 | grep -q "code object is not signed at all"
+          codesign -dv "$WIDGET_BUNDLE" 2>&1 | grep -q "code object is not signed at all"
+          rm -rf "$VERIFY_DIR"
+
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
@@ -236,5 +257,6 @@ jobs:
         with:
           # 只挂带版本号的那一份；裸名（ReminderApp.ipa）作为 build artifact 已上传，不重复出现在 Release
           files: ReminderApp-${{ env.VERSION }}.ipa
+          body_path: docs/releases/v2.10.0.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

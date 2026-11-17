@@ -104,7 +104,7 @@ struct CreateReminderView: View {
     let months = Array(1...12)
     let days = Array(1...31)
     let hours = Array(0...23)
-    let minutes = [0, 15, 30, 45]
+    let minutes = Array(0..<60)
 
     var body: some View {
         NavigationStack {
@@ -337,7 +337,7 @@ struct CreateReminderView: View {
         holidayAware = p.holidayAware
         // v2.4.11: 新历+旧历并存 → 提示将拆两条创建
         let solarRe = try? NSRegularExpression(pattern: "\\d{1,2}\\s*月\\s*\\d{1,2}\\s*[号日]")
-        let lunarRe = try? NSRegularExpression(pattern: "(?:农历|旧历|阴历)\\s*\\d{1,2}\\s*月\\s*\\d{1,2}")
+        let lunarRe = try? NSRegularExpression(pattern: "(?:农历|旧历|阴历)\\s*(?:\\d{1,2}|正|冬|腊|十[一二]|[一二三四五六七八九十])\\s*月\\s*(?:\\d{1,2}|初?[一二三四五六七八九十]|十[一二三四五六七八九]|二[一二三四五六七八九十]?|廿[一二三四五六七八九]?|三十?)")
         let range = NSRange(nlText.startIndex..<nlText.endIndex, in: nlText)
         let hasSolar = solarRe?.firstMatch(in: nlText, range: range) != nil
         let hasLunar = lunarRe?.firstMatch(in: nlText, range: range) != nil
@@ -450,16 +450,17 @@ struct CreateReminderView: View {
 
     /// 规则提醒预览文本
     private var rulePreview: String {
+        let cal = Calendar.current
         let engine = ReminderEngine.shared
         let date = engine.nextRuleDate(
             period: rulePeriod,
             week: ruleWeek.rawValue,
             weekday: ruleWeekday.rawValue,
-            hour: reminderHour,
-            minute: reminderMinute
+            hour: cal.component(.hour, from: triggerTime),
+            minute: cal.component(.minute, from: triggerTime)
         )
         let df = DateFormatter()
-        df.locale = Locale(identifier: "zh_CN")
+        df.locale = AppLanguageManager.currentLocale
         df.dateFormat = "yyyy年M月d日 E HH:mm"
         return df.string(from: date)
     }
@@ -574,16 +575,19 @@ struct CreateReminderView: View {
     }
 
     private var previewReminder: Reminder {
+        let cal=Calendar.current
+        let effHour = kind == .rule ? cal.component(.hour, from: triggerTime) : reminderHour
+        let effMinute = kind == .rule ? cal.component(.minute, from: triggerTime) : reminderMinute
         let anchor=ReminderEdits.cycleAnchor(date:triggerDate,time:triggerTime,editing:editing != nil)
         let r=Reminder(title:title,kind:kind,cycle:cycle,customDays:Int(customDays) ?? 1,dateType:dateType,
-            targetMonth:targetMonth,targetDay:targetDay,advanceDays:Int(advanceDays),reminderHour:reminderHour,
-            reminderMinute:reminderMinute,holidayID:selectedHolidayID,rulePeriod:rulePeriod,ruleWeek:ruleWeek,
+            targetMonth:targetMonth,targetDay:targetDay,advanceDays:Int(advanceDays),reminderHour:effHour,
+            reminderMinute:effMinute,holidayID:selectedHolidayID,rulePeriod:rulePeriod,ruleWeek:ruleWeek,
             ruleWeekday:ruleWeekday,firstTriggerAt:anchor,nextTriggerAt:anchor,holidayAware:holidayAware)
         r.recurrenceMode=recurrenceMode; r.reminderStyle=reminderStyle
         r.retryIntervalsMinutes=PolicyFields.parsed(intervalsText) ?? ReminderPolicy.legacyIntervals; r.maxReminderAttempts=maxAttempts
         r.quietStartMinute=quietEnabled ? quietStart : nil; r.quietEndMinute=quietEnabled ? quietEnd : nil
         if kind == .rule {
-            r.nextTriggerAt=ReminderEdits.ruleFirstTrigger(start:.init(date:triggerDate,time:triggerTime,calendar:.current),period:rulePeriod,week:ruleWeek,weekday:ruleWeekday,hour:reminderHour,minute:reminderMinute,calendar:.current)
+            r.nextTriggerAt=ReminderEdits.ruleFirstTrigger(start:.init(date:triggerDate,time:triggerTime,calendar:cal),period:rulePeriod,week:ruleWeek,weekday:ruleWeekday,hour:effHour,minute:effMinute,calendar:cal)
         } else if kind == .date { r.nextTriggerAt=ReminderEngine.shared.calculateNextTrigger(after:Date(),reminder:r) }
         return r
     }
@@ -667,15 +671,17 @@ struct CreateReminderView: View {
             }
 
         case .rule:
-            // 用户选择的首次时间作为锚点，取锚点之后的下一个规则日
+            // 用户选择的首次时间作为锚点，取锚点之后的下一个规则日，并尊重 triggerTime 的时分
+            let ruleHour = calendar.component(.hour, from: triggerTime)
+            let ruleMinute = calendar.component(.minute, from: triggerTime)
             let firstTrigger = ReminderEdits.ruleFirstTrigger(start: ruleStart, period: rulePeriod,
-                week: ruleWeek, weekday: ruleWeekday, hour: reminderHour, minute: reminderMinute, calendar: calendar)
+                week: ruleWeek, weekday: ruleWeekday, hour: ruleHour, minute: ruleMinute, calendar: calendar)
             reminder = Reminder(
                 title: title.trimmingCharacters(in: .whitespaces),
                 note: note.trimmingCharacters(in: .whitespaces),
                 kind: .rule,
-                reminderHour: reminderHour,
-                reminderMinute: reminderMinute,
+                reminderHour: ruleHour,
+                reminderMinute: ruleMinute,
                 rulePeriod: rulePeriod,
                 ruleWeek: ruleWeek,
                 ruleWeekday: ruleWeekday,
@@ -782,7 +788,13 @@ struct CreateReminderView: View {
         if reminder.holidayAware {
             reminder.nextTriggerAt = ReminderEngine.shared.calculateNextTrigger(after: reminder.firstTriggerAt.addingTimeInterval(-1), reminder: reminder)
         }
-        modelContext.insert(reminder)
+
+        var createdList: [Reminder] = [reminder]
+        if dualBirthdayDetected, let dual = makeDualBirthdayPair(base: reminder) {
+            createdList = [dual.solar, dual.lunar]
+        }
+
+        createdList.forEach { modelContext.insert($0) }
         // v2.0.22: 保存失败不再吞掉——保存成功后才推进同步版本、排通知、关页面；
         // 否则 UI 显示已创建但数据没落盘，同步还会上传不完整数据
         do {
@@ -795,14 +807,103 @@ struct CreateReminderView: View {
         SyncStore.touchLocalChange()
 
         // 批次3 功能5: 关键提醒标记落 UserDefaults 侧存（避免改 SwiftData schema）
-        onCreated?(reminder)
+        onCreated?(createdList[0])
 
         Task {
-            if #available(iOS 26.0, *), reminder.useAlarmKit { _ = await ImportantAlarmService.shared.requestAuthorization() }
-            await ReminderEngine.shared.scheduleAllNotifications(for: reminder)
+            for item in createdList {
+                if #available(iOS 26.0, *), item.useAlarmKit { _ = await ImportantAlarmService.shared.requestAuthorization() }
+                await ReminderEngine.shared.scheduleAllNotifications(for: item)
+            }
         }
 
         dismiss()
+    }
+
+    private func makeDualBirthdayPair(base: Reminder) -> (solar: Reminder, lunar: Reminder)? {
+        guard !nlText.isEmpty else { return nil }
+        let cal = Calendar.current
+        let now = Date()
+        let solarRegex = try? NSRegularExpression(pattern: "(?<![\\d])([0-9]{1,2})\\s*月\\s*([0-9]{1,2})\\s*[号日]")
+        let lunarParsed = NaturalDateParser.parse(nlText, now: now)
+        let nsRange = NSRange(nlText.startIndex..<nlText.endIndex, in: nlText)
+        guard let sm = solarRegex?.firstMatch(in: nlText, range: nsRange),
+              let rM = Range(sm.range(at: 1), in: nlText),
+              let rD = Range(sm.range(at: 2), in: nlText),
+              let sMonth = Int(nlText[rM]), let sDay = Int(nlText[rD]),
+              (1...12).contains(sMonth), (1...31).contains(sDay),
+              let parsedLunar = lunarParsed,
+              let lMonth = parsedLunar.targetMonth, let lDay = parsedLunar.targetDay else {
+            return nil
+        }
+
+        var cleanTitle = base.title
+        if cleanTitle.hasSuffix("（公历）") { cleanTitle = String(cleanTitle.dropLast(4)) }
+        if cleanTitle.hasSuffix("（农历）") { cleanTitle = String(cleanTitle.dropLast(4)) }
+
+        var solarNext = now
+        let startYear = cal.component(.year, from: now)
+        for y in startYear...(startYear + 8) {
+            var comps = DateComponents(year: y, month: sMonth, day: sDay, hour: reminderHour, minute: reminderMinute, second: 0)
+            if let d = cal.date(from: comps), cal.component(.month, from: d) == sMonth, cal.component(.day, from: d) == sDay, d > now {
+                solarNext = d
+                break
+            }
+        }
+
+        let solar = Reminder(
+            title: "\(cleanTitle)（公历）",
+            note: base.note,
+            kind: .date,
+            dateType: .solarBirthday,
+            targetMonth: sMonth,
+            targetDay: sDay,
+            advanceDays: Int(advanceDays),
+            reminderHour: reminderHour,
+            reminderMinute: reminderMinute,
+            firstTriggerAt: solarNext,
+            nextTriggerAt: solarNext,
+            priority: priority,
+            holidayAware: false
+        )
+        solar.recurrenceMode = recurrenceMode
+        solar.reminderStyle = reminderStyle
+        solar.retryIntervalsMinutes = base.retryIntervalsMinutes
+        solar.maxReminderAttempts = maxAttempts
+        solar.quietStartMinute = base.quietStartMinute
+        solar.quietEndMinute = base.quietEndMinute
+        solar.useAlarmKit = useAlarmKit
+        solar.policyMigrated = true
+
+        let lunarDate = LunarCalendar.nextLunarBirthday(month: lMonth, day: lDay, hour: reminderHour, minute: reminderMinute, from: now) ?? now
+        var lc = cal.dateComponents([.year, .month, .day], from: lunarDate)
+        lc.hour = reminderHour; lc.minute = reminderMinute; lc.second = 0
+        let lunarNext = cal.date(from: lc) ?? lunarDate
+
+        let lunar = Reminder(
+            title: "\(cleanTitle)（农历）",
+            note: base.note,
+            kind: .date,
+            dateType: .lunarBirthday,
+            targetMonth: lMonth,
+            targetDay: lDay,
+            advanceDays: Int(advanceDays),
+            reminderHour: reminderHour,
+            reminderMinute: reminderMinute,
+            firstTriggerAt: lunarNext,
+            nextTriggerAt: lunarNext,
+            priority: priority,
+            holidayAware: false
+        )
+        lunar.recurrenceMode = recurrenceMode
+        lunar.reminderStyle = reminderStyle
+        lunar.retryIntervalsMinutes = base.retryIntervalsMinutes
+        lunar.maxReminderAttempts = maxAttempts
+        lunar.quietStartMinute = base.quietStartMinute
+        lunar.quietEndMinute = base.quietEndMinute
+        lunar.useAlarmKit = useAlarmKit
+        lunar.policyMigrated = true
+
+        return (solar, lunar)
     }
 
     private func loadDraft() {
@@ -850,31 +951,45 @@ struct CycleOptionCard: View {
     let isSelected: Bool
     let action: () -> Void
 
-    private var emoji: String {
+    @Environment(\.soft) private var soft
+
+    private var symbol: String {
         switch option {
-        case .once:      return "1️⃣"
-        case .daily:     return "☀️"
-        case .weekly:    return "📆"
-        case .biweekly:  return "🌗"
-        case .monthly:   return "🌙"
-        case .quarterly: return "🧭"
-        case .yearly:    return "🎂"
-        case .custom:    return "🪄"
+        case .once:      return "1.circle"
+        case .daily:     return "sun.max.fill"
+        case .weekly:    return "calendar"
+        case .biweekly:  return "calendar.badge.clock"
+        case .monthly:   return "moon.fill"
+        case .quarterly: return "square.grid.2x2.fill"
+        case .yearly:    return "gift.fill"
+        case .custom:    return "slider.horizontal.3"
         }
     }
 
     var body: some View {
-        Button(action:action) {
-            VStack(spacing:5) {
-                Text(emoji).font(.title3)
-                Text(option.rawValue.localized).font(.caption.weight(.medium)).multilineTextAlignment(.center)
-            }.frame(maxWidth:.infinity,minHeight:64)
-                .foregroundStyle(isSelected ? ThemeTokens.strong : .primary)
-                .background(isSelected ? ThemeTokens.strong.opacity(0.10) : Color.secondary.opacity(0.06),in:RoundedRectangle(cornerRadius:14))
-        }.buttonStyle(.plain).accessibilityLabel(option.rawValue.localized)
-            .accessibilityAddTraits(isSelected ? .isSelected : [])
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.system(size: 18, weight: .semibold))
+                Text(option.rawValue.localized)
+                    .font(.caption.weight(.medium))
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, minHeight: 62)
+            .foregroundStyle(isSelected ? ThemeTokens.strong : soft.text)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isSelected ? ThemeTokens.strong.opacity(soft.isDark ? 0.20 : 0.10) : soft.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(isSelected ? ThemeTokens.strong : soft.border, lineWidth: isSelected ? 1.5 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(option.rawValue.localized)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
-
 }
 
 /// 星期灯泡：点亮=选中（金色光晕），熄灭=灰色

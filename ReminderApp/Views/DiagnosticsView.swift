@@ -120,30 +120,32 @@ struct DiagnosticsView: View {
                 }
             }
 
-            Section("调试：模拟通知动作".localized) {
-                let target = reminders
-                    .filter { $0.isEnabled && $0.status != .confirmed }
-                    .sorted { $0.nextTriggerAt < $1.nextTriggerAt }
-                    .first
-                if let r = target {
-                    Button {
-                        NotificationManager.shared.simulateNotificationAction(.confirm, reminderID: r.id)
-                    } label: {
-                        Label(Localized("模拟确认：%@", r.title), systemImage: "checkmark.circle")
+            if ProcessInfo.processInfo.arguments.contains("-uitest") {
+                Section("调试：模拟通知动作".localized) {
+                    let target = reminders
+                        .filter { $0.isEnabled && $0.status != .confirmed }
+                        .sorted { $0.nextTriggerAt < $1.nextTriggerAt }
+                        .first
+                    if let r = target {
+                        Button {
+                            NotificationManager.shared.simulateNotificationAction(.confirm, reminderID: r.id)
+                        } label: {
+                            Label(Localized("模拟确认：%@", r.title), systemImage: "checkmark.circle")
+                        }
+                        .accessibilityIdentifier("debug-sim-confirm")
+                        Button {
+                            NotificationManager.shared.simulateNotificationAction(.snooze, reminderID: r.id)
+                        } label: {
+                            Label(Localized("模拟稍后：%@", r.title), systemImage: "clock")
+                        }
+                        .accessibilityIdentifier("debug-sim-snooze")
+                        Text("走与通知按钮相同的入队 → ReminderEngine.confirm / snooze。真机通知仍需在系统通知里点。".localized)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("没有可模拟的未完成提醒".localized)
+                            .foregroundStyle(.secondary)
                     }
-                    .accessibilityIdentifier("debug-sim-confirm")
-                    Button {
-                        NotificationManager.shared.simulateNotificationAction(.snooze, reminderID: r.id)
-                    } label: {
-                        Label(Localized("模拟稍后：%@", r.title), systemImage: "clock")
-                    }
-                    .accessibilityIdentifier("debug-sim-snooze")
-                    Text("走与通知按钮相同的入队 → ReminderEngine.confirm / snooze。真机通知仍需在系统通知里点。".localized)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("没有可模拟的未完成提醒".localized)
-                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -205,24 +207,66 @@ struct DiagnosticsView: View {
 }
 
 struct NotificationHealthCard: View {
+    var onOpen: (() -> Void)? = nil
     @Environment(\.scenePhase) private var phase
+    @Environment(\.soft) private var soft
     @State private var status="检查中…".localized
+    @State private var isHealthy = true
     @State private var count=0
+    private var cardContent: some View {
+        HStack(spacing: 12) {
+            Image(systemName: isHealthy ? "bell.badge.fill" : "exclamationmark.triangle.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(isHealthy ? ThemeTokens.strong : soft.warn)
+                .frame(width: 34, height: 34)
+                .background(
+                    (isHealthy ? ThemeTokens.strong : soft.warn).opacity(soft.isDark ? 0.18 : 0.12),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(status)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(soft.text)
+                Text(Localized("已排期 %d 条通知 · 点击自检", count))
+                    .font(.caption)
+                    .foregroundStyle(soft.muted)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(soft.muted)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(soft.surface, in: RoundedRectangle(cornerRadius: ThemeTokens.radiusCard, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: ThemeTokens.radiusCard, style: .continuous)
+                .strokeBorder(soft.border, lineWidth: 1)
+        )
+    }
     var body: some View {
-        NavigationLink { DiagnosticsView() } label: {
-            VStack(alignment:.leading,spacing:6) {
-                Label(status, systemImage:"bell.badge").font(.headline)
-                Text(Localized("已排期 %d 条通知 · 点击自检", count)).font(.caption)
-                Text("授权与排期不代表已经送达".localized).font(.caption).foregroundStyle(.secondary)
-            }.frame(maxWidth:.infinity,alignment:.leading).padding(16)
-                .background(ThemeTokens.strong.opacity(0.08),in:RoundedRectangle(cornerRadius:16))
-        }.buttonStyle(.plain).accessibilityIdentifier("notification-health")
-        .task { await refresh() }.onChange(of:phase) { _, value in if value == .active { Task { await refresh() } } }
+        Group {
+            if let onOpen {
+                Button(action: onOpen) {
+                    cardContent
+                }
+            } else {
+                NavigationLink { DiagnosticsView() } label: {
+                    cardContent
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("notification-health")
+        .task { await refresh() }
+        .onChange(of: phase) { _, value in if value == .active { Task { await refresh() } } }
     }
     private func refresh() async {
         let center=UNUserNotificationCenter.current()
         let settings=await center.notificationSettings()
-        status = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional ? "通知已授权".localized : "通知需要设置".localized
+        let ok = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
+        isHealthy = ok
+        status = ok ? "通知已授权".localized : "通知需要设置".localized
         count=await center.pendingNotificationRequests().count
     }
 }

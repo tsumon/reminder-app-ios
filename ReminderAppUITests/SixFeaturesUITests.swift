@@ -17,13 +17,10 @@ final class SixFeaturesUITests: XCTestCase {
     }
 
     private func shot(_ name: String) {
-        let dir = URL(fileURLWithPath: "/Users/mac/Desktop/循环提醒-six")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("reminder-six", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let data = XCUIScreen.main.screenshot().pngRepresentation
         try? data.write(to: dir.appendingPathComponent(name))
-        let out = URL(fileURLWithPath: "/Users/mac/reminder-soft-ui/out/six")
-        try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
-        try? data.write(to: out.appendingPathComponent(name))
     }
 
     private func openAISettings(_ app: XCUIApplication) {

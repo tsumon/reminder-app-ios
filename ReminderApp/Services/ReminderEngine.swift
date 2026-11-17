@@ -70,7 +70,7 @@ final class ReminderEngine: ObservableObject {
         return deferToWorkday(raw)
     }
 
-    /// v2.4.10: 顺延到下一个工作日（跳过周六日与法定节假日，保留时分）
+    /// v2.4.10: 顺延到下一个工作日（跳过周六日与法定节假日；调休补班日视作工作日，保留时分）
     private func deferToWorkday(_ date: Date) -> Date {
         let calendar = Calendar.current
         var cursor = date
@@ -78,12 +78,13 @@ final class ReminderEngine: ObservableObject {
         while guardCount < 30 {
             let comps = calendar.dateComponents([.weekday, .year, .month, .day], from: cursor)
             let isWeekend = comps.weekday == 1 || comps.weekday == 7 // 1=周日 7=周六
-            let isHoliday = HolidayRemoteService.status(
+            let status = HolidayRemoteService.status(
                 year: comps.year ?? 0,
                 month: comps.month ?? 0,
                 day: comps.day ?? 0
-            )?.isHoliday == true
-            if !isWeekend && !isHoliday { return cursor }
+            )?.isHoliday
+            let isRest = status ?? isWeekend
+            if !isRest { return cursor }
             cursor = calendar.date(byAdding: .day, value: 1, to: cursor) ?? cursor.addingTimeInterval(86400)
             guardCount += 1
         }
@@ -176,26 +177,54 @@ final class ReminderEngine: ObservableObject {
     }
 
     private nonisolated func occursOnDate(_ r: Reminder, year: Int, month: Int, day: Int) -> Bool {
+        let cal = Calendar.current
         switch r.dateType {
         case .solarBirthday, .none:
             return month == r.targetMonth && day == r.targetDay
         case .lunarBirthday:
-            guard let solar = LunarCalendar.lunarToSolar(lunarYear: year, lunarMonth: r.targetMonth, lunarDay: r.targetDay) else { return false }
-            let cm = Calendar.current.component(.month, from: solar)
-            let cd = Calendar.current.component(.day, from: solar)
-            let cy = Calendar.current.component(.year, from: solar)
-            return cy == year && cm == month && cd == day
+            for candYear in (year - 1)...year {
+                let solar = LunarCalendar.lunarToSolar(lunarYear: candYear, lunarMonth: r.targetMonth, lunarDay: r.targetDay)
+                    ?? (r.targetDay == 30 ? LunarCalendar.lunarToSolar(lunarYear: candYear, lunarMonth: r.targetMonth, lunarDay: 29) : nil)
+                if let solar {
+                    let cy = cal.component(.year, from: solar)
+                    let cm = cal.component(.month, from: solar)
+                    let cd = cal.component(.day, from: solar)
+                    if cy == year && cm == month && cd == day { return true }
+                }
+            }
+            return false
         case .holiday:
             guard let holiday = HolidayService.find(by: r.holidayID ?? "") else { return false }
-            guard let next = HolidayService.nextDate(for: holiday, from: startOfDay(year, month, day) ?? Date()) else { return false }
-            let cy = Calendar.current.component(.year, from: next)
-            let cm = Calendar.current.component(.month, from: next)
-            let cd = Calendar.current.component(.day, from: next)
-            return cy == year && cm == month && cd == day
+            if !holiday.isLunar {
+                return month == holiday.month && day == holiday.day
+            }
+            for candYear in (year - 1)...year {
+                let solar: Date?
+                if holiday.name == "除夕" {
+                    solar = LunarCalendar.lunarToSolar(lunarYear: candYear, lunarMonth: 1, lunarDay: 1)
+                        .flatMap { cal.date(byAdding: .day, value: -1, to: $0) }
+                } else {
+                    solar = LunarCalendar.lunarToSolar(lunarYear: candYear, lunarMonth: holiday.month, lunarDay: holiday.day)
+                }
+                if let solar {
+                    let cy = cal.component(.year, from: solar)
+                    let cm = cal.component(.month, from: solar)
+                    let cd = cal.component(.day, from: solar)
+                    if cy == year && cm == month && cd == day { return true }
+                }
+            }
+            return false
         }
     }
 
     private nonisolated func occursOnRule(_ r: Reminder, year: Int, month: Int, day: Int) -> Bool {
+        let periodMatches: Bool
+        switch r.rulePeriod {
+        case .monthly: periodMatches = true
+        case .yearly: periodMatches = (month == 1)
+        case .quarterly: periodMatches = ((month - 1) % 3 == 0)
+        }
+        guard periodMatches else { return false }
         guard let target = ReminderPolicy.ruleDateInMonth(
             year: year, month: month,
             week: r.ruleWeek.rawValue, weekday: r.ruleWeekday.rawValue,
@@ -507,12 +536,18 @@ final class ReminderEngine: ObservableObject {
             reminder.lastRetryAt = now
             reminder.updatedAt = now
 
+            let occKey = Int((reminder.scheduledOccurrenceAt ?? reminder.nextTriggerAt).timeIntervalSince1970)
+            let triggerNote = caught.isOverdue ? "overdue:\(occKey)" : "retry:\(stage):\(occKey)"
+            if !reminder.records.contains(where: { $0.type == ReminderRecordType.trigger.rawValue && $0.note == triggerNote }) {
+                let rec = ReminderRecord(performedAt: now, type: .trigger, note: triggerNote)
+                reminder.records.append(rec)
+            }
+
             if caught.isOverdue {
                 // 达到上限：标逾期停止轰炸，留在列表等用户手动确认 / 重新打开
                 reminder.status = .overdue
                 reminder.nextTriggerAt = due
                 try? modelContext?.save()
-                SyncStore.touchLocalChange()
                 await NotificationManager.shared.removePendingNotification(for: reminder.id)
                 print("[ReminderEngine] 递增重试已达上限，标记逾期: \(reminder.title)")
                 continue
@@ -521,7 +556,6 @@ final class ReminderEngine: ObservableObject {
             reminder.nextTriggerAt = due
             reminder.status = .active
             try? modelContext?.save()
-            SyncStore.touchLocalChange()
 
             await scheduleAllNotifications(for: reminder)
             print("[ReminderEngine] 过期提醒进入重试阶段 \(stage): \(reminder.title), 下次: \(due)")

@@ -301,6 +301,27 @@ import SwiftData
         precondition(shifted.scheduledOccurrenceAt != nil)
         precondition(ReminderEdits.apply(v4EditDraft,to:shifted,expectedToken:shifted.actionToken,scheduleChanged:true,context:context,now:now,calculate:{ ReminderPolicy.nextCycle(after:$0,reminder:$1) }))
         precondition(shifted.scheduledOccurrenceAt == nil)
+        let futurePending = (0..<70).map { i in
+            Reminder(title: "Future \(i)", firstTriggerAt: now, nextTriggerAt: now.addingTimeInterval(Double(10 + i) * 86400))
+        }
+        let activeRetrying = Reminder(title: "Urgent retry", firstTriggerAt: now.addingTimeInterval(-3600),
+            nextTriggerAt: now.addingTimeInterval(1800), status: .active, retryStage: 1)
+        let mixedQueue = ReminderPolicy.allocate(futurePending + [activeRetrying], now: now, limit: 64)
+        precondition(mixedQueue.contains { $0.reminderID == activeRetrying.id && $0.kind == .retry },
+            "Distant future primary reminders must not starve active retries")
+
+        let alarmRow = Reminder(title: "AlarmKit sync", firstTriggerAt: now, nextTriggerAt: now)
+        alarmRow.reminderStyle = "important"
+        alarmRow.useAlarmKit = true
+        let alarmJson = BackupHelper.exportJSON([alarmRow])
+        let alarmDecoded = BackupHelper.importJSON(alarmJson)!.map(BackupHelper.makeReminder(from:))
+        precondition(alarmDecoded.first?.useAlarmKit == true, "BackupHelper must preserve useAlarmKit")
+
+        if let parsedLunar = NaturalDateParser.parse("农历腊月廿三提醒我扫尘", now: now) {
+            precondition(parsedLunar.repeatMode == "lunar" && parsedLunar.targetMonth == 12 && parsedLunar.targetDay == 23,
+                "NaturalDateParser must parse Chinese lunar numerals")
+        } else { preconditionFailure("NaturalDateParser failed on 农历腊月廿三") }
+
         try await SyncConflictChecks.run()
         print("Upgrade policy/actions/global allocation/v4 deletion and history checks passed")
     }

@@ -43,10 +43,17 @@ private struct SoftElevation: ViewModifier {
     var bottomRadius: CGFloat? = nil
     @Environment(\.soft) private var soft
     func body(content: Content) -> some View {
-        content.background(fill, in: UnevenRoundedRectangle(topLeadingRadius: radius,
-            bottomLeadingRadius: bottomRadius ?? radius, bottomTrailingRadius: bottomRadius ?? radius,
-            topTrailingRadius: radius, style: .continuous))
-            .shadow(color: .black.opacity(soft.isDark ? 0.12 : 0.035), radius: 5, x: 0, y: 2)
+        let shape = UnevenRoundedRectangle(
+            topLeadingRadius: radius,
+            bottomLeadingRadius: bottomRadius ?? radius,
+            bottomTrailingRadius: bottomRadius ?? radius,
+            topTrailingRadius: radius,
+            style: .continuous
+        )
+        content
+            .background(fill, in: shape)
+            .overlay(shape.strokeBorder(soft.border, lineWidth: 1))
+            .shadow(color: .black.opacity(soft.isDark ? 0.22 : (kind == .elevated ? 0.05 : 0.03)), radius: kind == .elevated ? 8 : 5, x: 0, y: 2)
     }
 }
 
@@ -65,8 +72,10 @@ struct SoftCircleChrome<Content: View>: View {
     @Environment(\.soft) private var soft
 
     var body: some View {
-        content.frame(width:max(44,size),height:max(44,size))
-            .background(fill ?? soft.surface,in:Circle())
+        content.frame(width: max(44, size), height: max(44, size))
+            .background(fill ?? soft.surface, in: Circle())
+            .overlay(Circle().strokeBorder(soft.border, lineWidth: 1))
+            .shadow(color: .black.opacity(soft.isDark ? 0.18 : 0.03), radius: 3, y: 1)
     }
 
 }
@@ -125,13 +134,13 @@ struct SoftInsetSearch: View {
         .frame(minHeight: 44)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(soft.isDark ? Color.black.opacity(0.35) : Color(hex: 0xE8E8E4))
+                .fill(soft.surface)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.black.opacity(soft.isDark ? 0.45 : 0.06), lineWidth: 1)
+                .strokeBorder(soft.border, lineWidth: 1)
         }
-        .shadow(color: Color.black.opacity(soft.isDark ? 0.35 : 0.06), radius: 2, y: 1)
+        .shadow(color: Color.black.opacity(soft.isDark ? 0.22 : 0.03), radius: 3, y: 1)
         .accessibilityIdentifier("home-search")
     }
 }
@@ -153,25 +162,19 @@ struct SoftChip: View {
                 .padding(.horizontal, 14)
                 .frame(minHeight: 44)
                 .background {
-                    ZStack {
-                        if soft.isDark && !selected {
-                            Capsule(style: .continuous)
-                                .fill(Color.white.opacity(0.05))
-                                .padding(-1)
-                        }
+                    Capsule(style: .continuous)
+                        .fill(selected ? ThemeTokens.strong : soft.surface)
+                }
+                .overlay {
+                    if !selected {
                         Capsule(style: .continuous)
-                            .fill(selected ? ThemeTokens.strong : soft.surface)
+                            .strokeBorder(soft.border, lineWidth: 1)
                     }
                 }
                 .shadow(
-                    color: selected ? .clear : (soft.isDark ? Color.black.opacity(0.40) : Color(hex: 0x111111).opacity(0.05)),
-                    radius: selected ? 0 : (soft.isDark ? 2 : 1),
-                    y: selected ? 0 : 1
-                )
-                .shadow(
-                    color: selected || soft.isDark ? .clear : Color(hex: 0x111111).opacity(0.05),
-                    radius: 4,
-                    y: 2
+                    color: selected ? ThemeTokens.strong.opacity(soft.isDark ? 0.18 : 0.16) : Color.black.opacity(soft.isDark ? 0.20 : 0.03),
+                    radius: selected ? 4 : 2,
+                    y: 1
                 )
         }
         .buttonStyle(.plain)
@@ -334,21 +337,34 @@ struct SoftEmojiWell: View {
     var tint: Color = ThemeTokens.brandContainer
     @Environment(\.soft) private var soft
 
+    private var symbolName: String {
+        switch emoji {
+        case "🎉": return "sparkles"
+        case "🌙": return "moon.fill"
+        case "🎂": return "gift.fill"
+        case "📅": return "calendar.badge.clock"
+        case "⏰": return "alarm.fill"
+        case "🔁": return "repeat"
+        case "📆": return "calendar"
+        case "🗓": return "calendar.circle.fill"
+        case "📊": return "chart.bar.fill"
+        case "🎯": return "scope"
+        case "⏳": return "hourglass"
+        default: return "bell.fill"
+        }
+    }
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: ThemeTokens.radiusShallow, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            tint.opacity(soft.isDark ? 0.38 : 0.72),
-                            tint.opacity(soft.isDark ? 0.16 : 0.38)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                .fill(ThemeTokens.strong.opacity(soft.isDark ? 0.18 : 0.10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: ThemeTokens.radiusShallow, style: .continuous)
+                        .strokeBorder(ThemeTokens.strong.opacity(soft.isDark ? 0.28 : 0.16), lineWidth: 1)
                 )
-            Text(emoji)
-                .font(.system(size: 22))
+            Image(systemName: symbolName)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(ThemeTokens.strong)
         }
         .frame(width: ThemeTokens.rowBadge, height: ThemeTokens.rowBadge)
         .accessibilityHidden(true)
@@ -525,23 +541,20 @@ struct SoftTabDock: View {
             }
         }
         .padding(.horizontal, ThemeTokens.gutter)
-        .padding(.top, ThemeTokens.dockPadTop)
+        .padding(.top, 8)
         .padding(.bottom, bottomPad)
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("soft-tab-dock")
-        .background(alignment: .top) {
-            // Full-width elevated fill to the physical bottom (home-indicator sits on --elevated).
-            // Icon row uses a small top pad — not vertically centered in this skirt.
-            Color.clear
-                .frame(maxWidth: .infinity)
-                .frame(height: ThemeTokens.dockPadTop + ThemeTokens.dockH + bottomPad + 80)
-                .modifier(SoftElevation(
-                    kind: .elevated,
-                    radius: ThemeTokens.radiusElevated,
-                    fill: soft.elevated,
-                    bottomRadius: 0
-                ))
+        .background {
+            soft.elevated
+                .ignoresSafeArea(edges: .bottom)
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(soft.border)
+                        .frame(height: 1)
+                }
+                .shadow(color: .black.opacity(soft.isDark ? 0.25 : 0.04), radius: 8, y: -2)
         }
     }
 }

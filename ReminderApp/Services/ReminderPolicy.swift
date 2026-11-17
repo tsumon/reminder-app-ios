@@ -175,28 +175,43 @@ struct ReminderPolicy: Equatable {
     }
 
     static func allocate(_ reminders: [Reminder], now: Date = Date(), limit: Int = 64) -> [Delivery] {
-        var deliveries: [Delivery] = []
+        let horizon = now.addingTimeInterval(7 * 86400)
+        var deliveries: [(tier: Int, delivery: Delivery)] = []
         for r in reminders {
+            let hasActiveRetry = r.status == .active || r.status == .snoozed || r.retryStage > 0
             for (index, date) in deliveryDates(for: r, now: now).enumerated() {
-                deliveries.append(Delivery(reminderID: r.id, token: r.actionToken, title: r.title,
+                let kind: DeliveryKind = index == 0 ? .primary : .retry
+                let delivery = Delivery(reminderID: r.id, token: r.actionToken, title: r.title,
                     body: r.note.isEmpty ? "该完成了，点确认或稍后" : r.note, date: date,
-                    kind: index == 0 ? .primary : .retry, index: index, important: r.reminderStyle == "important" && r.useAlarmKit))
+                    kind: kind, index: index, important: r.reminderStyle == "important" && r.useAlarmKit)
+                let tier: Int
+                if (kind == .primary && date <= horizon) || (kind == .retry && hasActiveRetry) {
+                    tier = 0
+                } else if kind == .primary {
+                    tier = 1
+                } else {
+                    tier = 2
+                }
+                deliveries.append((tier, delivery))
             }
             if r.kind == .date && r.isEnabled && r.status == .pending && r.retryStage == 0 {
                 for day in 1...max(1, min(r.advanceDays, 14)) where day <= r.advanceDays {
                     guard let raw = Calendar.current.date(byAdding: .day, value: -day, to: r.nextTriggerAt) else { continue }
                     let date = r.policy.adjust(raw)
-                    if date > now { deliveries.append(Delivery(reminderID: r.id, token: r.actionToken, title: r.title,
-                        body: "还有 \(day) 天：\(r.title)", date: date, kind: .advance, index: day, important: false)) }
+                    if date > now {
+                        let delivery = Delivery(reminderID: r.id, token: r.actionToken, title: r.title,
+                            body: "还有 \(day) 天：\(r.title)", date: date, kind: .advance, index: day, important: false)
+                        deliveries.append((2, delivery))
+                    }
                 }
             }
         }
         return Array(deliveries.sorted {
-            let p0 = $0.kind == .primary ? 0 : 1, p1 = $1.kind == .primary ? 0 : 1
-            if p0 != p1 { return p0 < p1 }
-            if $0.date != $1.date { return $0.date < $1.date }
-            return $0.identifier < $1.identifier
-        }.prefix(max(0, limit)))
+            if $0.tier != $1.tier { return $0.tier < $1.tier }
+            if $0.delivery.date != $1.delivery.date { return $0.delivery.date < $1.delivery.date }
+            if $0.delivery.kind.rawValue != $1.delivery.kind.rawValue { return $0.delivery.kind.rawValue < $1.delivery.kind.rawValue }
+            return $0.delivery.identifier < $1.delivery.identifier
+        }.map(\.delivery).prefix(max(0, limit)))
     }
 }
 

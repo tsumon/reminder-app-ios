@@ -45,7 +45,9 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         INFOPLIST_FILE: ReminderApp/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
     preBuildScripts:
       - name: "SwiftLint"
         script: |
@@ -181,8 +183,8 @@ targets:
       path: ReminderWidget/Info.plist
       properties:
         CFBundleDisplayName: 循环提醒小组件
-        CFBundleShortVersionString: "2.9.1"
-        CFBundleVersion: "72"
+        CFBundleShortVersionString: "2.10.0"
+        CFBundleVersion: "73"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
@@ -206,6 +208,7 @@ targets:
       - path: ReminderApp/Services/SyncStore.swift
       - path: ReminderApp/Services/WebDavSync.swift
       - path: ReminderApp/Services/IcsExporter.swift
+      - path: ReminderApp/Services/NaturalDateParser.swift
       - path: ReminderAppTests/FinalReviewChecks.swift
       - path: ReminderAppTests/UpgradeCheckMain.swift
     settings:

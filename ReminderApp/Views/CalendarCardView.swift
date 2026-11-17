@@ -242,8 +242,8 @@ struct CalendarCardView: View {
                         .font(SoftType.calendarLunar)
                         .foregroundStyle(ThemeTokens.onStrong.opacity(0.9))
                 }
-                .frame(width: 32, height: 48)
-                .background(ThemeTokens.strong, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .frame(width: 34, height: 48)
+                .background(ThemeTokens.strong, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             } else {
                 Text("\(cell.day)")
                     .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
@@ -265,6 +265,17 @@ struct CalendarCardView: View {
         }
         .frame(height: 56)
         .frame(maxWidth: .infinity)
+        .background {
+            if isSelected && !isToday {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(ThemeTokens.strong.opacity(soft.isDark ? 0.18 : 0.10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(ThemeTokens.strong.opacity(0.55), lineWidth: 1.2)
+                    )
+                    .padding(.horizontal, 2)
+            }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(date.formatted(date:.complete,time:.omitted))
         .accessibilityAddTraits(.isButton)

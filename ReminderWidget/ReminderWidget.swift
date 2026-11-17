@@ -32,9 +32,9 @@ struct Provider: TimelineProvider {
 
 /// v2.1.0: 小组件品牌色（与 App ThemeTokens 一致；widget target 独立，不共享 App 代码）
 private extension Color {
-    static let widgetBrand = Color(red: 0x15 / 255.0, green: 0x9A / 255.0, blue: 0x9C / 255.0)
-    static let widgetReminding = Color(red: 0xE7 / 255.0, green: 0x4C / 255.0, blue: 0x3C / 255.0)
-    static let widgetSnoozed = Color(red: 0xF3 / 255.0, green: 0x9C / 255.0, blue: 0x12 / 255.0)
+    static let widgetBrand = Color(red: 0x0F / 255.0, green: 0x76 / 255.0, blue: 0x6E / 255.0)
+    static let widgetReminding = Color(red: 0xC0 / 255.0, green: 0x39 / 255.0, blue: 0x2B / 255.0)
+    static let widgetSnoozed = Color(red: 0xD9 / 255.0, green: 0x77 / 255.0, blue: 0x06 / 255.0)
 }
 
 struct ReminderWidgetEntryView: View {
@@ -189,23 +189,26 @@ struct ReminderWidgetEntryView: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(Color.widgetSnoozed)
             } else {
+                let canSnooze = (entry.data.nextTime ?? .distantFuture) <= entry.date
                 HStack(spacing: 8) {
                     Button(intent: CompleteReminderIntent(reminderID: id, token: entry.data.nextActionToken ?? "")) {
                         Label("完成".localized, systemImage: "checkmark.circle")
                             .font(.caption.weight(.semibold))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(.green.opacity(0.15), in: Capsule())
-                            .foregroundStyle(.green)
+                            .background(Color.widgetBrand.opacity(0.14), in: Capsule())
+                            .foregroundStyle(Color.widgetBrand)
                     }
-                    // v2.0.16: 小组件「稍后提醒」快捷按钮
-                    Button(intent: SnoozeReminderIntent(reminderID: id, token: entry.data.nextActionToken ?? "")) {
-                        Label("稍后".localized, systemImage: "clock")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.widgetSnoozed.opacity(0.15), in: Capsule())
-                            .foregroundStyle(Color.widgetSnoozed)
+                    if canSnooze {
+                        // v2.0.16: 仅到期/通知中的提醒显示「稍后提醒」快捷按钮
+                        Button(intent: SnoozeReminderIntent(reminderID: id, token: entry.data.nextActionToken ?? "")) {
+                            Label("稍后".localized, systemImage: "clock")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.widgetSnoozed.opacity(0.15), in: Capsule())
+                                .foregroundStyle(Color.widgetSnoozed)
+                        }
                     }
                 }
             }

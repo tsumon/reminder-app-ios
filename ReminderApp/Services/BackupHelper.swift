@@ -79,6 +79,7 @@ enum BackupHelper {
         var records: [RecordItem]? = nil
         var scheduledOccurrenceAt: Double? = nil
         var timeZoneMode: String? = "deviceCalendar"
+        var useAlarmKit: Bool? = nil
 
         var stableID: UUID? { syncId.flatMap(UUID.init(uuidString:)) ?? id?.stringValue.flatMap(UUID.init(uuidString:)) }
 
@@ -87,7 +88,7 @@ enum BackupHelper {
             case advanceDays, reminderHour, reminderMinute, rulePeriod, ruleWeek, ruleWeekday, priority
             case firstTriggerAt, nextTriggerAt, status, isActive, isCritical, holidayAware
             case retryCount, recurrenceMode, reminderStyle, retryIntervalsMinutes, maxReminderAttempts, quietStartMinute, quietEndMinute
-            case createdAt, updatedAt, lastRetryAt, lastCompletedAt, lastConfirmedAt, records, scheduledOccurrenceAt, timeZoneMode
+            case createdAt, updatedAt, lastRetryAt, lastCompletedAt, lastConfirmedAt, records, scheduledOccurrenceAt, timeZoneMode, useAlarmKit
             case legacyCritical = "is_critical"
         }
         // Defaults must also apply while decoding minimal Android/legacy envelopes.
@@ -133,6 +134,7 @@ enum BackupHelper {
             lastCompletedAt = try c.decodeIfPresent(Double.self, forKey: .lastCompletedAt) ?? lastConfirmedAt
             scheduledOccurrenceAt = try c.decodeIfPresent(Double.self, forKey: .scheduledOccurrenceAt)
             timeZoneMode = try c.decodeIfPresent(String.self, forKey: .timeZoneMode) ?? "deviceCalendar"
+            useAlarmKit = try c.decodeIfPresent(Bool.self, forKey: .useAlarmKit)
             records = try c.decodeIfPresent([RecordItem].self, forKey: .records)
         }
     }
@@ -199,6 +201,7 @@ enum BackupHelper {
             item.retryCount = r.retryStage
             item.recurrenceMode = r.recurrenceMode
             item.reminderStyle = r.reminderStyle
+            item.useAlarmKit = r.useAlarmKit
             item.retryIntervalsMinutes = r.policy.intervals
             item.maxReminderAttempts = r.policy.attempts
             item.quietStartMinute = r.policy.quietStart
@@ -456,6 +459,7 @@ enum BackupHelper {
         reminder.retryIntervalsMinutes = policy.intervals; reminder.maxReminderAttempts = policy.attempts
         reminder.quietStartMinute = policy.quietStart; reminder.quietEndMinute = policy.quietEnd
         reminder.retryStage = min(10, max(0, item.retryCount ?? 0))
+        reminder.useAlarmKit = item.useAlarmKit ?? false
         reminder.policyMigrated = true
         if let date = item.createdAt { reminder.createdAt = Date(timeIntervalSince1970: date / 1000) }
         if let date = item.updatedAt { reminder.updatedAt = Date(timeIntervalSince1970: date / 1000) }

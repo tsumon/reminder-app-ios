@@ -9,61 +9,73 @@ import SwiftUI
 struct CheckInFeedbackBanner: View {
     let text: String?
 
+    @Environment(\.soft) private var soft
     @State private var visible = false
     @State private var pop = false
 
     var body: some View {
         VStack {
             if visible {
-                VStack(spacing: 8) {
-                    ZStack(alignment: .topTrailing) {
-                        MascotView(mood: .cheer, size: 56)
-                        Text("🎉")
-                            .font(.system(size: 17))
-                            .scaleEffect(pop ? 1.2 : 0.85)
-                            .animation(.spring(response: 0.4, dampingFraction: 0.5).repeatForever(autoreverses: true), value: pop)
-                            .offset(x: 8, y: -2)
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(ThemeTokens.strong.opacity(soft.isDark ? 0.22 : 0.14))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundStyle(ThemeTokens.strong)
+                            .scaleEffect(pop ? 1.08 : 0.92)
+                            .animation(.spring(response: 0.4, dampingFraction: 0.6), value: pop)
                     }
 
-                    Text(text ?? "")
-                        .font(.headline)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(Playful.ink)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(text ?? "")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(soft.text)
+                            .lineLimit(2)
 
-                    Text("+1 ⭐")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(Playful.ink)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 3)
-                        .background(Capsule().fill(Playful.gold.opacity(0.35)))
+                        HStack(spacing: 4) {
+                            Image(systemName: "sparkles")
+                                .font(.caption2.weight(.bold))
+                            Text("+1".localized)
+                                .font(.caption2.weight(.bold))
+                        }
+                        .foregroundStyle(ThemeTokens.strong)
+                    }
                 }
-                .padding(.horizontal, 26)
-                .padding(.vertical, 16)
-                .clayCard(radius: 22)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
+                .background(soft.elevated, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(soft.border, lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(soft.isDark ? 0.35 : 0.10), radius: 14, y: 6)
+                .padding(.top, 12)
                 .transition(.asymmetric(
-                    insertion: .scale(scale: 0.7).combined(with: .opacity),
+                    insertion: .move(edge: .top).combined(with: .opacity),
                     removal: .opacity
                 ))
             }
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .allowsHitTesting(false) // 不拦截点击，纯展示
+        .allowsHitTesting(false)
         .onChange(of: text) { _, newValue in
             guard newValue != nil else {
                 visible = false
                 return
             }
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
                 visible = true
             }
             pop = false
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.5)) {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.55)) {
                 pop = true
             }
             Task {
                 try? await Task.sleep(nanoseconds: 2_200_000_000)
-                withAnimation(.easeOut(duration: 0.3)) {
+                withAnimation(.easeOut(duration: 0.25)) {
                     visible = false
                 }
             }

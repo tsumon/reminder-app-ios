@@ -277,6 +277,22 @@ struct ChangelogView: View {
     }
 
     private let changelog: [ChangelogEntry] = [
+        ChangelogEntry(version: "v2.10.0", items: [
+            "全新 Warm-Paper & Deep-Teal 视觉体系，统一浅/深色卡片边框与高对比打卡反馈",
+            "修复切换主题色/语言后返回首页与列表被底栏遮挡问题，并打通本地备份恢复、新旧历双生日自动拆分及规则触发时间对齐",
+            "修复调休补班顺延、闰日与跨年腊月计算、规则周期日历标点、活跃重试防饥饿与统计漏掉口径",
+            "Release 构建严格剔除调试钩子，保持无签名 .ipa 与双端 WebDAV v4 删除同步协议不变",
+        ]),
+        ChangelogEntry(version: "v2.9.1", items: [
+            "完善本地化与同步基线回归验证（含 v2.7/v2.8 数据无损迁移）",
+        ]),
+        ChangelogEntry(version: "v2.9.0", items: [
+            "双端对齐增量同步代际、删除墓碑与并发动作防护",
+            "支持自定义重试间隔、勿扰时段与 AlarmKit 系统闹钟（iOS 26+）",
+        ]),
+        ChangelogEntry(version: "v2.5.0", items: [
+            "升级多套主题色板、统计热力图、连续打卡追踪与智能频率建议",
+        ]),
         ChangelogEntry(version: "v1.9.2", items: [
             "修复安卓端收不到更新提示（GitHub API 国内超时）",
             "WebDAV 坚果云友好错误提示 + 「测试连接」按钮",
@@ -286,10 +302,9 @@ struct ChangelogView: View {
             "首页菜单新增「检查更新」入口",
         ]),
         ChangelogEntry(version: "v1.9.0", items: [
-            "UI 优化：滴答清单风格（渐变概览卡、已完成划线、卡片圆角阴影）",
+            "UI 优化：渐变概览卡、已完成划线、卡片圆角阴影",
             "日历：滑动切月 + 月份选择器 + 回到今天",
             "在线升级：自动检查 GitHub 最新版本，下载到本地安装",
-            "新增 App 图标（品牌紫 + 铃铛）",
         ]),
         ChangelogEntry(version: "v1.8.7", items: [
             "小组件增强：农历日期格、倒计时、完成按钮、大尺寸",

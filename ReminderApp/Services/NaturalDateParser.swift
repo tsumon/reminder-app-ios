@@ -203,15 +203,15 @@ struct NaturalDateParser {
             if let d = cal.date(from: c) { base = d }
         }
 
-        // 农历 X月X
-        if let g = firstMatch("(?:农历|旧历|阴历)\\s*([0-9]{1,2})\\s*月\\s*([0-9]{1,2})", in: text) {
-            let lm = clamp(Int(g[1]) ?? 1, 1, 12)
-            let ld = clamp(Int(g[2]) ?? 1, 1, 30)
-            let year = cal.component(.year, from: base)
-            if let solar = LunarCalendar.lunarToSolar(lunarYear: year, lunarMonth: lm, lunarDay: ld) {
+        // 农历 X月X（支持阿拉伯数字及中文农历月份/日词：正月/腊月/初一/廿三/三十）
+        let lunarRegex = "(?:农历|旧历|阴历)\\s*([0-9]{1,2}|正|冬|腊|十[一二]|[一二三四五六七八九十])\\s*月\\s*([0-9]{1,2}|初?[一二三四五六七八九十]|十[一二三四五六七八九]|二[一二三四五六七八九十]?|廿[一二三四五六七八九]?|三[十]?|卅)"
+        if let g = firstMatch(lunarRegex, in: text),
+           let lm = parseLunarMonth(g[1]),
+           let ld = parseLunarDay(g[2]) {
+            targetMonth = lm; targetDay = ld
+            repeatMode = "lunar"; dateType = .lunarBirthday
+            if let solar = LunarCalendar.nextLunarBirthday(month: lm, day: ld, hour: hour, minute: minute, from: now) {
                 base = solar
-                targetMonth = lm; targetDay = ld
-                repeatMode = "lunar"; dateType = .lunarBirthday
             }
         }
 
@@ -224,9 +224,27 @@ struct NaturalDateParser {
         comps.second = 0
         var next = cal.date(from: comps) ?? base
 
-        // 一次性且已过去 → 顺延一天，避免立即触发
+        // 已过去的时间推进到下一次有效触发（一次性+1天；年度公历延展到下一有效年/闰日；农历由 nextLunarBirthday 处理）
         if repeatMode == "once" && next <= now {
             next = cal.date(byAdding: .day, value: 1, to: next) ?? next
+        } else if repeatMode == "yearly", dateType == .solarBirthday, let tm = targetMonth, let td = targetDay, next <= now {
+            let startYear = cal.component(.year, from: now)
+            for y in startYear...(startYear + 8) {
+                var yc = DateComponents()
+                yc.year = y; yc.month = tm; yc.day = td; yc.hour = hour; yc.minute = minute; yc.second = 0
+                if let d = cal.date(from: yc),
+                   cal.component(.month, from: d) == tm,
+                   cal.component(.day, from: d) == td,
+                   d > now {
+                    next = d
+                    break
+                }
+            }
+        } else if repeatMode == "lunar", let tm = targetMonth, let td = targetDay, next <= now,
+                  let solar = LunarCalendar.nextLunarBirthday(month: tm, day: td, hour: hour, minute: minute, from: now) {
+            var lc = cal.dateComponents([.year, .month, .day], from: solar)
+            lc.hour = hour; lc.minute = minute; lc.second = 0
+            next = cal.date(from: lc) ?? solar
         }
 
         let title = extractTitle(text)
@@ -271,7 +289,7 @@ struct NaturalDateParser {
         t = replacing("每月\\s*[0-9]{1,2}\\s*[号日]", in: t)
         t = replacing("[0-9]{1,2}\\s*月\\s*[0-9]{1,2}\\s*[号日]", in: t)
         t = replacing("(?<![0-9.])[0-9]{1,2}[.\\-/][0-9]{1,2}(?![0-9.\\-/])", in: t)
-        t = replacing("(农历|旧历|阴历)\\s*[0-9]{1,2}\\s*月\\s*[0-9]{1,2}", in: t)
+        t = replacing("(?:农历|旧历|阴历)\\s*(?:[0-9]{1,2}|正|冬|腊|十[一二]|[一二三四五六七八九十])\\s*月\\s*(?:[0-9]{1,2}|初?[一二三四五六七八九十]|十[一二三四五六七八九]|二[一二三四五六七八九十]?|廿[一二三四五六七八九]?|三[十]?|卅)[号日]?", in: t)
         t = replacing("(早上|上午|中午|下午|晚上|凌晨|傍晚)", in: t)
         t = replacing("[0-9]{1,3}\\s*(天|周|小时|分钟)\\s*[后以後]", in: t)
         t = replacing("(每天|每日|天天|每年|年年|每周|每星期|每礼拜|每月|每个月)", in: t)
@@ -280,5 +298,37 @@ struct NaturalDateParser {
         t = replacing("\\s+", in: t)
         let trimmed = t.trimmingCharacters(in: .whitespaces)
         return trimmed.isEmpty ? "提醒" : trimmed
+    }
+
+    private static let chineseDigits: [Character: Int] = [
+        "一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+        "六": 6, "七": 7, "八": 8, "九": 9
+    ]
+
+    private static func parseLunarMonth(_ raw: String) -> Int? {
+        if let n = Int(raw), (1...12).contains(n) { return n }
+        switch raw {
+        case "正": return 1
+        case "冬": return 11
+        case "腊": return 12
+        case "十": return 10
+        case "十一": return 11
+        case "十二": return 12
+        default:
+            if raw.count == 1, let c = raw.first, let d = chineseDigits[c] { return d }
+            return nil
+        }
+    }
+
+    private static func parseLunarDay(_ raw: String) -> Int? {
+        if let n = Int(raw), (1...30).contains(n) { return n }
+        let s = raw.hasPrefix("初") ? String(raw.dropFirst()) : raw
+        if s == "十" { return 10 }
+        if s == "二十" || s == "廿" { return 20 }
+        if s == "三十" || s == "卅" { return 30 }
+        if s.count == 1, let c = s.first, let d = chineseDigits[c] { return d }
+        if s.hasPrefix("十"), s.count == 2, let c = s.last, let d = chineseDigits[c] { return 10 + d }
+        if (s.hasPrefix("廿") || s.hasPrefix("二")), s.count == 2, let c = s.last, let d = chineseDigits[c] { return 20 + d }
+        return nil
     }
 }

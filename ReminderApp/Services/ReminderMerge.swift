@@ -37,6 +37,7 @@ import SwiftData
         r.firstTriggerAt = fresh.firstTriggerAt; r.nextTriggerAt = fresh.nextTriggerAt
         r.status = fresh.status; r.priority = fresh.priority; r.isEnabled = fresh.isEnabled; r.holidayAware = fresh.holidayAware
         r.recurrenceMode = fresh.recurrenceMode; r.reminderStyle = fresh.reminderStyle
+        r.useAlarmKit = fresh.useAlarmKit
         r.retryIntervalsMinutes = fresh.retryIntervalsMinutes; r.maxReminderAttempts = fresh.maxReminderAttempts
         r.quietStartMinute = fresh.quietStartMinute; r.quietEndMinute = fresh.quietEndMinute; r.policyMigrated = true
         r.retryStage = fresh.retryStage; r.lastRetryAt = fresh.lastRetryAt; r.lastCompletedAt = fresh.lastCompletedAt

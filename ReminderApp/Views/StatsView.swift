@@ -17,53 +17,105 @@ struct StatsView: View {
         return cal.dateInterval(of:unit,for:date)
     }
     var body: some View {
-        let selectedInterval=interval
-        let records = reminders.flatMap { $0.records }.filter { record in
+        let selectedInterval = interval
+        let allRecords = reminders.flatMap { $0.records }
+        let allSummary = StatsService.summarize(records: allRecords)
+        let records = allRecords.filter { record in
             guard let selectedInterval else { return true }
-            return record.performedAt>=selectedInterval.start && record.performedAt<selectedInterval.end
+            return record.performedAt >= selectedInterval.start && record.performedAt < selectedInterval.end
         }
         let summary = StatsService.summarize(records: records)
         let rate = summary.completionRate ?? 0
+        let confirmTotal = records.filter { $0.type == ReminderRecordType.confirm.rawValue }.count
+        let skipTotal = records.filter { $0.type == ReminderRecordType.skipped.rawValue }.count
 
         ScrollView {
             VStack(spacing: 14) {
-                Picker("日期".localized,selection:$range) {
-                    Text("本周".localized).tag("week");Text("本月".localized).tag("month");Text("全部".localized).tag("all")
-                }.pickerStyle(.segmented).onChange(of:range) { _,_ in rangeOffset=0 }
+                Picker("日期".localized, selection: $range) {
+                    Text("本周".localized).tag("week")
+                    Text("本月".localized).tag("month")
+                    Text("全部".localized).tag("all")
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: range) { _, _ in rangeOffset = 0 }
+
                 if let interval {
                     HStack {
-                        Button { rangeOffset-=1 } label: { Image(systemName:"chevron.left").frame(width:44,height:44) }.accessibilityLabel("上一段时间".localized)
+                        Button { rangeOffset -= 1 } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(ThemeTokens.strong)
+                                .frame(width: 40, height: 40)
+                                .background(soft.surface, in: Circle())
+                                .overlay(Circle().strokeBorder(soft.border, lineWidth: 1))
+                        }
+                        .accessibilityLabel("上一段时间".localized)
                         Spacer()
-                        Text(interval.start.formatted(date:.abbreviated,time:.omitted)+" – "+interval.end.addingTimeInterval(-1).formatted(date:.abbreviated,time:.omitted)).font(.caption)
+                        Text(interval.start.formatted(date: .abbreviated, time: .omitted) + " – " + interval.end.addingTimeInterval(-1).formatted(date: .abbreviated, time: .omitted))
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(soft.muted)
                         Spacer()
-                        Button { rangeOffset+=1 } label: { Image(systemName:"chevron.right").frame(width:44,height:44) }.accessibilityLabel("下一段时间".localized)
+                        Button { rangeOffset += 1 } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(ThemeTokens.strong)
+                                .frame(width: 40, height: 40)
+                                .background(soft.surface, in: Circle())
+                                .overlay(Circle().strokeBorder(soft.border, lineWidth: 1))
+                        }
+                        .accessibilityLabel("下一段时间".localized)
                     }
                 }
-                VStack(alignment:.leading,spacing:12) {
-                    Text("每次确认，都有记录".localized).font(.title2.bold())
-                    Text("完成、跳过和漏掉分别统计".localized).foregroundStyle(.secondary)
-                    HStack {
-                        overviewCard(title:"已完成",value:"\(records.filter { $0.type == "confirm" }.count)",color:soft.ok)
-                        overviewCard(title:"跳过",value:"\(records.filter { $0.type == "skipped" }.count)",color:soft.warn)
-                        overviewCard(title:"漏掉",value:"\(summary.missedCount)",color:soft.danger)
+
+                SoftShadowCard(kind: .elevated, radius: ThemeTokens.radiusCard) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("每次确认，都有记录".localized)
+                                    .font(SoftType.section)
+                                    .foregroundStyle(soft.text)
+                                Text("完成、跳过和漏掉分别统计".localized)
+                                    .font(SoftType.caption)
+                                    .foregroundStyle(soft.muted)
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 1) {
+                                Text(summary.completionRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "—")
+                                    .font(.title2.weight(.bold))
+                                    .foregroundStyle(ThemeTokens.strong)
+                                Text("完成率".localized)
+                                    .font(.caption2)
+                                    .foregroundStyle(soft.muted)
+                            }
+                        }
+
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            compactMetric(title: "已完成", value: "\(confirmTotal)", color: soft.ok, icon: "checkmark.circle.fill")
+                            compactMetric(title: "跳过", value: "\(skipTotal)", color: soft.warn, icon: "forward.fill")
+                            compactMetric(title: "漏掉", value: "\(summary.missedCount)", color: soft.danger, icon: "exclamationmark.circle.fill")
+                            compactMetric(title: "连续天数", value: "\(allSummary.currentStreak)", color: ThemeTokens.strong, icon: "flame.fill")
+                        }
+
+                        Text("漏掉按出现重试的日期计数；完成与跳过按操作次数计数。".localized)
+                            .font(.caption2)
+                            .foregroundStyle(soft.muted)
                     }
-                    Text("漏掉按出现重试的日期计数；完成与跳过按操作次数计数。".localized).font(.caption).foregroundStyle(.secondary)
+                    .padding(16)
                 }
-                overviewCards(summary)
 
                 SoftShadowCard(kind: .card, radius: ThemeTokens.radiusCard) {
                     SoftDonutChart(rate: rate, confirm: summary.confirmCount, missed: summary.missedCount)
                 }
 
                 SoftShadowCard(kind: .card, radius: ThemeTokens.radiusCard) {
-                    CheckInHeatmap(counts: summary.heatmap)
+                    CheckInHeatmap(counts: allSummary.heatmap)
                 }
 
-                castleCard(summary)
+                castleCard(allSummary)
                 forgetHoursCard(summary)
             }
             .padding(.horizontal, 16)
-            .padding(.top, 4)
+            .padding(.top, 8)
             .padding(.bottom, 24)
         }
         .background(PaperCanvas())
@@ -80,32 +132,30 @@ struct StatsView: View {
         }
     }
 
-    private func overviewCards(_ s: StatsSummary) -> some View {
+    private func compactMetric(title: String, value: String, color: Color, icon: String) -> some View {
         HStack(spacing: 10) {
-            overviewCard(title: "完成天数", value: "\(s.confirmCount)", color: soft.ok)
-            overviewCard(title: "连续天数", value: "\(s.currentStreak)", color: soft.warn)
-            overviewCard(
-                title: "完成率",
-                value: s.completionRate.map { "\(Int($0 * 100))%" } ?? "0%",
-                color: ThemeTokens.strong
-            )
-        }
-    }
-
-    private func overviewCard(title: String, value: String, color: Color) -> some View {
-        SoftShadowCard(kind: .elevated, radius: ThemeTokens.radiusShallow) {
-            VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 28, height: 28)
+                .background(color.opacity(soft.isDark ? 0.18 : 0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 1) {
                 Text(value)
-                    .font(SoftType.meter)
-                    .meterTracking()
-                    .foregroundStyle(color)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(soft.text)
                 Text(title.localized)
-                    .font(SoftType.caption)
+                    .font(.caption2)
                     .foregroundStyle(soft.muted)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(soft.canvas.opacity(soft.isDark ? 0.65 : 0.9), in: RoundedRectangle(cornerRadius: ThemeTokens.radiusShallow, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: ThemeTokens.radiusShallow, style: .continuous)
+                .strokeBorder(soft.border, lineWidth: 1)
+        )
     }
 
     private func castleCard(_ s: StatsSummary) -> some View {
@@ -151,7 +201,11 @@ struct StatsView: View {
                 if !s.forgetHours.isEmpty {
                     ForEach(Array(s.forgetHours.enumerated()), id: \.offset) { idx, item in
                         HStack(spacing: 10) {
-                            Text(["🥇", "🥈", "🥉"][idx])
+                            Text("#\(idx + 1)")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(ThemeTokens.strong)
+                                .frame(width: 24, height: 24)
+                                .background(ThemeTokens.strong.opacity(soft.isDark ? 0.20 : 0.12), in: Circle())
                             Text(Localized("%d:00 前后", item.hour))
                                 .font(SoftType.bodyMedium)
                                 .foregroundStyle(soft.text)

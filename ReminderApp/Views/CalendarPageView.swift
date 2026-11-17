@@ -112,8 +112,8 @@ struct CalendarPageView: View {
     private var dayTitle: String {
         let f = DateFormatter()
         f.dateFormat = "M月d日 · EEEE"
-        f.locale = Locale(identifier: "zh_CN")
-        return f.string(from: selectedDate) + "的任务"
+        f.locale = AppLanguageManager.currentLocale
+        return f.string(from: selectedDate) + "的任务".localized
     }
 
     @MainActor private var dayReminders: [Reminder] {

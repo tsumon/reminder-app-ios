@@ -131,15 +131,16 @@ enum UpdateService {
             try FileManager.default.removeItem(at: file)
         }
 
-        var candidates: [URL] = [ipaAssetURL]
+        var candidates: [URL] = []
         if let tagged = taggedAssetURL(info.tag) {
             candidates.append(tagged)
         }
+        candidates.append(ipaAssetURL)
         for prefix in mirrorPrefixes {
-            candidates.append(URL(string: prefix + ipaAssetURL.absoluteString)!)
             if let tagged = taggedAssetURL(info.tag) {
                 candidates.append(URL(string: prefix + tagged.absoluteString)!)
             }
+            candidates.append(URL(string: prefix + ipaAssetURL.absoluteString)!)
         }
 
         var lastError: Error = URLError(.badServerResponse)

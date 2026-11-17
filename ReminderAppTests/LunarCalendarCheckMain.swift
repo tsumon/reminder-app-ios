@@ -136,6 +136,11 @@ struct LunarCalendarCheck {
               LunarCalendar.lunarToSolar(lunarYear: 2027, lunarMonth: 1, lunarDay: 1) == date(2027, 2, 6))
         check("nextLunarBirthday(正月初一, from 2026-08-06) = 2027-02-06",
               LunarCalendar.nextLunarBirthday(month: 1, day: 1, from: date(2026, 8, 6)) == date(2027, 2, 6))
+        let springMorning = Calendar.current.date(bySettingHour: 8, minute: 0, second: 0, of: date(2026, 2, 17))!
+        check("同日清晨 nextLunarBirthday(正月初一) 返回当天而非跳过一年",
+              LunarCalendar.nextLunarBirthday(month: 1, day: 1, from: springMorning) == date(2026, 2, 17))
+        check("腊月十五在公历2028-01-05查得2028-01-11",
+              LunarCalendar.nextLunarBirthday(month: 12, day: 15, from: date(2028, 1, 5)) == date(2028, 1, 11))
 
         print(failures == 0 ? "== ALL LUNAR REGRESSION PASS ==" : "== \(failures) FAILURES ==")
         exit(Int32(failures))

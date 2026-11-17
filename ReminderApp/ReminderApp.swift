@@ -60,12 +60,25 @@ struct ReminderApp: App {
     @StateObject private var notificationManager = NotificationManager.shared
     @StateObject private var reminderEngine = ReminderEngine.shared
     @Environment(\.scenePhase) private var scenePhase
+    @State private var selectedTab: Int = ReminderApp.initialTab()
     // v2.0.4: 手动语言切换 —— 变化时通过 .id() 强制整棵视图树重建，新语言生效
     @AppStorage(AppLanguageManager.key) private var appLanguage = AppLanguage.system.rawValue
     // v2.1.1: 手动主题（0=跟随系统 1=浅色 2=深色）
     @AppStorage(ThemeStore.key) private var themeMode = 0
     // v2.4.0: 主题色板索引（切换后整树重建，全局换肤即时生效）
     @AppStorage(ThemeStore.colorKey) private var themeColor = 0
+
+    private static func initialTab() -> Int {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let idx = args.firstIndex(of: "-tab"),
+           args.indices.contains(idx + 1),
+           let t = Int(args[idx + 1]) {
+            return min(max(t, 0), 3)
+        }
+        #endif
+        return 0
+    }
 
     /// SwiftData 容器（v2.1.1: 提升为 static，供 AppIntents/快捷指令访问同一 store）
     static let sharedModelContainer: ModelContainer = {
@@ -90,8 +103,9 @@ struct ReminderApp: App {
             // v1.9.8: 底部导航 Tab（首页/日历/统计/设置），对齐 README 设计图
             // v2.0.4: .id("\(appLanguage)-\(themeColor)") —— 语言切换后整树重建刷新文案
             // v2.1.1: .preferredColorScheme —— 手动主题（0=跟随系统）
-            MainTabView()
+            MainTabView(selectedTab: $selectedTab)
                 .id("\(appLanguage)-\(themeColor)")
+                .environment(\.locale, AppLanguageManager.currentLocale)
                 .preferredColorScheme(themeMode == 1 ? .light : themeMode == 2 ? .dark : nil)
                 .onAppear {
                     reminderEngine.configure(with: Self.sharedModelContainer.mainContext)

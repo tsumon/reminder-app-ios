@@ -342,6 +342,8 @@ enum WebDavSync {
                     return "服务器不支持该操作（HTTP 405）：请确认填的是 WebDAV 地址（如 …/dav/），不是网盘网页地址。"
                 case 409:
                     return "资源冲突（HTTP 409）。"
+                case 412:
+                    return "远程版本已变更，或服务器不支持安全版本更新。同步已停止，请重新下载检查；未覆盖远程文件。"
                 case 423:
                     return "资源被锁定（HTTP 423）。"
                 case 507:
