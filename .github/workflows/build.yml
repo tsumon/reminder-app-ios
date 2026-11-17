@@ -232,8 +232,10 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$WIDGET_BUNDLE/Info.plist")" = "com.reminder.app.widget"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$WIDGET_BUNDLE/Info.plist")" = "2.10.0"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$WIDGET_BUNDLE/Info.plist")" = "73"
-          codesign -dv "$APP_BUNDLE" 2>&1 | grep -q "code object is not signed at all"
-          codesign -dv "$WIDGET_BUNDLE" 2>&1 | grep -q "code object is not signed at all"
+          APP_SIG=$(codesign -dv "$APP_BUNDLE" 2>&1 || true)
+          WIDGET_SIG=$(codesign -dv "$WIDGET_BUNDLE" 2>&1 || true)
+          printf '%s\n' "$APP_SIG" | grep -q "code object is not signed at all"
+          printf '%s\n' "$WIDGET_SIG" | grep -q "code object is not signed at all"
           rm -rf "$VERIFY_DIR"
 
       - name: Upload IPA
