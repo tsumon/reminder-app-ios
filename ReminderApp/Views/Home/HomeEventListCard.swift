@@ -99,16 +99,26 @@ struct HomeEventListCard: View {
     @ViewBuilder
     private func eventRow(_ item: HomeDisplayRow) -> some View {
         let r = item.nearest
+        let isPair: Bool = {
+            if case .pair = item { return true }
+            return false
+        }()
         let displayTitle: String = {
             switch item {
             case .pair(let s, _): return String(s.title.dropLast("（公历）".count))
             case .single(let single): return single.title
             }
         }()
+        let pairSubtitle: String? = {
+            if case .pair(let s, let l) = item {
+                return Localized("公历 %@", s.dateDisplayText) + " · " + Localized("农历 %@", l.dateDisplayText)
+            }
+            return nil
+        }()
         let summary: String = {
             switch item {
-            case .pair(let s, let l):
-                return "公历\(s.dateDisplayText)·农历\(l.dateDisplayText)"
+            case .pair:
+                return ""
             case .single(let single):
                 return single.dateDisplayText
             }
@@ -128,7 +138,13 @@ struct HomeEventListCard: View {
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(comic.ink)
                     .lineLimit(1)
-                if r.status == .overdue {
+                if let pairSubtitle {
+                    Text(pairSubtitle)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(comic.muted)
+                        .lineLimit(1)
+                } else if r.status == .overdue {
                     Text("已逾期".localized)
                         .font(.system(size: 11.5, weight: .semibold, design: .rounded))
                         .foregroundStyle(comic.danger)
@@ -145,11 +161,15 @@ struct HomeEventListCard: View {
                 onOpenDetail(r.id)
             }
 
-            Text(summary)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(comic.muted)
-                .lineLimit(1)
+            if !isPair {
+                Text(summary)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(comic.muted)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
 
             Button {
                 onConfirm(r)

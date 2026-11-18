@@ -91,17 +91,29 @@ struct EditorRuleAndDateFields: View {
 
     private var dateBlock: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 12) {
                 Text("日期类型".localized)
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(comic.muted)
                 Spacer()
-                Picker("类型".localized, selection: $dateType) {
+                HStack(spacing: 14) {
                     ForEach(DateReminderType.allCases, id: \.self) { t in
-                        Text(t.rawValue.localized).tag(t)
+                        let selected = dateType == t
+                        Button {
+                            dateType = t
+                        } label: {
+                            VStack(spacing: 2) {
+                                Text(t.rawValue.localized)
+                                    .font(.system(size: 13.5, weight: selected ? .heavy : .medium, design: .rounded))
+                                    .foregroundStyle(selected ? comic.ink : comic.muted)
+                                Rectangle()
+                                    .fill(selected ? comic.accent : Color.clear)
+                                    .frame(width: 20, height: 2)
+                            }
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .pickerStyle(.menu)
             }
 
             if dateType != .holiday {
