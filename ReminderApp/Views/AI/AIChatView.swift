@@ -15,7 +15,7 @@ struct AIChatView: View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 12) {
+                    VStack(spacing: 12) {
                         if vm.messages.isEmpty {
                             welcomeView
                         }
@@ -56,9 +56,7 @@ struct AIChatView: View {
                     }
                 }
                 .onChange(of: vm.messages.count) { _, _ in
-                    if let last = vm.messages.last?.id {
-                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last, anchor: .bottom) }
-                    }
+                    scrollToLatest(proxy: proxy)
                 }
                 .onChange(of: historyScrollTrigger) { _, _ in
                     if let first = vm.messages.first?.id {

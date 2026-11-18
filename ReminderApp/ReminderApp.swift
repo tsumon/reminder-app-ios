@@ -47,6 +47,8 @@ struct ReminderApp: App {
         if ProcessInfo.processInfo.arguments.contains("-uitest_ai_fixture") {
             UserDefaults.standard.set(true, forKey: "ai_is_local")
             UserDefaults.standard.set("http://127.0.0.1:9/v1", forKey: "ai_endpoint")
+            AISettings.shared.isLocal = true
+            AISettings.shared.apiEndpoint = "http://127.0.0.1:9/v1"
             if !ChatHistoryStore.load().contains(where: { $0.content == "测试消息 15" }) {
                 let now = Date()
                 // v2.5.1: 15 条足够撑满视口——验证打开对话框自动滚到底部
