@@ -2,12 +2,11 @@ import SwiftUI
 import SwiftData
 import Network
 
-/// 近场传输：同一局域网内互传提醒
-/// - 发送：启动本地服务，对方在「接收」页输入本机地址即可收到全部提醒
-/// - 接收：输入对方 IP → 下载 → 导入（去重/过期重算/重新调度）
+/// 局域网近场互传（彻底移除旧紫色与毛玻璃，统一极简奶油漫风）
 struct NearbyShareView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.comic) private var comic
     @Query(sort: \Reminder.title) private var reminders: [Reminder]
 
     @State private var mode: Mode = .send
@@ -19,8 +18,6 @@ struct NearbyShareView: View {
     @State private var resultMsg: String?
     @State private var isError = false
     @State private var showScanner = false
-    /// 当前提醒的导出 JSON 缓存（@Query 变化时刷新，发送线程只读字符串，
-    /// 避免在后台队列直接读 SwiftData 模型，也保证发送的是最新数据）
     @State private var shareJSON = ""
 
     enum Mode: String, CaseIterable, Identifiable {
@@ -32,138 +29,127 @@ struct NearbyShareView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("模式".localized, selection: $mode) {
-                    ForEach(Mode.allCases) { Text($0.rawValue.localized).tag($0) }
+                HStack(spacing: 20) {
+                    ForEach(Mode.allCases) { m in
+                        let active = mode == m
+                        Button {
+                            mode = m
+                        } label: {
+                            VStack(spacing: 3) {
+                                Text(m.rawValue.localized)
+                                    .font(.system(size: 15, weight: active ? .heavy : .medium, design: .rounded))
+                                    .foregroundStyle(active ? comic.ink : comic.muted)
+                                Rectangle()
+                                    .fill(active ? comic.accent : Color.clear)
+                                    .frame(width: 22, height: 2)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+                .padding(.horizontal, ThemeTokens.gutter)
+                .padding(.vertical, 10)
 
-                if mode == .send {
-                    sendView
-                } else {
-                    receiveView
+                ComicHairline(outer: true)
+
+                ScrollView {
+                    if mode == .send {
+                        sendCard
+                            .padding(ThemeTokens.gutter)
+                    } else {
+                        receiveCard
+                            .padding(ThemeTokens.gutter)
+                    }
                 }
             }
+            .background(ComicCanvas())
             .navigationTitle("附近传输".localized)
             .navigationBarTitleDisplayMode(.inline)
-            .glassPageBackground()
-            .glassNavigationBar()
+            .toolbarBackground(comic.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("完成".localized) { dismiss() }
+                        .font(.system(size: 14.5, weight: .bold, design: .rounded))
+                        .foregroundStyle(comic.ink)
                 }
             }
             .onDisappear { stopServer() }
         }
     }
 
-    // MARK: - 发送
+    // MARK: - 发送面板
 
-    private var sendView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "antenna.radiowaves.left.and.right")
-                .font(.system(size: 44))
-                .foregroundStyle(.purple)
-                .padding(.top, 24)
+    private var sendCard: some View {
+        ComicCard(cut: ThemeTokens.cardCut, padding: 20) {
+            VStack(spacing: 14) {
+                Text("两台设备连接同一 Wi-Fi 后即可互传".localized)
+                    .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(comic.muted)
 
-            Text("两台设备连接同一 Wi-Fi 后即可互传".localized)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                if let ip = NearbyShareService.localIPAddress() {
+                    Text("http://\(ip):\(NearbyShareService.portString)")
+                        .font(.system(size: 16, weight: .heavy, design: .monospaced))
+                        .foregroundStyle(comic.ink)
+                        .textSelection(.enabled)
 
-            if let ip = NearbyShareService.localIPAddress() {
-                Text("本机地址".localized)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("http://\(ip):\(NearbyShareService.portString)")
-                    .font(.title3.monospaced().weight(.semibold))
-                    .textSelection(.enabled)
-
-                // 二维码：对方扫码即自动填入地址
-                VStack(spacing: 4) {
                     if let qr = QRCodeService.generateQRCode(from: "http://\(ip):\(NearbyShareService.portString)\(NearbyShareService.path)") {
                         Image(uiImage: qr)
                             .interpolation(.none)
                             .resizable()
                             .scaledToFit()
-                            .frame(width: 190, height: 190)
-                            .padding(8)
+                            .frame(width: 184, height: 184)
+                            .padding(10)
                             .background(Color.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .strokeBorder(.white.opacity(0.6), lineWidth: 1)
+                                ChamferShape(cut: 8)
+                                    .stroke(comic.border, lineWidth: 1.5)
                             )
-                            .shadow(color: .black.opacity(0.15), radius: 10, y: 4)
                     }
-                    Text("对方用「扫码」扫这里，自动开始接收".localized)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            } else {
-                Text("无法获取局域网 IP\n请确认已连接 Wi-Fi".localized)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.red)
-            }
 
-            if listener != nil {
-                VStack(spacing: 8) {
-                    if !serverLog.isEmpty {
-                        Text(serverLog)
-                            .font(.caption)
-                            .foregroundStyle(serverLogIsError ? .red : .green)
-                    }
-                    Button("停止共享".localized, role: .destructive) {
+                    Text("对方用「扫码接收」扫上方二维码即可自动导入".localized)
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .foregroundStyle(comic.muted)
+                } else {
+                    Text("无法获取局域网 IP，请确认已连接 Wi-Fi".localized)
+                        .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+                        .foregroundStyle(comic.danger)
+                }
+
+                if !serverLog.isEmpty {
+                    Text(serverLog)
+                        .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                        .foregroundStyle(serverLogIsError ? comic.danger : comic.ok)
+                }
+
+                if listener != nil {
+                    Button("停止共享".localized) {
                         stopServer()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
+                    .buttonStyle(ComicButtonStyle(variant: .danger, expand: true))
+                } else {
+                    Button {
+                        startServer()
+                    } label: {
+                        Label(Localized("开始共享当前提醒（%d 条）", reminders.count), systemImage: "paperplane.fill")
+                    }
+                    .buttonStyle(ComicButtonStyle(variant: .accent, expand: true))
                 }
-            } else {
-                if !serverLog.isEmpty {
-                    // 启动失败等错误日志在未运行时也显示（红色）
-                    Text(serverLog)
-                        .font(.caption)
-                        .foregroundStyle(serverLogIsError ? .red : .green)
-                }
-                Button {
-                    startServer()
-                } label: {
-                    Label(Localized("开始共享当前提醒（%d 条）", reminders.count), systemImage: "paperplane.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.purple)
-
-                Text("对方在「接收」页输入上方地址即可收到全部提醒".localized)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
             }
-            Spacer()
+            .frame(maxWidth: .infinity)
         }
-        .padding()
-        .onAppear {
-            shareJSON = BackupHelper.exportJSON(reminders)
-        }
-        .onChange(of: reminders) { _, newValue in
-            shareJSON = BackupHelper.exportJSON(newValue)
-        }
+        .onAppear { shareJSON = BackupHelper.exportJSON(reminders) }
+        .onChange(of: reminders) { _, newValue in shareJSON = BackupHelper.exportJSON(newValue) }
     }
 
     private func startServer() {
-        serverLog = ""
-        serverLogIsError = false
+        serverLog = ""; serverLogIsError = false
         do {
             listener = try NearbyShareService.startServer(
-                jsonProvider: {
-                    shareJSON
-                },
+                jsonProvider: { shareJSON },
                 onEvent: { msg, isErr in
-                    Task { @MainActor in
-                        serverLog = msg
-                        serverLogIsError = isErr
-                    }
+                    Task { @MainActor in serverLog = msg; serverLogIsError = isErr }
                 }
             )
         } catch {
@@ -177,69 +163,55 @@ struct NearbyShareView: View {
         listener = nil
     }
 
-    // MARK: - 接收
+    // MARK: - 接收面板
 
-    private var receiveView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "arrow.down.circle.fill")
-                .font(.system(size: 44))
-                .foregroundStyle(.purple)
-                .padding(.top, 24)
+    private var receiveCard: some View {
+        ComicCard(cut: ThemeTokens.cardCut, padding: 20) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("扫描发送方二维码，或手动输入局域网地址".localized)
+                    .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(comic.muted)
 
-            Text("扫发送方二维码，或手动输入地址\n（支持 192.168.1.100 或完整 http://192.168.1.100:47823）".localized)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
-            // 扫码主操作
-            Button {
-                showScanner = true
-            } label: {
-                Label("扫码接收（扫对方二维码）".localized, systemImage: "qrcode.viewfinder")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(ThemeTokens.brandPrimary)
-            .padding(.horizontal)
-
-            HStack(spacing: 8) {
-                Rectangle().fill(.secondary.opacity(0.3)).frame(height: 1)
-                Text("或手动输入".localized).font(.caption2).foregroundStyle(.secondary)
-                Rectangle().fill(.secondary.opacity(0.3)).frame(height: 1)
-            }
-            .padding(.horizontal)
-
-            TextField("192.168.1.100", text: $receiveIP)
-                .keyboardType(.numbersAndPunctuation)
-                .textFieldStyle(.roundedBorder)
-                .autocapitalization(.none)
-                .disableAutocorrection(true)
-                .padding(.horizontal)
-
-            if isReceiving {
-                ProgressView("正在下载...")
-            } else {
                 Button {
-                    receive(from: receiveIP)
+                    showScanner = true
                 } label: {
-                    Label("下载并导入".localized, systemImage: "arrow.down.circle")
+                    Label("扫码接收（扫对方二维码）".localized, systemImage: "qrcode.viewfinder")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.purple)
-                .disabled(receiveIP.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
+                .buttonStyle(ComicButtonStyle(variant: .accent, expand: true))
 
-            if let msg = resultMsg {
-                Text(msg)
-                    .font(.footnote)
-                    .foregroundStyle(isError ? .red : .green)
-                    .multilineTextAlignment(.center)
+                ComicHairline(outer: false)
+
+                TextField("192.168.1.100", text: $receiveIP)
+                    .keyboardType(.numbersAndPunctuation)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .foregroundStyle(comic.ink)
+
+                if isReceiving {
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text("正在下载...".localized)
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(comic.muted)
+                    }
+                } else {
+                    Button {
+                        receive(from: receiveIP)
+                    } label: {
+                        Label("下载并导入".localized, systemImage: "arrow.down.circle")
+                    }
+                    .buttonStyle(ComicButtonStyle(variant: .surface, expand: true))
+                    .disabled(receiveIP.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+
+                if let msg = resultMsg {
+                    Text(msg)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(isError ? comic.danger : comic.ok)
+                }
             }
-            Spacer()
         }
-        .padding()
-        // 扫码 sheet：扫到后自动下载导入
         .sheet(isPresented: $showScanner) {
             NavigationStack {
                 ZStack {
@@ -247,7 +219,6 @@ struct NearbyShareView: View {
                     QRScannerView(
                         onScanned: { value in
                             showScanner = false
-                            // 二维码内容是 http://ip:port/reminders.json → 解析后接收
                             if let url = URL(string: value), let host = url.host {
                                 receive(from: host)
                             } else {
@@ -255,24 +226,14 @@ struct NearbyShareView: View {
                             }
                         },
                         onError: { msg in
-                            showScanner = false
-                            isError = true
-                            resultMsg = msg
+                            showScanner = false; isError = true; resultMsg = msg
                         }
                     )
                     .ignoresSafeArea()
 
-                    VStack {
-                        Spacer()
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(.white.opacity(0.8), lineWidth: 3)
-                            .frame(width: 240, height: 240)
-                        Text("对准对方的二维码".localized)
-                            .font(.caption)
-                            .foregroundStyle(.white)
-                            .padding(.top, 12)
-                        Spacer().frame(height: 80)
-                    }
+                    ChamferShape(cut: 14)
+                        .stroke(Color.white.opacity(0.85), lineWidth: 2.5)
+                        .frame(width: 230, height: 230)
                 }
                 .navigationTitle("扫码接收".localized)
                 .navigationBarTitleDisplayMode(.inline)
@@ -282,37 +243,27 @@ struct NearbyShareView: View {
                     }
                 }
             }
-            .presentationDetents([.large])
         }
     }
 
     private func receive(from hostInput: String) {
         let host = hostInput.trimmingCharacters(in: .whitespaces)
         guard !host.isEmpty else { return }
-        isReceiving = true
-        resultMsg = nil
-        isError = false
-
+        isReceiving = true; resultMsg = nil; isError = false
         Task {
             let json = await NearbyShareService.fetch(from: host)
             guard let json, let items = BackupHelper.importJSON(json) else {
-                isReceiving = false
-                isError = true
-                resultMsg = "下载失败：请确认两台设备在同一 Wi-Fi、发送方已点「开始共享」、地址正确；如仍失败请检查路由器是否开启客户端隔离，并请发送方在 iOS「设置 → 本应用 → 本地网络」中开启权限"
+                isReceiving = false; isError = true
+                resultMsg = "下载失败：请确认两台设备在同一 Wi-Fi 且发送方已点「开始共享」。"
                 return
             }
-
             let result = BackupHelper.importItems(items, existing: reminders, into: modelContext, json: json)
             isReceiving = false
-            // I8: 区分「写入失败」与「重复跳过」
             if let err = result.error {
-                isError = true
-                resultMsg = "导入失败：\(err)"
+                isError = true; resultMsg = "导入失败：\(err)"
             } else {
                 isError = false
                 resultMsg = Localized("导入完成：新增 %d 条，跳过重复 %d 条", result.imported, result.skipped)
-
-                // 重新调度本次导入的提醒通知
                 Task {
                     for r in result.inserted where r.isEnabled {
                         await ReminderEngine.shared.scheduleAllNotifications(for: r)
@@ -321,9 +272,4 @@ struct NearbyShareView: View {
             }
         }
     }
-}
-
-#Preview {
-    NearbyShareView()
-        .modelContainer(for: Reminder.self)
 }

@@ -2,10 +2,10 @@ import SwiftUI
 import SwiftData
 import UserNotifications
 
-/// v2.1.1: 提醒可靠性诊断页——自签环境权限/排期状态经常异常，一键查看问题在哪。
-/// 显示：通知权限、已排期通知数量、数据规模、WebDAV 配置、最近触发时间。
+/// 提醒可靠性诊断页（漫风印张化，保留权限自检与 10 秒测试提醒）
 struct DiagnosticsView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.comic) private var comic
     @Query private var reminders: [Reminder]
 
     @State private var authStatus = "检查中…"
@@ -16,167 +16,211 @@ struct DiagnosticsView: View {
     @State private var checkedAt = Date()
 
     var body: some View {
-        List {
-            Section("通知".localized) {
-                HStack {
-                    Label("通知权限".localized, systemImage: "bell.badge")
-                    Spacer()
-                    Text(authStatus)
-                        .foregroundStyle(authStatus == "已授权".localized ? ThemeTokens.statusCompleted : ThemeTokens.statusOverdue)
-                }
-                HStack {
-                    Label("已排期通知".localized, systemImage: "clock.badge.checkmark")
-                    Spacer()
-                    Text(pendingCount >= 0 ? "\(pendingCount)" : "…")
-                        .foregroundStyle(pendingCount > 64 ? ThemeTokens.statusSnoozed : .secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                permissionAndCheckCard
+                dataAndSyncCard
+                upcomingAndLogsCard
+                if ProcessInfo.processInfo.arguments.contains("-uitest") {
+                    debugSimulationCard
                 }
             }
+            .padding(ThemeTokens.gutter)
+        }
+        .background(ComicCanvas())
+        .navigationTitle("诊断".localized)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(comic.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .onAppear(perform: refresh)
+    }
 
-            Section("权限与提醒自检".localized) {
-                Text("普通通知受静音、专注模式和系统设置影响。iOS 26+ 可为重要事项单独启用 AlarmKit。".localized)
-                Text("AlarmKit：\(alarmStatus)")
-                Text(coverage)
-                Button("申请通知权限".localized) { Task { _ = await NotificationManager.shared.requestAuthorization(); refresh() } }
+    // MARK: - 卡片一：通知权限与一键测试
+
+    private var permissionAndCheckCard: some View {
+        ComicCard(cut: ThemeTokens.cardCut, padding: 18) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("权限与提醒自检".localized)
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .foregroundStyle(comic.ink)
+
+                row("通知权限".localized, authStatus, highlight: authStatus == "已授权".localized ? comic.ok : comic.danger)
+                row("已排期通知".localized, pendingCount >= 0 ? "\(pendingCount)" : "…")
+                row("AlarmKit", alarmStatus)
+
+                if !coverage.isEmpty {
+                    Text(coverage)
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(comic.muted)
+                }
+
+                HStack(spacing: 10) {
+                    Button("申请通知权限".localized) {
+                        Task { _ = await NotificationManager.shared.requestAuthorization(); refresh() }
+                    }
+                    .buttonStyle(ComicButtonStyle(variant: .surface, expand: true))
+
+                    Button("发送10秒测试提醒".localized) {
+                        sendTenSecondTest()
+                    }
+                    .buttonStyle(ComicButtonStyle(variant: .accent, expand: true))
+                }
+
                 Button("允许重要提醒使用 AlarmKit".localized) {
                     Task {
-                        if #available(iOS 26.0, *) { _ = await ImportantAlarmService.shared.requestAuthorization(); await ReminderEngine.shared.ensureRetryChains() }
+                        if #available(iOS 26.0, *) {
+                            _ = await ImportantAlarmService.shared.requestAuthorization()
+                            await ReminderEngine.shared.ensureRetryChains()
+                        }
                         refresh()
                     }
                 }
-                Button("发送10秒测试提醒".localized) {
-                    Task {
-                        guard await NotificationManager.shared.requestAuthorization() else { testResult = "请在系统设置中允许通知"; return }
-                        let content = UNMutableNotificationContent(); content.title = "提醒自检"; content.body = "测试通知已送达"; content.sound = .default
-                        await NotificationManager.shared.reserveUnmanaged(identifier: "permission-test")
-                        defer { NotificationManager.shared.releaseUnmanagedReservation(identifier: "permission-test") }
-                        do {
-                            try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "permission-test", content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 10, repeats: false)))
-                            testResult = "已安排，锁屏等待10秒检查声音和横幅"
-                        } catch { testResult = error.localizedDescription }
-                    }
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundStyle(comic.hero)
+                .buttonStyle(.plain)
+
+                if !testResult.isEmpty {
+                    Text(testResult)
+                        .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                        .foregroundStyle(comic.ok)
                 }
-                if !testResult.isEmpty { Text(testResult).font(.caption) }
             }
-            Section("隐私".localized) {
-                Text("提醒和历史保存在此设备。使用 AI 时，对话与相关提醒会发送到你配置的服务地址；请检查供应商隐私政策。API 密钥和 WebDAV 密码保存在 Keychain。启用 WebDAV 后，备份会上传到你选择的服务器。附近分享和导出的备份也包含提醒内容，请只分享给信任的人。双端升级后可同步删除提醒。".localized)
-            }
-            Section("数据".localized) {
+        }
+    }
+
+    // MARK: - 卡片二：数据与同步概览
+
+    private var dataAndSyncCard: some View {
+        ComicCard(cut: ThemeTokens.cardCut, padding: 18) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("数据与隐私".localized)
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .foregroundStyle(comic.ink)
+
                 row("提醒总数".localized, "\(reminders.count)")
                 row("未完成".localized, "\(reminders.filter { $0.status != .confirmed }.count)")
                 row("已停用".localized, "\(reminders.filter { !$0.isEnabled }.count)")
                 row("关键提醒".localized, "\(reminders.filter { $0.reminderStyle == "important" }.count)")
-            }
+                row("WebDAV".localized, SyncStore.isConfigured ? "已配置".localized : "未配置".localized)
 
-            Section("同步".localized) {
-                HStack {
-                    Label("WebDAV".localized, systemImage: "arrow.triangle.2.circlepath")
-                    Spacer()
-                    Text(SyncStore.isConfigured ? "已配置".localized : "未配置".localized)
-                        .foregroundStyle(SyncStore.isConfigured ? ThemeTokens.statusCompleted : .secondary)
-                }
-            }
+                ComicHairline(outer: false)
 
-            Section("最近触发".localized) {
-                let upcoming = reminders
-                    .filter { $0.isEnabled && $0.status != .confirmed }
-                    .sorted { $0.nextTriggerAt < $1.nextTriggerAt }
-                    .prefix(5)
-                if upcoming.isEmpty {
-                    Text("暂无待触发的提醒".localized)
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(Array(upcoming)) { r in
-                    HStack {
-                        Text(r.title)
-                            .lineLimit(1)
-                        Spacer()
-                        Text(r.nextTriggerAt.formatted(date: .numeric, time: .shortened))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
+                Text("提醒和历史保存在本设备；API 密钥与 WebDAV 密码保存在 Keychain。".localized)
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                    .foregroundStyle(comic.muted)
 
-            // v2.2.0: 最近 AI 调用（可观测性）
-            Section("最近 AI 调用".localized) {
-                let logs = AILogStore.recent().prefix(5)
-                if logs.isEmpty {
-                    Text("暂无 AI 调用记录".localized)
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(Array(logs)) { e in
-                    HStack {
-                        Text(e.time.formatted(date: .omitted, time: .standard))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Text(e.model)
-                            .font(.caption)
-                            .lineLimit(1)
-                        Spacer()
-                        Text(logSummary(e))
-                            .font(.caption2)
-                            .foregroundStyle(e.ok ? .secondary : ThemeTokens.statusOverdue)
-                    }
-                }
-            }
-
-            if ProcessInfo.processInfo.arguments.contains("-uitest") {
-                Section("调试：模拟通知动作".localized) {
-                    let target = reminders
-                        .filter { $0.isEnabled && $0.status != .confirmed }
-                        .sorted { $0.nextTriggerAt < $1.nextTriggerAt }
-                        .first
-                    if let r = target {
-                        Button {
-                            NotificationManager.shared.simulateNotificationAction(.confirm, reminderID: r.id)
-                        } label: {
-                            Label(Localized("模拟确认：%@", r.title), systemImage: "checkmark.circle")
-                        }
-                        .accessibilityIdentifier("debug-sim-confirm")
-                        Button {
-                            NotificationManager.shared.simulateNotificationAction(.snooze, reminderID: r.id)
-                        } label: {
-                            Label(Localized("模拟稍后：%@", r.title), systemImage: "clock")
-                        }
-                        .accessibilityIdentifier("debug-sim-snooze")
-                        Text("走与通知按钮相同的入队 → ReminderEngine.confirm / snooze。真机通知仍需在系统通知里点。".localized)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("没有可模拟的未完成提醒".localized)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-
-            Section {
                 Button {
                     refresh()
                 } label: {
-                    Label("重新检查".localized, systemImage: "arrow.clockwise")
+                    Text(Localized("重新检查 · %@", checkedAt.formatted(date: .omitted, time: .standard)))
+                        .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(comic.hero)
                 }
-            } footer: {
-                Text(Localized("检查时间：%@", checkedAt.formatted(date: .numeric, time: .standard)))
-                    .font(.caption2)
+                .buttonStyle(.plain)
             }
         }
-        .navigationTitle("诊断".localized)
-        .navigationBarTitleDisplayMode(.inline)
-        .onAppear(perform: refresh)
     }
 
-    private func logSummary(_ e: AILogStore.Entry) -> String {
-        if !e.ok { return "失败".localized }
-        let providerTag = e.provider == "fallback" ? " · 降级".localized : ""
-        return Localized("%d 轮 · %dms%@", e.turns, e.durationMs, providerTag)
+    // MARK: - 卡片三：最近触发与 AI 日志
+
+    private var upcomingAndLogsCard: some View {
+        let upcoming = reminders.filter { $0.isEnabled && $0.status != .confirmed }.sorted { $0.nextTriggerAt < $1.nextTriggerAt }.prefix(5)
+        let logs = AILogStore.recent().prefix(5)
+        return ComicCard(cut: ThemeTokens.cardCut, padding: 18) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("最近触发".localized)
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    .foregroundStyle(comic.ink)
+
+                if upcoming.isEmpty {
+                    Text("暂无待触发的提醒".localized)
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(comic.muted)
+                } else {
+                    ForEach(Array(upcoming)) { r in
+                        row(r.title, r.nextTriggerAt.formatted(date: .numeric, time: .shortened))
+                    }
+                }
+
+                ComicHairline(outer: false)
+
+                Text("最近 AI 调用".localized)
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    .foregroundStyle(comic.ink)
+
+                if logs.isEmpty {
+                    Text("暂无 AI 调用记录".localized)
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(comic.muted)
+                } else {
+                    ForEach(Array(logs)) { e in
+                        row(e.model, e.ok ? "\(e.turns) 轮 · \(e.durationMs)ms" : "失败".localized)
+                    }
+                }
+            }
+        }
     }
 
-    private func row(_ label: String, _ value: String) -> some View {
+    private var debugSimulationCard: some View {
+        let target = reminders.filter { $0.isEnabled && $0.status != .confirmed }.sorted { $0.nextTriggerAt < $1.nextTriggerAt }.first
+        return ComicCard(cut: ThemeTokens.cardCut, padding: 16) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("调试：模拟通知动作".localized)
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+                    .foregroundStyle(comic.ink)
+                if let r = target {
+                    Button(Localized("模拟确认：%@", r.title)) {
+                        NotificationManager.shared.simulateNotificationAction(.confirm, reminderID: r.id)
+                    }
+                    .accessibilityIdentifier("debug-sim-confirm")
+                    Button(Localized("模拟稍后：%@", r.title)) {
+                        NotificationManager.shared.simulateNotificationAction(.snooze, reminderID: r.id)
+                    }
+                    .accessibilityIdentifier("debug-sim-snooze")
+                }
+            }
+        }
+    }
+
+    private func row(_ label: String, _ value: String, highlight: Color? = nil) -> some View {
         HStack {
             Text(label)
+                .font(.system(size: 13.5, weight: .medium, design: .rounded))
+                .foregroundStyle(comic.ink)
+                .lineLimit(1)
             Spacer()
             Text(value)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(highlight ?? comic.muted)
+        }
+    }
+
+    private func sendTenSecondTest() {
+        Task {
+            guard await NotificationManager.shared.requestAuthorization() else {
+                testResult = "请在系统设置中允许通知"; return
+            }
+            let content = UNMutableNotificationContent()
+            content.title = "提醒自检"
+            content.body = "测试通知已送达"
+            content.sound = .default
+            await NotificationManager.shared.reserveUnmanaged(identifier: "permission-test")
+            defer { NotificationManager.shared.releaseUnmanagedReservation(identifier: "permission-test") }
+            do {
+                try await UNUserNotificationCenter.current().add(
+                    UNNotificationRequest(
+                        identifier: "permission-test",
+                        content: content,
+                        trigger: UNTimeIntervalNotificationTrigger(timeInterval: 10, repeats: false)
+                    )
+                )
+                testResult = "已安排，锁屏等待10秒检查声音和横幅"
+            } catch {
+                testResult = error.localizedDescription
+            }
         }
     }
 
@@ -186,87 +230,72 @@ struct DiagnosticsView: View {
             ReminderEngine.shared.configure(with: modelContext)
             await ReminderEngine.shared.ensureRetryChains()
             let engine = ReminderEngine.shared
-            coverage = "已覆盖下次提醒 \(engine.scheduledPrimaryCount)/\(engine.eligiblePrimaryCount)。系统最多保留64条待发通知（含重试和预告）；超过覆盖范围需重新打开 App 补排，不能保证长期离线全量送达。"
+            coverage = "已覆盖下次提醒 \(engine.scheduledPrimaryCount)/\(engine.eligiblePrimaryCount)（系统上限 64 条待发通知）。"
             if #available(iOS 26.0, *) { alarmStatus = ImportantAlarmService.shared.authorizationLabel }
             let settings = await UNUserNotificationCenter.current().notificationSettings()
             switch settings.authorizationStatus {
-            case .authorized, .provisional, .ephemeral:
-                authStatus = "已授权".localized
-            case .denied:
-                authStatus = "已拒绝".localized
-            case .notDetermined:
-                authStatus = "未请求".localized
-            @unknown default:
-                authStatus = "未知".localized
+            case .authorized, .provisional, .ephemeral: authStatus = "已授权".localized
+            case .denied: authStatus = "已拒绝".localized
+            case .notDetermined: authStatus = "未请求".localized
+            @unknown default: authStatus = "未知".localized
             }
-
-            let requests = await UNUserNotificationCenter.current().pendingNotificationRequests()
-            pendingCount = requests.count
+            pendingCount = await UNUserNotificationCenter.current().pendingNotificationRequests().count
         }
     }
 }
 
+/// 首页底纸纯文字排期自检行（零外框，1:1 对标参考图 `› 网络与图表`）
 struct NotificationHealthCard: View {
     var onOpen: (() -> Void)? = nil
+
     @Environment(\.scenePhase) private var phase
-    @Environment(\.soft) private var soft
-    @State private var status="检查中…".localized
+    @Environment(\.comic) private var comic
+    @State private var status = "检查中…".localized
     @State private var isHealthy = true
-    @State private var count=0
-    private var cardContent: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isHealthy ? "bell.badge.fill" : "exclamationmark.triangle.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(isHealthy ? ThemeTokens.strong : soft.warn)
-                .frame(width: 34, height: 34)
-                .background(
-                    (isHealthy ? ThemeTokens.strong : soft.warn).opacity(soft.isDark ? 0.18 : 0.12),
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                )
-            VStack(alignment: .leading, spacing: 2) {
-                Text(status)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(soft.text)
-                Text(Localized("已排期 %d 条通知 · 点击自检", count))
-                    .font(.caption)
-                    .foregroundStyle(soft.muted)
-            }
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(soft.muted)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(soft.surface, in: RoundedRectangle(cornerRadius: ThemeTokens.radiusCard, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: ThemeTokens.radiusCard, style: .continuous)
-                .strokeBorder(soft.border, lineWidth: 1)
-        )
-    }
+    @State private var count = 0
+
     var body: some View {
         Group {
             if let onOpen {
-                Button(action: onOpen) {
-                    cardContent
-                }
+                ComicCollapsibleLine(
+                    title: "\(status) · 通知与排期自检",
+                    trailing: Localized("%d 条待发", count),
+                    warn: !isHealthy,
+                    action: onOpen
+                )
             } else {
-                NavigationLink { DiagnosticsView() } label: {
-                    cardContent
+                NavigationLink {
+                    DiagnosticsView()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("\(status) · 通知与排期自检")
+                            .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+                        Spacer()
+                        Text(Localized("%d 条待发", count))
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(isHealthy ? comic.muted : comic.warn)
+                    .padding(.vertical, 6)
                 }
+                .buttonStyle(.plain)
             }
         }
-        .buttonStyle(.plain)
         .accessibilityIdentifier("notification-health")
         .task { await refresh() }
-        .onChange(of: phase) { _, value in if value == .active { Task { await refresh() } } }
+        .onChange(of: phase) { _, value in
+            if value == .active { Task { await refresh() } }
+        }
     }
+
     private func refresh() async {
-        let center=UNUserNotificationCenter.current()
-        let settings=await center.notificationSettings()
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
         let ok = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
         isHealthy = ok
         status = ok ? "通知已授权".localized : "通知需要设置".localized
-        count=await center.pendingNotificationRequests().count
+        count = await center.pendingNotificationRequests().count
     }
 }

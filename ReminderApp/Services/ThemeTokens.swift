@@ -1,206 +1,230 @@
 import SwiftUI
 import UIKit
 
-/// 设计令牌 — soft-ui v2（Joe 2026-09-05）
-/// 双端对齐：iOS 本文件 / Android Tokens.kt
-enum ThemeTokens {
-
-    // MARK: 品牌主色（六色皮肤 → `--strong`，默认青碧）
-
-    struct BrandPalette {
-        let primary: Color
-        let primaryDark: Color
-        let gradientStart: Color
-        let container: Color
+extension Color {
+    init(hex: UInt32) {
+        self.init(
+            red: Double((hex >> 16) & 0xFF) / 255.0,
+            green: Double((hex >> 8) & 0xFF) / 255.0,
+            blue: Double(hex & 0xFF) / 255.0
+        )
     }
-
-    static let palettes: [BrandPalette] = [
-        BrandPalette(primary: Color(hex: 0x0F766E), primaryDark: Color(hex: 0x115E59),
-                     gradientStart: Color(hex: 0x2DD4BF), container: Color(hex: 0xCCFBF1)),
-        BrandPalette(primary: Color(hex: 0x2563EB), primaryDark: Color(hex: 0x1D4ED8),
-                     gradientStart: Color(hex: 0x60A5FA), container: Color(hex: 0xDBEAFE)),
-        BrandPalette(primary: Color(hex: 0xD9467A), primaryDark: Color(hex: 0xBE185D),
-                     gradientStart: Color(hex: 0xF472B6), container: Color(hex: 0xFCE7F3)),
-        BrandPalette(primary: Color(hex: 0xEA580C), primaryDark: Color(hex: 0xC2410C),
-                     gradientStart: Color(hex: 0xFB923C), container: Color(hex: 0xFFEDD5)),
-        BrandPalette(primary: Color(hex: 0x16A34A), primaryDark: Color(hex: 0x15803D),
-                     gradientStart: Color(hex: 0x4ADE80), container: Color(hex: 0xDCFCE7)),
-        BrandPalette(primary: Color(hex: 0x6D28D9), primaryDark: Color(hex: 0x5B21B6),
-                     gradientStart: Color(hex: 0xA78BFA), container: Color(hex: 0xEDE9FE))
-    ]
-
-    static var palette: BrandPalette {
-        let i = UserDefaults.standard.integer(forKey: "theme_color_index")
-        return palettes.indices.contains(i) ? palettes[i] : palettes[0]
-    }
-
-    static var brandPrimary: Color { strong }
-    static var brandPrimaryDark: Color { palette.primaryDark }
-    static var brandGradientStart: Color { palette.gradientStart }
-    static var brandContainer: Color { palette.container }
-    /// `--strong`
-    static var strong: Color { Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(palette.gradientStart) : UIColor(palette.primary) }) }
-    static var onStrong: Color { Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(Color(hex: 0x091917)) : .white }) }
-
-    private static func adaptive(_ light: UInt32,_ dark: UInt32) -> Color {
-        Color(uiColor:UIColor { trait in UIColor(Color(hex:trait.userInterfaceStyle == .dark ? dark : light)) })
-    }
-
-    // MARK: 状态色
-
-    static let statusReminding = adaptive(0xBD4436, 0xFF8A80)
-    static let statusWaiting = adaptive(0x25669A, 0x8DBEF0)
-    static let statusCompleted = adaptive(0x237A49, 0x66D99E)
-    static let statusOverdue = adaptive(0xC0392B, 0xFF8A80)
-    static let statusSnoozed = adaptive(0x9A5D08, 0xF9B649)
-
-    static let holidayRest = Color(hex: 0xD32F2F)
-    static let holidayWork = Color(hex: 0xEF6C00)
-
-    // MARK: 热力（仅统计页）
-
-    static func heat(_ level: Int, scheme: ColorScheme) -> Color {
-        let clamped = min(max(level, 0), 4)
-        if scheme == .dark {
-            let hex: [UInt32] = [0x22262B, 0x11423D, 0x0F6B62, 0x14B8A6, 0x2DD4BF]
-            return Color(hex: hex[clamped])
-        } else {
-            let hex: [UInt32] = [0xEBE6DC, 0xCCFBF1, 0x5EEAD4, 0x0D9488, 0x0F766E]
-            return Color(hex: hex[clamped])
-        }
-    }
-
-    static let heatmap0 = Color.gray.opacity(0.12)
-    static let heatmap1 = brandPrimary.opacity(0.25)
-    static let heatmap2 = brandPrimary.opacity(0.55)
-    static let heatmap3 = brandPrimary
-
-    // MARK: 圆角 / 尺寸
-
-    static let radiusShallow: CGFloat = 12
-    static let radiusCard: CGFloat = 16
-    static let radiusElevated: CGFloat = 18
-    static let radiusChip: CGFloat = 16
-    static let radiusFull: CGFloat = 999
-    static let btnCircle: CGFloat = 44
-    static let btnInner: CGFloat = 6
-    static let chipH: CGFloat = 32
-    static let rowBadge: CGFloat = 44
-    static let gutter: CGFloat = 16
-    static let cardPad: CGFloat = 14
-    static let cardGap: CGFloat = 8
-    static let dockH: CGFloat = 48
-    static let dockSelected: CGFloat = 32
-    static let dockPadTop: CGFloat = 3
-    static let dockPadBottom: CGFloat = 4
-    /// Home-indicator pill (~5) + inset from the physical bottom (~8).
-    static let dockIndicator: CGFloat = 13
-    static let dockBottomGap: CGFloat = 0
-    static let settingsGroupPadX: CGFloat = 16
-    static let settingsGroupPadY: CGFloat = 4
-    static let settingsRowH: CGFloat = 52
-    static let settingsRowH2: CGFloat = 64
-    static let settingsRowPadX: CGFloat = 16
-    static let settingsRowPadY: CGFloat = 14
-    static let settingsRowPadY2: CGFloat = 12
-    static let settingsGroupGap: CGFloat = 16
-    static let settingsThemeDot: CGFloat = 28
-
-    static let cardRadius: CGFloat = 16
-    static let cellRadius: CGFloat = 6
-    static let radiusSmall: CGFloat = 10
-    static let radiusMedium: CGFloat = 12
-    static let radiusLarge: CGFloat = 18
-    static let radiusXLarge: CGFloat = 24
-
-    static let fontTiny: CGFloat = 9
-    static let fontMicro: CGFloat = 8
-
-    static let titleSize: CGFloat = 22
-    static let titleLine: CGFloat = 28
-    static let sectionSize: CGFloat = 19
-    static let sectionLine: CGFloat = 24
-    static let bodySize: CGFloat = 14.5
-    static let bodyLine: CGFloat = 18
 }
 
-// MARK: - Soft 语义色（浅纸 / 深抬升）
+/// 极简奶油漫风（Minimalist Cream Comic）纸张与强调色规格
+struct ComicPaperSpec {
+    let name: String
+    let canvas: UInt32
+    let surface: UInt32
+    let ink: UInt32
+    let muted: UInt32
+    let rule: UInt32
+    let innerRule: UInt32
+    let accent: UInt32
+    let onAccent: UInt32
+    let hero: UInt32
+    let heroShadow: UInt32
+    let dotEmpty: UInt32
+}
 
-struct SoftPalette {
+/// 运行时生效的漫风语义色板（通过 `@Environment(\.comic)` 注入全树）
+struct ComicPalette {
+    let paperName: String
     let canvas: Color
     let surface: Color
     let elevated: Color
-    let text: Color
-    let muted: Color
+    let ink: Color
     let border: Color
-    let track: Color
+    let shadow: Color
+    let muted: Color
+    let rule: Color
+    let innerRule: Color
+    let accent: Color
+    let onAccent: Color
+    let hero: Color
+    let heroShadow: Color
+    let dotEmpty: Color
     let warn: Color
     let ok: Color
     let danger: Color
     let isDark: Bool
 
-    static func of(_ scheme: ColorScheme) -> SoftPalette {
+    static let specs: [ComicPaperSpec] = [
+        // 0: 奶油橙（默认，1:1 取样自 IOTA MONITOR）
+        ComicPaperSpec(
+            name: "奶油橙",
+            canvas: 0xF6E5C8, surface: 0xFFF5DF, ink: 0x472714, muted: 0x6D503B,
+            rule: 0xCDA780, innerRule: 0xE5CCA9, accent: 0xF06A29, onAccent: 0x27140B,
+            hero: 0x774501, heroShadow: 0xFCC5A2, dotEmpty: 0xECD9BC
+        ),
+        // 1: 抹茶奶纸
+        ComicPaperSpec(
+            name: "抹茶奶纸",
+            canvas: 0xE5EFE0, surface: 0xFBFDF8, ink: 0x1F3524, muted: 0x536E58,
+            rule: 0xB5CBB0, innerRule: 0xD5E4D1, accent: 0x58A973, onAccent: 0x132919,
+            hero: 0x265938, heroShadow: 0xBCE0C6, dotEmpty: 0xD2E2CE
+        ),
+        // 2: 海盐汽水
+        ComicPaperSpec(
+            name: "海盐汽水",
+            canvas: 0xE3EDF6, surface: 0xF9FCFF, ink: 0x1B2D42, muted: 0x526982,
+            rule: 0xB4C8DC, innerRule: 0xD3E1EE, accent: 0x4A8FE7, onAccent: 0x102238,
+            hero: 0x1E4C8A, heroShadow: 0xBDD6F7, dotEmpty: 0xCFE0EE
+        ),
+        // 3: 莓果奶昔
+        ComicPaperSpec(
+            name: "莓果奶昔",
+            canvas: 0xF4E4EA, surface: 0xFFF8FA, ink: 0x3D1C28, muted: 0x734D5B,
+            rule: 0xD9B6C3, innerRule: 0xEBD4DC, accent: 0xE05A8B, onAccent: 0x2B0E19,
+            hero: 0x7A2444, heroShadow: 0xF5C2D4, dotEmpty: 0xE8CED7
+        ),
+        // 4: 黄油柠檬
+        ComicPaperSpec(
+            name: "黄油柠檬",
+            canvas: 0xF6EECA, surface: 0xFFFDF0, ink: 0x3D2E10, muted: 0x6E5B35,
+            rule: 0xD6C48E, innerRule: 0xE8DCB6, accent: 0xE59A24, onAccent: 0x291B05,
+            hero: 0x734B08, heroShadow: 0xF5DC9B, dotEmpty: 0xE8DFB9
+        ),
+        // 5: 复古电紫
+        ComicPaperSpec(
+            name: "复古电紫",
+            canvas: 0xEAE4F4, surface: 0xFAF8FF, ink: 0x2A1E3D, muted: 0x5E5075,
+            rule: 0xC2B5D9, innerRule: 0xDAD1EA, accent: 0x8B6CE8, onAccent: 0x190E2E,
+            hero: 0x482B85, heroShadow: 0xD4C4F7, dotEmpty: 0xD7CEE8
+        )
+    ]
+
+    static func spec(at index: Int) -> ComicPaperSpec {
+        specs.indices.contains(index) ? specs[index] : specs[0]
+    }
+
+    static func of(_ scheme: ColorScheme, colorIndex: Int = ThemeStore.colorIndex) -> ComicPalette {
+        let p = spec(at: colorIndex)
         if scheme == .dark {
-            return SoftPalette(
-                canvas: Color(hex: 0x111315),
-                surface: Color(hex: 0x1A1D20),
-                elevated: Color(hex: 0x22262B),
-                text: Color(hex: 0xF4F4F5),
-                muted: Color(hex: 0x94A3B8),
-                border: Color(hex: 0x2A2F35),
-                track: Color.white.opacity(0.08),
-                warn: Color(hex: 0xF59E0B),
-                ok: Color(hex: 0x34D399),
-                danger: Color(hex: 0xF87171),
+            // 暗夜暖琥珀（Nocturnal Ink）
+            return ComicPalette(
+                paperName: p.name,
+                canvas: Color(hex: 0x1B1613),
+                surface: Color(hex: 0x261F1B),
+                elevated: Color(hex: 0x2E2520),
+                ink: Color(hex: 0xF3E3CF),
+                border: Color(hex: 0xC9AE92),
+                shadow: Color(hex: 0x0B0807),
+                muted: Color(hex: 0xA38D78),
+                rule: Color(hex: 0x3E322A),
+                innerRule: Color(hex: 0x382D26),
+                accent: Color(hex: p.accent),
+                onAccent: Color(hex: 0x1F0E05),
+                hero: Color(hex: 0xF6A86E),
+                heroShadow: Color(hex: 0x4A240B),
+                dotEmpty: Color(hex: 0x342A24),
+                warn: Color(hex: 0xF3A847),
+                ok: Color(hex: 0x62C388),
+                danger: Color(hex: 0xEE7762),
                 isDark: true
             )
         }
-        return SoftPalette(
-            canvas: Color(hex: 0xF6F4EF),
-            surface: Color(hex: 0xFFFFFF),
-            elevated: Color(hex: 0xFFFFFF),
-            text: Color(hex: 0x18181B),
-            muted: Color(hex: 0x64748B),
-            border: Color(hex: 0xE7E2D8),
-            track: Color(hex: 0x18181B).opacity(0.08),
-            warn: Color(hex: 0xD97706),
-            ok: Color(hex: 0x059669),
-            danger: Color(hex: 0xDC2626),
+        return ComicPalette(
+            paperName: p.name,
+            canvas: Color(hex: p.canvas),
+            surface: Color(hex: p.surface),
+            elevated: Color(hex: p.surface),
+            ink: Color(hex: p.ink),
+            border: Color(hex: p.ink),
+            shadow: Color(hex: p.ink),
+            muted: Color(hex: p.muted),
+            rule: Color(hex: p.rule),
+            innerRule: Color(hex: p.innerRule),
+            accent: Color(hex: p.accent),
+            onAccent: Color(hex: p.onAccent),
+            hero: Color(hex: p.hero),
+            heroShadow: Color(hex: p.heroShadow),
+            dotEmpty: Color(hex: p.dotEmpty),
+            warn: Color(hex: 0x9E550E),
+            ok: Color(hex: 0x2F6F44),
+            danger: Color(hex: 0xB83B28),
             isDark: false
         )
     }
 }
 
-private struct SoftPaletteKey: EnvironmentKey {
-    static let defaultValue = SoftPalette.of(.light)
+private struct ComicPaletteKey: EnvironmentKey {
+    static let defaultValue = ComicPalette.of(.light, colorIndex: 0)
 }
 
 extension EnvironmentValues {
-    var soft: SoftPalette {
-        get { self[SoftPaletteKey.self] }
-        set { self[SoftPaletteKey.self] = newValue }
+    var comic: ComicPalette {
+        get { self[ComicPaletteKey.self] }
+        set { self[ComicPaletteKey.self] = newValue }
     }
 }
 
-// MARK: - 锁死字号
+/// 全局令牌与辅助色（双端极简奶油漫风对齐）
+enum ThemeTokens {
+    struct BrandPalette {
+        let name: String
+        let canvas: Color
+        let surface: Color
+        let primary: Color
+        let onPrimary: Color
+        let ink: Color
+    }
 
-enum SoftType {
-    static var title: Font { .title.bold() }
-    static var section: Font { .headline }
-    static var body: Font { .body }
-    static var bodyMedium: Font { .body.weight(.medium) }
-    static var chip: Font { .subheadline.weight(.medium) }
-    static var caption: Font { .caption }
-    static var retry: Font { .subheadline }
-    static var tab: Font { .caption2.weight(.medium) }
-    static var calendarLunar: Font { .caption2 }
-    static var confirm: Font { .body.weight(.semibold) }
-    static var meter: Font { .title2.bold() }
-}
+    static var palettes: [BrandPalette] {
+        ComicPalette.specs.map {
+            BrandPalette(
+                name: $0.name,
+                canvas: Color(hex: $0.canvas),
+                surface: Color(hex: $0.surface),
+                primary: Color(hex: $0.accent),
+                onPrimary: Color(hex: $0.onAccent),
+                ink: Color(hex: $0.ink)
+            )
+        }
+    }
 
-extension View {
-    func titleTracking() -> some View { tracking(-0.7) }
-    func sectionTracking() -> some View { tracking(0.6) }
-    func bodyTracking() -> some View { tracking(0.3) }
-    func meterTracking() -> some View { tracking(-0.7) }
+    static var currentSpec: ComicPaperSpec {
+        ComicPalette.spec(at: ThemeStore.colorIndex)
+    }
+
+    static var brandPrimary: Color { strong }
+    static var strong: Color { Color(hex: currentSpec.accent) }
+    static var onStrong: Color {
+        Color(uiColor: UIColor { trait in
+            UIColor(Color(hex: trait.userInterfaceStyle == .dark ? 0x1F0E05 : currentSpec.onAccent))
+        })
+    }
+
+    private static func adaptive(_ light: UInt32, _ dark: UInt32) -> Color {
+        Color(uiColor: UIColor { trait in
+            UIColor(Color(hex: trait.userInterfaceStyle == .dark ? dark : light))
+        })
+    }
+
+    static let statusReminding = adaptive(0xC94E20, 0xF48B5F)
+    static let statusWaiting = adaptive(0x6D503B, 0xA38D78)
+    static let statusCompleted = adaptive(0x2F6F44, 0x62C388)
+    static let statusOverdue = adaptive(0xB83B28, 0xEE7762)
+    static let statusSnoozed = adaptive(0x9E550E, 0xF3A847)
+
+    static let holidayRest = adaptive(0xB83B28, 0xEE7762)
+    static let holidayWork = adaptive(0x9E550E, 0xF3A847)
+
+    static func heat(_ level: Int, comic: ComicPalette) -> Color {
+        let clamped = min(max(level, 0), 4)
+        switch clamped {
+        case 0: return comic.dotEmpty
+        case 1: return comic.accent.opacity(comic.isDark ? 0.30 : 0.28)
+        case 2: return comic.accent.opacity(comic.isDark ? 0.52 : 0.50)
+        case 3: return comic.accent.opacity(comic.isDark ? 0.76 : 0.75)
+        default: return comic.accent
+        }
+    }
+
+    static let gutter: CGFloat = 16
+    static let cardCut: CGFloat = 11
+    static let buttonCut: CGFloat = 5.5
+    static let strokeWidth: CGFloat = 1.5
+    static let shadowOffset: CGFloat = 2.2
+    static let dockH: CGFloat = 50
 }

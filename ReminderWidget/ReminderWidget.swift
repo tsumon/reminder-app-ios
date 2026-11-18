@@ -2,14 +2,12 @@ import WidgetKit
 import SwiftUI
 import AppIntents
 
-// MARK: - Entry
+// MARK: - Entry & Provider
 
 struct ReminderEntry: TimelineEntry {
     let date: Date
     let data: WidgetReminderData
 }
-
-// MARK: - Provider
 
 struct Provider: TimelineProvider {
     func placeholder(in context: Context) -> ReminderEntry {
@@ -22,193 +20,271 @@ struct Provider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<ReminderEntry>) -> Void) {
         let entry = ReminderEntry(date: Date(), data: WidgetSnapshot.load())
-        // 每小时刷新一次；App 更新数据后会通过 WidgetCenter 主动刷新
         let nextRefresh = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date()
         completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
     }
 }
 
-// MARK: - View
+// MARK: - 小组件自包含极简奶油漫风原语（Target 独立编译，严禁依赖宿主 Views）
 
-/// v2.1.0: 小组件品牌色（与 App ThemeTokens 一致；widget target 独立，不共享 App 代码）
-private extension Color {
-    static let widgetBrand = Color(red: 0x0F / 255.0, green: 0x76 / 255.0, blue: 0x6E / 255.0)
-    static let widgetReminding = Color(red: 0xC0 / 255.0, green: 0x39 / 255.0, blue: 0x2B / 255.0)
-    static let widgetSnoozed = Color(red: 0xD9 / 255.0, green: 0x77 / 255.0, blue: 0x06 / 255.0)
+private struct WidgetChamferShape: Shape {
+    var cut: CGFloat = 8
+
+    func path(in rect: CGRect) -> Path {
+        let c = min(cut, min(rect.width, rect.height) * 0.45)
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX - c, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + c))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX + c, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - c))
+        p.closeSubpath()
+        return p
+    }
 }
+
+private struct WidgetComicColors {
+    let canvas: Color
+    let surface: Color
+    let ink: Color
+    let border: Color
+    let shadow: Color
+    let muted: Color
+    let rule: Color
+    let accent: Color
+    let onAccent: Color
+    let hero: Color
+    let heroShadow: Color
+
+    static func of(_ scheme: ColorScheme) -> WidgetComicColors {
+        if scheme == .dark {
+            return WidgetComicColors(
+                canvas: Self.hex(0x1B1613),
+                surface: Self.hex(0x261F1B),
+                ink: Self.hex(0xF3E3CF),
+                border: Self.hex(0xC9AE92),
+                shadow: Self.hex(0x0B0807),
+                muted: Self.hex(0xA38D78),
+                rule: Self.hex(0x382D26),
+                accent: Self.hex(0xF06A29),
+                onAccent: Self.hex(0x1F0E05),
+                hero: Self.hex(0xF6A86E),
+                heroShadow: Self.hex(0x4A240B)
+            )
+        }
+        return WidgetComicColors(
+            canvas: Self.hex(0xF6E5C8),
+            surface: Self.hex(0xFFF5DF),
+            ink: Self.hex(0x472714),
+            border: Self.hex(0x472714),
+            shadow: Self.hex(0x472714),
+            muted: Self.hex(0x6D503B),
+            rule: Self.hex(0xE5CCA9),
+            accent: Self.hex(0xF06A29),
+            onAccent: Self.hex(0x27140B),
+            hero: Self.hex(0x774501),
+            heroShadow: Self.hex(0xFCC5A2)
+        )
+    }
+
+    private static func hex(_ v: UInt32) -> Color {
+        Color(
+            red: Double((v >> 16) & 0xFF) / 255.0,
+            green: Double((v >> 8) & 0xFF) / 255.0,
+            blue: Double(v & 0xFF) / 255.0
+        )
+    }
+}
+
+// MARK: - 小组件视图
 
 struct ReminderWidgetEntryView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.colorScheme) private var scheme
     var entry: ReminderEntry
 
+    private var c: WidgetComicColors { WidgetComicColors.of(scheme) }
+
     var body: some View {
-        switch family {
-        case .systemLarge:
-            largeView
-        default:
-            compactView
+        Group {
+            switch family {
+            case .systemLarge:
+                largeView
+            default:
+                compactView
+            }
+        }
+        .padding(10)
+        .background {
+            ZStack {
+                WidgetChamferShape(cut: 9)
+                    .fill(c.shadow)
+                    .offset(x: 1.8, y: 1.8)
+                WidgetChamferShape(cut: 9)
+                    .fill(c.surface)
+                WidgetChamferShape(cut: 9)
+                    .stroke(c.border, style: StrokeStyle(lineWidth: 1.4, lineJoin: .round))
+            }
+        }
+        .padding(4)
+        .containerBackground(for: .widget) {
+            c.canvas
+        }
+        .widgetURL(detailURL)
+    }
+
+    // MARK: - Small / Medium 紧凑印张
+
+    private var compactView: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("待确认".localized)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(c.muted)
+                Spacer()
+                heroCount(size: 24)
+            }
+
+            Rectangle()
+                .fill(c.rule)
+                .frame(height: 1)
+
+            Text(entry.data.nextTitle)
+                .font(.system(size: 14, weight: .heavy, design: .rounded))
+                .foregroundStyle(c.ink)
+                .lineLimit(1)
+
+            HStack(spacing: 4) {
+                if let time = entry.data.nextTime {
+                    Text(countdownText(from: entry.date, to: time))
+                        .monospacedDigit()
+                } else {
+                    Text("暂无安排".localized)
+                }
+                if family != .systemSmall {
+                    Text("· 农历\(lunarText)")
+                }
+            }
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .foregroundStyle(c.muted)
+            .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            completeButton
         }
     }
 
-    // MARK: 紧凑布局（small / medium）
+    // MARK: - Large 通透大印张
 
-    private var compactView: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // 未处理提醒
-            HStack(spacing: 6) {
-                Image(systemName: "bell.badge.fill")
-                    .font(.subheadline)
-                    .foregroundStyle(Color.widgetReminding)
-                Text("未处理提醒".localized)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+    private var largeView: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("未处理提醒".localized)
+                        .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                        .foregroundStyle(c.muted)
+                    heroCount(size: 42)
+                }
                 Spacer()
-                Text("\(entry.data.unhandledCount)")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(Color.widgetReminding)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("农历\(lunarText)")
+                        .font(.system(size: 13.5, weight: .heavy, design: .rounded))
+                        .foregroundStyle(c.ink)
+                    Text(ganzhiText)
+                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                        .foregroundStyle(c.muted)
+                }
             }
 
-            Divider()
+            Rectangle()
+                .fill(c.rule)
+                .frame(height: 1)
 
-            // 今天农历（v1.8.7）
-            HStack(spacing: 4) {
-                Image(systemName: "moon.stars.fill")
-                    .font(.caption2)
-                    .foregroundStyle(Color.widgetSnoozed)
-                Text(lunarText)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
+            Text("最近提醒".localized)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(c.muted)
 
-            // 最近提醒
             Text(entry.data.nextTitle)
-                .font(.subheadline.weight(.bold))
-                .lineLimit(1)
+                .font(.system(size: 19, weight: .heavy, design: .rounded))
+                .foregroundStyle(c.ink)
+                .lineLimit(2)
 
             if let time = entry.data.nextTime {
                 Text(countdownText(from: entry.date, to: time))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(c.muted)
             } else {
                 Text("暂无安排".localized)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 13.5, weight: .medium, design: .rounded))
+                    .foregroundStyle(c.muted)
             }
+
+            Spacer(minLength: 4)
 
             completeButton
         }
-        .padding(12)
-        .containerBackground(.fill.tertiary, for: .widget)
-        .widgetURL(detailURL)
+        .padding(4)
     }
 
-    // MARK: 大尺寸布局（systemLarge，v1.8.7）
-
-    private var largeView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // 头部：未处理数 + 农历日期格
-            HStack(alignment: .center, spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("未处理提醒".localized)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    HStack(spacing: 8) {
-                        Image(systemName: "bell.badge.fill")
-                            .font(.title3)
-                            .foregroundStyle(Color.widgetReminding)
-                        Text("\(entry.data.unhandledCount)")
-                            .font(.system(size: 42, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color.widgetReminding)
-                    }
-                }
-                Spacer()
-                // 农历日期格：今天农历 + 干支年
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(lunarText)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.widgetSnoozed)
-                    Text(ganzhiText)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.widgetSnoozed.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-
-            Divider()
-
-            // 最近提醒
-            Text("最近提醒".localized)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-
-            Text(entry.data.nextTitle)
-                .font(.title3.weight(.bold))
-                .lineLimit(1)
-
-            if let time = entry.data.nextTime {
-                HStack(spacing: 6) {
-                    Image(systemName: "timer")
-                        .font(.subheadline)
-                        .foregroundStyle(Color.widgetBrand)
-                    Text(countdownText(from: entry.date, to: time))
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
-            } else {
-                Text("暂无安排".localized)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 8)
-
-            completeButton
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private func heroCount(size: CGFloat) -> some View {
+        let label = String(format: "#%02d", entry.data.unhandledCount)
+        return ZStack(alignment: .topLeading) {
+            Text(label)
+                .font(.system(size: size, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(c.heroShadow)
+                .offset(x: 1.6, y: 1.6)
+                .accessibilityHidden(true)
+            Text(label)
+                .font(.system(size: size, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(c.hero)
         }
-        .padding(16)
-        .containerBackground(.fill.tertiary, for: .widget)
-        .widgetURL(detailURL)
     }
 
-    // MARK: 完成/稍后按钮（v1.8.7 完成 / v2.0.16 稍后，iOS 17 widget 交互）
+    // MARK: - 交互按钮（奶油橙底 + 深咖墨字 #27140B）
 
     @ViewBuilder
     private var completeButton: some View {
         if let id = entry.data.nextReminderID, !id.isEmpty {
             if WidgetSnapshot.completedReminderIDs().contains(id) {
-                // 已在小组件上标记完成，等 App 启动同步落库
-                Label("已标记完成，打开 App 生效".localized, systemImage: "checkmark.circle.fill")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.green)
+                Text("✓ " + "已标记完成，打开 App 生效".localized)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(c.hero)
             } else if WidgetSnapshot.snoozedReminderIDs().contains(id) {
-                // 已在小组件上标记推迟，等 App 启动同步落库（v2.0.16）
-                Label("已推迟 15 分钟，打开 App 生效".localized, systemImage: "clock.fill")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.widgetSnoozed)
+                Text("› " + "已推迟 15 分钟，打开 App 生效".localized)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(c.muted)
             } else {
                 let canSnooze = (entry.data.nextTime ?? .distantFuture) <= entry.date
                 HStack(spacing: 8) {
                     Button(intent: CompleteReminderIntent(reminderID: id, token: entry.data.nextActionToken ?? "")) {
-                        Label("完成".localized, systemImage: "checkmark.circle")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.widgetBrand.opacity(0.14), in: Capsule())
-                            .foregroundStyle(Color.widgetBrand)
+                        Text("完成".localized)
+                            .font(.system(size: 11.5, weight: .heavy, design: .rounded))
+                            .foregroundStyle(c.onAccent)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 5)
+                            .background {
+                                WidgetChamferShape(cut: 4.5)
+                                    .fill(c.accent)
+                                WidgetChamferShape(cut: 4.5)
+                                    .stroke(c.border, lineWidth: 1.2)
+                            }
                     }
+                    .buttonStyle(.plain)
+
                     if canSnooze {
-                        // v2.0.16: 仅到期/通知中的提醒显示「稍后提醒」快捷按钮
                         Button(intent: SnoozeReminderIntent(reminderID: id, token: entry.data.nextActionToken ?? "")) {
-                            Label("稍后".localized, systemImage: "clock")
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Color.widgetSnoozed.opacity(0.15), in: Capsule())
-                                .foregroundStyle(Color.widgetSnoozed)
+                            Text("稍后".localized)
+                                .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                                .foregroundStyle(c.muted)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -220,25 +296,18 @@ struct ReminderWidgetEntryView: View {
         return URL(string: "reminder://detail/\(id)")
     }
 
-    // MARK: - 农历
-
-    /// 今天农历，如「正月十五」
     private var lunarText: String {
         LunarCalendar.solarToLunar(entry.date).description
     }
 
-    /// 干支年，如「丙午年」
     private var ganzhiText: String {
         let lunar = LunarCalendar.solarToLunar(entry.date)
         let stems = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"]
         let branches = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
-        // 干支以 1984 甲子年为基准：absoluteYear - 1984 取模 60
         let index = ((lunar.year - 1984) % 60 + 60) % 60
         return stems[index % 10] + branches[index % 12] + "年"
     }
 }
-
-// MARK: - 倒计时文案（v1.8.7：自定义「X小时Y分后」，优于系统 .relative 英文格式）
 
 private func countdownText(from now: Date, to target: Date) -> String {
     let seconds = Int(target.timeIntervalSince(now))
@@ -257,8 +326,6 @@ private func countdownText(from now: Date, to target: Date) -> String {
     }
 }
 
-// MARK: - Widget
-
 struct ReminderWidget: Widget {
     let kind = "ReminderWidget"
 
@@ -271,8 +338,6 @@ struct ReminderWidget: Widget {
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
-
-// MARK: - Bundle
 
 @main
 struct ReminderWidgetBundle: WidgetBundle {

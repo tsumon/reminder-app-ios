@@ -1,10 +1,10 @@
 import SwiftUI
 import SwiftData
 
-/// v2.1.1: 本地备份管理——自签环境没有 iCloud，备份到「文件」App 可见目录，
-/// 可随时手动备份、查看/分享历史备份文件（保留最近 5 份）。
+/// 本地备份管理（漫风印张化，保留合并恢复与分享导出能力）
 struct LocalBackupsView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.comic) private var comic
     @Query private var reminders: [Reminder]
 
     @State private var files: [URL] = []
@@ -13,70 +13,93 @@ struct LocalBackupsView: View {
     @State private var pendingRestoreURL: URL?
 
     var body: some View {
-        List {
-            Section {
-                Label("备份保存在 App 文档目录：文件 App → 我的 iPhone → 循环提醒 → ReminderBackups".localized,
-                      systemImage: "info.circle")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                ComicCard(cut: ThemeTokens.cardCut, padding: 18) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("本地备份".localized)
+                            .font(.system(size: 16, weight: .heavy, design: .rounded))
+                            .foregroundStyle(comic.ink)
 
-            Section("备份文件".localized) {
-                if files.isEmpty {
-                    Text("暂无备份".localized)
-                        .foregroundStyle(.secondary)
+                        Text("备份保存在：文件 App → 我的 iPhone → 循环提醒 → ReminderBackups（自动保留最近 5 份）。".localized)
+                            .font(.system(size: 12.5, weight: .regular, design: .rounded))
+                            .foregroundStyle(comic.muted)
+
+                        Button {
+                            if let url = LocalBackupService.backupNow(reminders: reminders) {
+                                files = LocalBackupService.backups
+                                isError = false
+                                lastResult = Localized("已备份：%@", url.lastPathComponent)
+                            } else {
+                                isError = true
+                                lastResult = "备份失败".localized
+                            }
+                        } label: {
+                            Label("立即备份".localized, systemImage: "externaldrive.badge.plus")
+                        }
+                        .buttonStyle(ComicButtonStyle(variant: .accent, expand: true))
+
+                        if let lastResult {
+                            Text(lastResult)
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .foregroundStyle(isError ? comic.danger : comic.ok)
+                        }
+                    }
                 }
-                ForEach(files, id: \.self) { url in
-                    HStack(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(url.lastPathComponent)
-                                .font(.subheadline)
-                            if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                                Text("\(max(1, size / 1024)) KB".localized)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+
+                ComicCard(cut: ThemeTokens.cardCut, padding: 18) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("历史备份文件".localized)
+                            .font(.system(size: 16, weight: .heavy, design: .rounded))
+                            .foregroundStyle(comic.ink)
+
+                        if files.isEmpty {
+                            Text("暂无备份".localized)
+                                .font(.system(size: 13.5, weight: .medium, design: .rounded))
+                                .foregroundStyle(comic.muted)
+                        } else {
+                            ForEach(files, id: \.self) { url in
+                                HStack(spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(url.lastPathComponent)
+                                            .font(.system(size: 13.5, weight: .bold, design: .rounded))
+                                            .monospacedDigit()
+                                            .foregroundStyle(comic.ink)
+                                            .lineLimit(1)
+                                        if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                                            Text("\(max(1, size / 1024)) KB")
+                                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                                .monospacedDigit()
+                                                .foregroundStyle(comic.muted)
+                                        }
+                                    }
+                                    Spacer()
+                                    Button("恢复".localized) {
+                                        pendingRestoreURL = url
+                                    }
+                                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                                    .foregroundStyle(comic.hero)
+                                    .buttonStyle(.plain)
+
+                                    ShareLink(item: url) {
+                                        Image(systemName: "square.and.arrow.up")
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundStyle(comic.ink)
+                                            .frame(width: 30, height: 30)
+                                    }
+                                }
                             }
                         }
-                        Spacer()
-                        Button {
-                            pendingRestoreURL = url
-                        } label: {
-                            Text("恢复".localized)
-                                .font(.caption.weight(.semibold))
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(ThemeTokens.strong)
-
-                        ShareLink(item: url) {
-                            Image(systemName: "square.and.arrow.up")
-                                .frame(minWidth: 32, minHeight: 32)
-                        }
                     }
                 }
             }
-
-            Section {
-                Button {
-                    if let url = LocalBackupService.backupNow(reminders: reminders) {
-                        files = LocalBackupService.backups
-                        isError = false
-                        lastResult = Localized("已备份：%@", url.lastPathComponent)
-                    } else {
-                        isError = true
-                        lastResult = "备份失败".localized
-                    }
-                } label: {
-                    Label("立即备份".localized, systemImage: "externaldrive.badge.plus")
-                }
-            } footer: {
-                if let lastResult {
-                    Text(lastResult)
-                        .foregroundStyle(isError ? ThemeTokens.statusOverdue : ThemeTokens.statusCompleted)
-                }
-            }
+            .padding(ThemeTokens.gutter)
         }
+        .background(ComicCanvas())
         .navigationTitle("本地备份".localized)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(comic.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .onAppear {
             files = LocalBackupService.backups
         }

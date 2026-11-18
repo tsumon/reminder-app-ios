@@ -2,11 +2,11 @@ import SwiftUI
 import SwiftData
 import UIKit
 
-/// WebDAV 同步设置
+/// WebDAV 同步设置（漫风印张化，保留全部冲突确认对话框与日历订阅直链能力）
 struct SyncSettingsView: View {
     @State private var showSyncConflict = false
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.comic) private var comic
     @Query private var reminders: [Reminder]
 
     @State private var url = SyncStore.url
@@ -18,103 +18,115 @@ struct SyncSettingsView: View {
     @State private var resultMsg: String?
     @State private var isError = false
 
-    // 批次3 功能4: 日历订阅链接
     @State private var icsBusy = false
     @State private var icsResult: WebDavSync.ICSUploadResult?
     @State private var icsCopied = false
+    @State private var icsAlertPresented = false
+
+    private var credentialsIncomplete: Bool {
+        url.trimmingCharacters(in: .whitespaces).isEmpty || username.isEmpty || password.isEmpty
+    }
 
     var body: some View {
-        Form {
-            Section {
-                Text("通过 WebDAV 同步提醒数据（支持甲骨文 VPS 自建、坚果云等）。同步以最后修改时间为准，较新的覆盖较旧的。".localized)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                ComicCard(cut: ThemeTokens.cardCut, padding: 18) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("WebDAV 服务器".localized)
+                            .font(.system(size: 16, weight: .heavy, design: .rounded))
+                            .foregroundStyle(comic.ink)
 
-            Section("服务器".localized) {
-                TextField("WebDAV 地址".localized, text: $url)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                TextField("用户名".localized, text: $username)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                SecureField("密码", text: $password)
-            }
+                        Text("通过 WebDAV 同步提醒数据（支持自建服务、坚果云等），以最后修改时间为准。".localized)
+                            .font(.system(size: 12.5, weight: .regular, design: .rounded))
+                            .foregroundStyle(comic.muted)
 
-            Section {
-                Toggle("启动时自动同步".localized, isOn: $autoSync)
-            } footer: {
-                if SyncStore.lastSyncAt > 0 {
-                    Text(Localized("上次同步：%@", formatted(SyncStore.lastSyncAt)))
-                }
-            }
+                        TextField("WebDAV 地址".localized, text: $url)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundStyle(comic.ink)
 
-            Section {
-                // v1.9.1: 测试连接（先验证账号/路径，再同步）
-                Button {
-                    testConnection()
-                } label: {
-                    if testing {
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
+                        ComicHairline(outer: false)
+
+                        TextField("用户名".localized, text: $username)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundStyle(comic.ink)
+
+                        ComicHairline(outer: false)
+
+                        SecureField("密码", text: $password)
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundStyle(comic.ink)
+
+                        ComicHairline(outer: false)
+
+                        Toggle("启动时自动同步".localized, isOn: $autoSync)
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(comic.ink)
+                            .tint(comic.accent)
+
+                        if SyncStore.lastSyncAt > 0 {
+                            Text(Localized("上次同步：%@", formatted(SyncStore.lastSyncAt)))
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(comic.muted)
                         }
-                    } else {
-                        Text("测试连接".localized)
-                            .frame(maxWidth: .infinity)
+
+                        HStack(spacing: 12) {
+                            Button {
+                                testConnection()
+                            } label: {
+                                if testing { ProgressView().controlSize(.small) }
+                                Text("测试连接".localized)
+                            }
+                            .buttonStyle(ComicButtonStyle(variant: .surface, expand: true))
+                            .disabled(testing || credentialsIncomplete)
+
+                            Button {
+                                saveAndSync()
+                            } label: {
+                                if syncing { ProgressView().controlSize(.small) }
+                                Text("保存并立即同步".localized)
+                            }
+                            .buttonStyle(ComicButtonStyle(variant: .accent, expand: true))
+                            .disabled(syncing || credentialsIncomplete)
+                        }
+
+                        if let resultMsg {
+                            Text(resultMsg.localized)
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .foregroundStyle(isError ? comic.danger : comic.ok)
+                        }
                     }
                 }
-                .disabled(testing || url.trimmingCharacters(in: .whitespaces).isEmpty || username.isEmpty || password.isEmpty)
 
-                Button {
-                    saveAndSync()
-                } label: {
-                    if syncing {
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
+                ComicCard(cut: ThemeTokens.cardCut, padding: 18) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("日历订阅".localized)
+                            .font(.system(size: 16, weight: .heavy, design: .rounded))
+                            .foregroundStyle(comic.ink)
+
+                        Text("将全部提醒导出为 .ics 上传到 WebDAV 目录，在网盘网页端创建分享链接后即可填入系统日历订阅。".localized)
+                            .font(.system(size: 12.5, weight: .regular, design: .rounded))
+                            .foregroundStyle(comic.muted)
+
+                        Button {
+                            generateSubscriptionLink()
+                        } label: {
+                            if icsBusy { ProgressView().controlSize(.small) }
+                            Label("生成日历订阅链接".localized, systemImage: "calendar.badge.plus")
                         }
-                    } else {
-                        Text("保存并立即同步".localized)
-                            .frame(maxWidth: .infinity)
+                        .buttonStyle(ComicButtonStyle(variant: .surface, expand: true))
+                        .disabled(icsBusy || credentialsIncomplete)
                     }
                 }
-                .disabled(syncing || url.trimmingCharacters(in: .whitespaces).isEmpty || username.isEmpty || password.isEmpty)
             }
-
-            // 批次3 功能4: 系统日历订阅链接（.ics 上传 WebDAV，返回可订阅直链）
-            Section("日历订阅".localized) {
-                Text("把全部提醒导出为 .ics 日历文件上传到 WebDAV 目录。系统日历不能直接订阅带账号密码的地址——需在网盘网页端对该文件「创建分享链接」，再把分享直链填进日历订阅。".localized)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-
-                Button {
-                    generateSubscriptionLink()
-                } label: {
-                    if icsBusy {
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
-                        }
-                    } else {
-                        Label("生成日历订阅链接".localized, systemImage: "calendar.badge.plus")
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .disabled(icsBusy || url.trimmingCharacters(in: .whitespaces).isEmpty || username.isEmpty || password.isEmpty)
-            }
-
-            if let resultMsg {
-                Section {
-                    Text(resultMsg.localized)
-                        .foregroundStyle(isError ? Color.red : Color.green)
-                }
-            }
+            .padding(ThemeTokens.gutter)
         }
+        .background(ComicCanvas())
         .confirmationDialog("两边都有修改，已停止同步。选择前会保存本地快照；双端升级后可同步删除。", isPresented: $showSyncConflict) {
             Button("使用本地并上传".localized) { resolveSync(.local) }
             Button("使用远程并保留本机独有提醒".localized) { resolveSync(.remote) }
@@ -122,18 +134,20 @@ struct SyncSettingsView: View {
         }
         .navigationTitle("同步设置".localized)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(comic.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .alert("日历订阅链接".localized, isPresented: $icsAlertPresented) {
-            if case .success(let url, _) = icsResult {
+            if case .success(let link, _) = icsResult {
                 Button("复制链接".localized) {
-                    UIPasteboard.general.string = url
+                    UIPasteboard.general.string = link
                     icsCopied = true
                 }
             }
             Button("好".localized, role: .cancel) { icsCopied = false }
         } message: {
             switch icsResult {
-            case .success(let url, let count):
-                Text(Localized("已上传 %d 条提醒的日历文件。网盘网页端对该文件「创建分享链接」，再把分享直链填进系统日历的「订阅」即可。\n\n直链：%@", count, url))
+            case .success(let link, let count):
+                Text(Localized("已上传 %d 条提醒的日历文件。\n\n直链：%@", count, link))
             case .failure(let msg):
                 Text(msg)
             case .none:
@@ -142,29 +156,25 @@ struct SyncSettingsView: View {
         }
     }
 
-    @State private var icsAlertPresented = false
-
-    /// 测试连接：用当前输入验证（不持久化——避免手滑填错覆盖已有好配置），通过后再「保存并立即同步」
     private func resolveSync(_ choice: WebDavSync.ConflictChoice) {
         Task {
             switch await WebDavSync.resolve(choice, context: modelContext) {
-            case .success: resultMsg = "同步完成；本机独有提醒已保留。双端升级后支持删除同步。"
-            case .conflict: showSyncConflict = true
-            case .failure(let message): resultMsg = message
+            case .success:
+                isError = false
+                resultMsg = "同步完成；本机独有提醒已保留。双端升级后支持删除同步。"
+            case .conflict:
+                showSyncConflict = true
+            case .failure(let message):
+                isError = true
+                resultMsg = message
             }
         }
     }
 
     private func testConnection() {
-        testing = true
-        resultMsg = nil
-
+        testing = true; resultMsg = nil
         Task {
-            let result = await WebDavSync.testConnection(
-                url: url,
-                username: username,
-                password: password
-            )
+            let result = await WebDavSync.testConnection(url: url, username: username, password: password)
             testing = false
             switch result {
             case .success:
@@ -181,16 +191,13 @@ struct SyncSettingsView: View {
 
     private func saveAndSync() {
         SyncStore.save(url: url, username: username, password: password, autoSync: autoSync)
-        syncing = true
-        resultMsg = nil
-
+        syncing = true; resultMsg = nil
         Task {
             let result = await WebDavSync.syncNow(reminders: reminders, modelContext: modelContext)
             syncing = false
             switch result {
             case .success(let conflict):
                 isError = false
-                // v2.0.16: 双端都改过 → 提示已按版本覆盖
                 resultMsg = conflict ? "已用最新版本覆盖（检测到双端都有修改，未合并）" : "同步完成"
             case .conflict:
                 showSyncConflict = true
@@ -201,14 +208,11 @@ struct SyncSettingsView: View {
         }
     }
 
-    // 批次3 功能4: 生成日历订阅链接
     private func generateSubscriptionLink() {
-        icsBusy = true
-        icsResult = nil
+        icsBusy = true; icsResult = nil
         Task {
-            let result = await WebDavSync.uploadICS(reminders: reminders)
+            icsResult = await WebDavSync.uploadICS(reminders: reminders)
             icsBusy = false
-            icsResult = result
             icsAlertPresented = true
         }
     }
@@ -218,12 +222,5 @@ struct SyncSettingsView: View {
         df.locale = Locale(identifier: "zh_CN")
         df.dateFormat = "yyyy-MM-dd HH:mm"
         return df.string(from: Date(timeIntervalSince1970: ts))
-    }
-}
-
-#Preview {
-    NavigationStack {
-        SyncSettingsView()
-            .modelContainer(for: [Reminder.self, ReminderRecord.self])
     }
 }

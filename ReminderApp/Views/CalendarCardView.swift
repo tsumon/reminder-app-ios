@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-/// 月历 elevated 卡。热力只在统计页，这里只有圆点 + 今天胶囊。
+/// 无网格线 7 列月历漫风面板（仅选中/今日衬小巧奶油橙切角块）
 struct CalendarCardView: View {
     let reminders: [Reminder]
     @Binding var displayYear: Int
@@ -13,25 +13,24 @@ struct CalendarCardView: View {
 
     @State private var selectedDate: Date?
     @State private var showMonthPicker = false
-    @Environment(\.soft) private var soft
+    @Environment(\.comic) private var comic
 
-    init(reminders: [Reminder],
-         displayYear: Binding<Int>,
-         displayMonth: Binding<Int>,
-         onDateTap: @escaping (Date) -> Void = { _ in }) {
+    init(
+        reminders: [Reminder],
+        displayYear: Binding<Int>,
+        displayMonth: Binding<Int>,
+        onDateTap: @escaping (Date) -> Void = { _ in }
+    ) {
         self.reminders = reminders
         self._displayYear = displayYear
         self._displayMonth = displayMonth
         self.onDateTap = onDateTap
     }
 
-    // MARK: - 今天信息
-
     private var today: Date { Date() }
 
     private var todayLunarText: String {
-        let lunar = LunarCalendar.solarToLunar(today)
-        return lunar.description
+        LunarCalendar.solarToLunar(today).description
     }
 
     private var todayWeekdayText: String {
@@ -39,7 +38,6 @@ struct CalendarCardView: View {
         return names[calendar.component(.weekday, from: today) - 1]
     }
 
-    /// 今天的节假日状态后缀，如「· 元旦(休)」「· 调休上班」；无数据显示空
     private var todayHolidaySuffix: String {
         let comps = calendar.dateComponents([.year, .month, .day], from: today)
         guard let y = comps.year, let m = comps.month, let d = comps.day,
@@ -47,11 +45,7 @@ struct CalendarCardView: View {
         return st.isHoliday ? " · \(st.name)休" : " · 调休上班"
     }
 
-    // MARK: - 任务日期映射
-
     @MainActor private var taskDates: [String: Int] {
-        let df = DateFormatter()
-        df.dateFormat = "yyyy-MM-dd"
         var map: [String: Int] = [:]
         let daysInMonth = calendar.range(of: .day, in: .month, for: firstOfDisplayMonth())?.count ?? 30
         for day in 1...daysInMonth {
@@ -65,17 +59,13 @@ struct CalendarCardView: View {
         return map
     }
 
-    // MARK: - Body
-
     var body: some View {
-        SoftShadowCard(kind: .elevated, radius: ThemeTokens.radiusElevated) {
-            VStack(spacing: 8) {
+        ComicCard(cut: ThemeTokens.cardCut, padding: 14) {
+            VStack(spacing: 10) {
                 header
                 weekdayRow
                 dayGrid
             }
-            .padding(.vertical, 14)
-            .padding(.horizontal, 6)
         }
         .sheet(isPresented: $showMonthPicker) {
             MonthYearPickerSheet(
@@ -92,39 +82,41 @@ struct CalendarCardView: View {
     }
 
     private var header: some View {
-        VStack(spacing: 4) {
+        HStack(alignment: .firstTextBaseline) {
             Button { showMonthPicker = true } label: {
                 HStack(spacing: 4) {
                     Text(Localized("%d年 %d月", displayYear, displayMonth))
-                        .font(SoftType.section)
-                        .foregroundStyle(soft.text)
+                        .font(.system(size: 17, weight: .heavy, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(comic.ink)
                     Image(systemName: "chevron.down")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(soft.muted)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(comic.muted)
                 }
             }
             .buttonStyle(.plain)
 
+            Spacer()
+
             if isCurrentMonth {
-                Text(Localized("今天 · 农历%@ · %@%@", todayLunarText, todayWeekdayText, todayHolidaySuffix))
-                    .font(SoftType.caption)
-                    .foregroundStyle(soft.muted)
+                Text(Localized("农历%@ · %@%@", todayLunarText, todayWeekdayText, todayHolidaySuffix))
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(comic.muted)
+                    .lineLimit(1)
             } else {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { goToToday() }
+                    withAnimation(.easeInOut(duration: 0.18)) { goToToday() }
                 } label: {
-                    Text("今天".localized)
-                        .font(SoftType.caption)
-                        .foregroundStyle(ThemeTokens.strong)
+                    Text("回到今天".localized)
+                        .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                        .foregroundStyle(comic.hero)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 4)
+        .padding(.horizontal, 4)
     }
 
-    /// 当前是否显示本月
     private var isCurrentMonth: Bool {
         let now = Date()
         return displayYear == calendar.component(.year, from: now)
@@ -141,24 +133,22 @@ struct CalendarCardView: View {
         HStack(spacing: 0) {
             ForEach(weekdayHeader, id: \.self) { d in
                 Text(d)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                    .foregroundStyle(comic.muted)
                     .frame(maxWidth: .infinity)
             }
         }
-        .padding(.horizontal, 6)
     }
 
     @MainActor private var dayGrid: some View {
         let firstOfMonth = firstOfDisplayMonth()
         let daysInMonth = calendar.range(of: .day, in: .month, for: firstOfMonth)?.count ?? 30
         let firstWeekday = (calendar.component(.weekday, from: firstOfMonth) + 5) % 7 + 1
-        let leadingBlanks = firstWeekday - 1
-        let cells = paddedCells(leading: leadingBlanks, daysInMonth: daysInMonth)
+        let cells = paddedCells(leading: firstWeekday - 1, daysInMonth: daysInMonth)
 
         return LazyVGrid(
             columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7),
-            spacing: 6
+            spacing: 4
         ) {
             ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
                 dayCell(cell)
@@ -167,21 +157,17 @@ struct CalendarCardView: View {
         }
         .contentShape(Rectangle())
         .gesture(
-            // v1.8.7 UI 优化: 左右滑动快速切月（滴答清单式交互）
             DragGesture(minimumDistance: 30)
                 .onEnded { value in
                     let dx = value.translation.width
                     if abs(dx) > 60 {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(.easeInOut(duration: 0.18)) {
                             changeMonth(by: dx > 0 ? -1 : 1)
                         }
                     }
                 }
         )
-        .padding(.horizontal, 6)
     }
-
-    // MARK: - 日期格子
 
     private struct DayCellData {
         let year: Int
@@ -227,57 +213,57 @@ struct CalendarCardView: View {
         let key = String(format: "%04d-%02d-%02d", cell.year, cell.month, cell.day)
         let taskCount = cell.inMonth ? (taskDates[key] ?? 0) : 0
         let date = dateYMD(cell.year, cell.month, cell.day) ?? Date()
-        let isSelected = selectedDate.map { calendar.isDate($0, inSameDayAs: date) } ?? false
+        let isSelected = selectedDate.map { calendar.isDate($0, inSameDayAs: date) } ?? isToday
         let holidayStatus = HolidayRemoteService.status(year: cell.year, month: cell.month, day: cell.day)
         let holidayMark = holidayStatus.map { $0.isHoliday ? "休" : "班" }
-        let muted = !cell.inMonth
+        let outMonth = !cell.inMonth
+        let activeHighlight = isSelected || isToday
 
         return VStack(spacing: 2) {
-            if isToday {
-                VStack(spacing: 0) {
-                    Text("\(cell.day)")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(ThemeTokens.onStrong)
-                    Text(holidayMark ?? lunarText(year: cell.year, month: cell.month, day: cell.day))
-                        .font(SoftType.calendarLunar)
-                        .foregroundStyle(ThemeTokens.onStrong.opacity(0.9))
-                }
-                .frame(width: 34, height: 48)
-                .background(ThemeTokens.strong, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            Text("\(cell.day)")
+                .font(.system(size: 14.5, weight: activeHighlight ? .heavy : .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(
+                    isSelected ? comic.onAccent
+                    : (outMonth ? comic.muted.opacity(0.4) : (isToday ? comic.hero : comic.ink))
+                )
+
+            if let mark = holidayMark {
+                Text(mark)
+                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                    .foregroundStyle(
+                        isSelected ? comic.onAccent
+                        : (holidayStatus?.isHoliday == true ? comic.danger : comic.warn)
+                    )
             } else {
-                Text("\(cell.day)")
-                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
-                    .foregroundStyle(muted ? soft.muted.opacity(0.45) : (isSelected ? ThemeTokens.strong : soft.text))
-                if let mark = holidayMark {
-                    Text(mark)
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(holidayStatus?.isHoliday == true ? ThemeTokens.holidayRest : ThemeTokens.holidayWork)
-                } else {
-                    Text(lunarText(year: cell.year, month: cell.month, day: cell.day))
-                        .font(SoftType.calendarLunar)
-                        .foregroundStyle(soft.muted.opacity(muted ? 0.45 : 1))
-                        .lineLimit(1)
-                }
-                Circle()
-                    .fill(taskCount > 0 ? ThemeTokens.strong : Color.clear)
-                    .frame(width: 5, height: 5)
+                Text(lunarText(year: cell.year, month: cell.month, day: cell.day))
+                    .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                    .foregroundStyle(isSelected ? comic.onAccent.opacity(0.9) : comic.muted.opacity(outMonth ? 0.4 : 1))
+                    .lineLimit(1)
             }
+
+            Circle()
+                .fill(taskCount > 0 ? (isSelected ? comic.onAccent : comic.accent) : Color.clear)
+                .frame(width: 4.5, height: 4.5)
         }
-        .frame(height: 56)
+        .frame(height: 52)
         .frame(maxWidth: .infinity)
         .background {
-            if isSelected && !isToday {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(ThemeTokens.strong.opacity(soft.isDark ? 0.18 : 0.10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(ThemeTokens.strong.opacity(0.55), lineWidth: 1.2)
-                    )
-                    .padding(.horizontal, 2)
+            if isSelected {
+                ZStack {
+                    ChamferShape(cut: 5).fill(comic.shadow).offset(x: 1.5, y: 1.5)
+                    ChamferShape(cut: 5).fill(comic.accent)
+                    ChamferShape(cut: 5).stroke(comic.border, style: StrokeStyle(lineWidth: 1.4, lineJoin: .round))
+                }
+                .padding(.horizontal, 3)
+            } else if isToday {
+                ChamferShape(cut: 5)
+                    .stroke(comic.accent, style: StrokeStyle(lineWidth: 1.3, lineJoin: .round))
+                    .padding(.horizontal, 3)
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(date.formatted(date:.complete,time:.omitted))
+        .accessibilityLabel(date.formatted(date: .complete, time: .omitted))
         .accessibilityAddTraits(.isButton)
         .onTapGesture {
             selectedDate = date
@@ -285,20 +271,9 @@ struct CalendarCardView: View {
         }
     }
 
-    private func dateFor(_ day: Int) -> Date? {
-        dateYMD(displayYear, displayMonth, day)
-    }
-
-    // MARK: - 农历
-
     private func lunarText(year: Int, month: Int, day: Int) -> String {
-        let cal = Calendar.current
-        var comps = DateComponents()
-        comps.year = year
-        comps.month = month
-        comps.day = day
-        comps.hour = 12
-        guard let date = cal.date(from: comps) else { return "" }
+        var comps = DateComponents(); comps.year = year; comps.month = month; comps.day = day; comps.hour = 12
+        guard let date = calendar.date(from: comps) else { return "" }
         let lunar = LunarCalendar.solarToLunar(date)
         let dayNames = [
             "", "初一", "初二", "初三", "初四", "初五", "初六", "初七", "初八", "初九", "初十",
@@ -309,134 +284,16 @@ struct CalendarCardView: View {
         return dayNames[lunar.day]
     }
 
-    // MARK: - 工具
-
     private func firstOfDisplayMonth() -> Date {
-        var comps = DateComponents()
-        comps.year = displayYear
-        comps.month = displayMonth
-        comps.day = 1
+        var comps = DateComponents(); comps.year = displayYear; comps.month = displayMonth; comps.day = 1
         return calendar.date(from: comps) ?? today
     }
 
     private func changeMonth(by delta: Int) {
-        var newMonth = displayMonth + delta
-        var newYear = displayYear
-        if newMonth < 1 {
-            newMonth = 12
-            newYear -= 1
-        } else if newMonth > 12 {
-            newMonth = 1
-            newYear += 1
-        }
-        displayMonth = newMonth
-        displayYear = newYear
-    }
-}
-
-#Preview {
-    CalendarCardView(
-        reminders: [],
-        displayYear: .constant(2026),
-        displayMonth: .constant(9)
-    )
-    .padding()
-}
-
-// MARK: - 月份/年份选择器（v1.8.7 UI 优化）
-
-/// 快速跳转月份：年份滚轮 + 12 个月网格，解决「切换月份很难用」
-struct MonthYearPickerSheet: View {
-    @State private var year: Int
-    @State private var month: Int
-    let onSelect: (Int, Int) -> Void
-    let onClose: () -> Void
-
-    private let monthNames = ["一月", "二月", "三月", "四月", "五月", "六月",
-                              "七月", "八月", "九月", "十月", "十一月", "十二月"]
-
-    init(year: Int, month: Int, onSelect: @escaping (Int, Int) -> Void, onClose: @escaping () -> Void) {
-        _year = State(initialValue: year)
-        _month = State(initialValue: month)
-        self.onSelect = onSelect
-        self.onClose = onClose
-    }
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // 年份滚轮
-                HStack(spacing: 12) {
-                    Button {
-                        year -= 1
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(width: 36, height: 36)
-                    }
-                    .buttonStyle(.plain)
-
-                    Text(Localized("%@ 年", String(year)))
-                        .font(.title3.weight(.bold))
-                        .frame(minWidth: 90)
-
-                    Button {
-                        year += 1
-                    } label: {
-                        Image(systemName: "chevron.right")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(width: 36, height: 36)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.vertical, 14)
-
-                Divider()
-
-                // 月份网格
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
-                    ForEach(1...12, id: \.self) { m in
-                        let isSelected = m == month
-                        Button {
-                            month = m
-                        } label: {
-                            Text(monthNames[m - 1])
-                                .font(.subheadline.weight(isSelected ? .bold : .medium))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(isSelected ? ThemeTokens.brandPrimary : Color(.secondarySystemGroupedBackground))
-                                .foregroundStyle(isSelected ? .white : .primary)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(16)
-
-                Spacer()
-
-                // 确定 / 取消
-                HStack(spacing: 12) {
-                    Button("取消".localized) { onClose() }
-                        .buttonStyle(.bordered)
-                    Button {
-                        onSelect(year, month)
-                    } label: {
-                        Text(Localized("跳到 %@ 年 %@", String(year), monthNames[month - 1]))
-                            .fontWeight(.semibold)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(ThemeTokens.brandPrimary)
-                }
-                .padding(.bottom, 12)
-            }
-            .navigationTitle("选择月份".localized)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成".localized) { onSelect(year, month) }
-                }
-            }
-        }
+        var m = displayMonth + delta
+        var y = displayYear
+        if m < 1 { m = 12; y -= 1 }
+        else if m > 12 { m = 1; y += 1 }
+        displayMonth = m; displayYear = y
     }
 }

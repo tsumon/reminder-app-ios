@@ -42,17 +42,19 @@ struct ReminderApp: App {
             request.timeoutInterval = 2
             URLSession.shared.dataTask(with: request) { _, _, _ in }.resume()
         }
-        // 仅在无 AI 配置时注入（否则每次重启都会把测试刚写入的历史冲掉）
-        if ProcessInfo.processInfo.arguments.contains("-uitest_ai_fixture"),
-           UserDefaults.standard.string(forKey: "ai_endpoint") == nil {
+        // 仅在未持有 15 条基准历史时注入（重启断言时 "测试消息 15" 仍在，不会把刚写入的新消息冲掉；
+        // 但若前序用例配置了其它 ai_endpoint 或清空了历史，仍可可靠恢复 15 条基准消息）
+        if ProcessInfo.processInfo.arguments.contains("-uitest_ai_fixture") {
             UserDefaults.standard.set(true, forKey: "ai_is_local")
             UserDefaults.standard.set("http://127.0.0.1:9/v1", forKey: "ai_endpoint")
-            let now = Date()
-            // v2.5.1: 15 条足够撑满视口——验证打开对话框自动滚到底部
-            let msgs = (1...15).map { i in
-                ChatMessage(role: .user, content: "测试消息 \(i)", timestamp: now.addingTimeInterval(Double(i - 20) * 60))
+            if !ChatHistoryStore.load().contains(where: { $0.content == "测试消息 15" }) {
+                let now = Date()
+                // v2.5.1: 15 条足够撑满视口——验证打开对话框自动滚到底部
+                let msgs = (1...15).map { i in
+                    ChatMessage(role: .user, content: "测试消息 \(i)", timestamp: now.addingTimeInterval(Double(i - 20) * 60))
+                }
+                ChatHistoryStore.save(msgs)
             }
-            ChatHistoryStore.save(msgs)
         }
     }
     #endif

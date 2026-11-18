@@ -1,61 +1,44 @@
 import SwiftUI
 
-/// 批次2 功能2: 正向反馈 —— 打卡成功卡片
-///
-/// 确认提醒后从顶部滑入「🦊 打卡成功 · 连续 N 天 · +1 ⭐」，约 2 秒后自动淡出。
-/// v2.5.0: 粘土拟态庆祝卡（吉祥物庆祝表情 + 星星奖励），全屏彩带由首页
-/// ReminderListView 的 ConfettiBurst overlay 负责（同一 checkInToken 触发）。
-/// 用法：`CheckInFeedbackBanner(text: checkInText)`，text 非空即展示。
+/// 打卡成功轻漫风印章横幅（顶部滑入，零模糊硬投影，不拦截点击）
 struct CheckInFeedbackBanner: View {
     let text: String?
 
-    @Environment(\.soft) private var soft
+    @Environment(\.comic) private var comic
     @State private var visible = false
-    @State private var pop = false
 
     var body: some View {
         VStack {
-            if visible {
-                HStack(spacing: 12) {
+            if visible, let text {
+                HStack(spacing: 10) {
+                    ComicShardMark(size: 16)
+                    Text(text)
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(comic.ink)
+                        .lineLimit(2)
+                    Text("+1")
+                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(comic.hero)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background {
                     ZStack {
-                        Circle()
-                            .fill(ThemeTokens.strong.opacity(soft.isDark ? 0.22 : 0.14))
-                            .frame(width: 44, height: 44)
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 22, weight: .semibold))
-                            .foregroundStyle(ThemeTokens.strong)
-                            .scaleEffect(pop ? 1.08 : 0.92)
-                            .animation(.spring(response: 0.4, dampingFraction: 0.6), value: pop)
-                    }
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(text ?? "")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(soft.text)
-                            .lineLimit(2)
-
-                        HStack(spacing: 4) {
-                            Image(systemName: "sparkles")
-                                .font(.caption2.weight(.bold))
-                            Text("+1".localized)
-                                .font(.caption2.weight(.bold))
-                        }
-                        .foregroundStyle(ThemeTokens.strong)
+                        ChamferShape(cut: 8)
+                            .fill(comic.shadow)
+                            .offset(x: 2.0, y: 2.0)
+                        ChamferShape(cut: 8)
+                            .fill(comic.surface)
+                        ChamferShape(cut: 8)
+                            .stroke(
+                                comic.border,
+                                style: StrokeStyle(lineWidth: ThemeTokens.strokeWidth, lineJoin: .round)
+                            )
                     }
                 }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
-                .background(soft.elevated, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(soft.border, lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(soft.isDark ? 0.35 : 0.10), radius: 14, y: 6)
-                .padding(.top, 12)
-                .transition(.asymmetric(
-                    insertion: .move(edge: .top).combined(with: .opacity),
-                    removal: .opacity
-                ))
+                .padding(.top, 10)
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
             Spacer()
         }
@@ -66,16 +49,12 @@ struct CheckInFeedbackBanner: View {
                 visible = false
                 return
             }
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+            withAnimation(.easeOut(duration: 0.22)) {
                 visible = true
-            }
-            pop = false
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.55)) {
-                pop = true
             }
             Task {
                 try? await Task.sleep(nanoseconds: 2_200_000_000)
-                withAnimation(.easeOut(duration: 0.25)) {
+                withAnimation(.easeOut(duration: 0.2)) {
                     visible = false
                 }
             }
@@ -84,6 +63,6 @@ struct CheckInFeedbackBanner: View {
 }
 
 #Preview {
-    CheckInFeedbackBanner(text: "打卡成功，已连续 3 天 🎉")
+    CheckInFeedbackBanner(text: "打卡成功，已连续 3 天")
         .padding()
 }

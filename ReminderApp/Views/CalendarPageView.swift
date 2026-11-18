@@ -1,39 +1,25 @@
 import SwiftUI
 import SwiftData
 
-/// 日历 Tab：整月 elevated 卡 + 当天任务。无本周进度、无热力月格。
+/// 日历 Tab：无框顶栏 + 无网格线整月漫风卡 + 选中日无分割线日程卡
 struct CalendarPageView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.comic) private var comic
     @Query(sort: \Reminder.nextTriggerAt) private var reminders: [Reminder]
-    @Query(sort: \ReminderRecord.performedAt) private var records: [ReminderRecord]
+
     @State private var selectedDate: Date = Date()
     @State private var displayYear: Int = Calendar.current.component(.year, from: Date())
     @State private var displayMonth: Int = Calendar.current.component(.month, from: Date())
     @State private var pendingDetailID: UUID?
-    @State private var showCreate=false
-    @Environment(\.soft) private var soft
+    @State private var showCreate = false
 
     var body: some View {
         VStack(spacing: 0) {
-            SoftScreenHeader(title: "日历") {
-                SoftCircleButton(size: 40, action: { changeMonth(by: -1) }) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(ThemeTokens.strong)
-                }
-                .accessibilityLabel("上一月".localized)
-            } trailing: {
-                SoftCircleButton(size: 40, action: { changeMonth(by: 1) }) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(ThemeTokens.strong)
-                }
-                .accessibilityLabel("下一月".localized)
-            }
-            .background(soft.canvas)
+            bareHeader
+            ComicHairline(outer: true)
 
             ScrollView {
-                VStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 14) {
                     CalendarCardView(
                         reminders: reminders,
                         displayYear: $displayYear,
@@ -42,19 +28,29 @@ struct CalendarPageView: View {
                         selectedDate = date
                     }
 
-                    dayTasksSection
-                    Button { showCreate=true } label: {
-                        Label("添加当天提醒".localized,systemImage:"plus.circle").frame(maxWidth:.infinity,minHeight:44)
-                    }.buttonStyle(.bordered)
+                    dayScheduleCard
 
+                    Button {
+                        showCreate = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 12, weight: .heavy))
+                            Text("添加当天提醒".localized)
+                        }
+                    }
+                    .buttonStyle(ComicButtonStyle(variant: .accent, expand: true))
+                    .accessibilityLabel("添加当天提醒".localized)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-                .padding(.bottom, 24)
+                .padding(.horizontal, ThemeTokens.gutter)
+                .padding(.top, 14)
+                .padding(.bottom, 28)
             }
         }
-        .sheet(isPresented:$showCreate) { CreateReminderView(initialDate:selectedDate) }
-        .background(PaperCanvas())
+        .sheet(isPresented: $showCreate) {
+            CreateReminderView(initialDate: selectedDate)
+        }
+        .background(ComicCanvas())
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(item: $pendingDetailID) { id in
@@ -64,56 +60,143 @@ struct CalendarPageView: View {
         }
     }
 
-    private func changeMonth(by delta: Int) {
-        var m = displayMonth + delta
-        var y = displayYear
-        if m < 1 { m = 12; y -= 1 }
-        else if m > 12 { m = 1; y += 1 }
-        withAnimation(.easeInOut(duration: 0.2)) {
-            displayMonth = m
-            displayYear = y
+    private var bareHeader: some View {
+        HStack {
+            Button {
+                changeMonth(by: -1)
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundStyle(comic.ink)
+                    .frame(width: 38, height: 38)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("上一月".localized)
+
+            Spacer()
+
+            ComicBrandTitle(text: "日历".localized, size: 20, showShard: true)
+
+            Spacer()
+
+            Button {
+                changeMonth(by: 1)
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundStyle(comic.ink)
+                    .frame(width: 38, height: 38)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("下一月".localized)
         }
+        .padding(.horizontal, ThemeTokens.gutter)
+        .padding(.vertical, 8)
     }
 
-    @ViewBuilder
-    private var dayTasksSection: some View {
+    private var dayScheduleCard: some View {
         let tasks = dayReminders
-        SoftSectionHeader(title: dayTitle, color: ThemeTokens.statusReminding, count: tasks.count)
+        return ComicCard(cut: ThemeTokens.cardCut, padding: 18) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(dayTitle)
+                        .font(.system(size: 16, weight: .heavy, design: .rounded))
+                        .foregroundStyle(comic.ink)
+                    Spacer()
+                    Text(Localized("%d 项", tasks.count))
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(comic.muted)
+                }
 
-        if tasks.isEmpty {
-            Text("这一天没有提醒".localized)
-                .font(SoftType.body)
-                .foregroundStyle(soft.muted)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 30)
-        } else {
-            VStack(spacing: 10) {
-                ForEach(tasks) { r in
-                    dayTaskRow(r)
+                if tasks.isEmpty {
+                    Text("这一天没有提醒".localized)
+                        .font(.system(size: 13.5, weight: .medium, design: .rounded))
+                        .foregroundStyle(comic.muted)
+                        .padding(.vertical, 8)
+                } else {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(tasks) { r in
+                            dayTaskRow(r)
+                        }
+                    }
                 }
             }
         }
     }
 
-    @ViewBuilder
     private func dayTaskRow(_ r: Reminder) -> some View {
         let token = r.actionToken
         let due = r.status == .active || r.status == .snoozed || r.status == .overdue
-        Button {
-            pendingDetailID = r.id
-        } label: {
-            ReminderRowView(reminder: r, onConfirm: due ? {
-                ReminderEngine.shared.confirmReminder(r, expectedToken: token)
-            } : nil)
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(clockText(r))
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(due ? comic.accent : comic.muted)
+                .frame(width: 48, alignment: .leading)
+
+            Button {
+                pendingDetailID = r.id
+            } label: {
+                Text(r.title)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(comic.ink)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Text(r.dateDisplayText)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(comic.muted)
+                .lineLimit(1)
+
+            if due {
+                Button {
+                    _ = ReminderEngine.shared.confirmReminder(r, expectedToken: token)
+                } label: {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(comic.accent)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("打卡".localized)
+            }
         }
-        .buttonStyle(.plain)
+    }
+
+    private func clockText(_ r: Reminder) -> String {
+        switch r.kind {
+        case .date:
+            return String(format: "%02d:%02d", r.reminderHour, r.reminderMinute)
+        case .rule, .cycle:
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "zh_CN")
+            f.dateFormat = "HH:mm"
+            return f.string(from: r.firstTriggerAt)
+        }
+    }
+
+    private func changeMonth(by delta: Int) {
+        var m = displayMonth + delta
+        var y = displayYear
+        if m < 1 { m = 12; y -= 1 }
+        else if m > 12 { m = 1; y += 1 }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            displayMonth = m
+            displayYear = y
+        }
     }
 
     private var dayTitle: String {
         let f = DateFormatter()
         f.dateFormat = "M月d日 · EEEE"
         f.locale = AppLanguageManager.currentLocale
-        return f.string(from: selectedDate) + "的任务".localized
+        return f.string(from: selectedDate)
     }
 
     @MainActor private var dayReminders: [Reminder] {

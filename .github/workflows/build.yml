@@ -227,11 +227,11 @@ jobs:
           WIDGET_BUNDLE=$(find "$APP_BUNDLE/PlugIns" -maxdepth 1 -name '*.appex' -type d | head -1)
           test -n "$APP_BUNDLE" && test -n "$WIDGET_BUNDLE"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_BUNDLE/Info.plist")" = "com.reminder.app"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Info.plist")" = "2.10.0"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_BUNDLE/Info.plist")" = "73"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Info.plist")" = "2.11.0"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_BUNDLE/Info.plist")" = "74"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$WIDGET_BUNDLE/Info.plist")" = "com.reminder.app.widget"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$WIDGET_BUNDLE/Info.plist")" = "2.10.0"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$WIDGET_BUNDLE/Info.plist")" = "73"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$WIDGET_BUNDLE/Info.plist")" = "2.11.0"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$WIDGET_BUNDLE/Info.plist")" = "74"
           APP_SIG=$(codesign -dv "$APP_BUNDLE" 2>&1 || true)
           WIDGET_SIG=$(codesign -dv "$WIDGET_BUNDLE" 2>&1 || true)
           printf '%s\n' "$APP_SIG" | grep -q "code object is not signed at all"
@@ -259,6 +259,6 @@ jobs:
         with:
           # 只挂带版本号的那一份；裸名（ReminderApp.ipa）作为 build artifact 已上传，不重复出现在 Release
           files: ReminderApp-${{ env.VERSION }}.ipa
-          body_path: docs/releases/v2.10.0.md
+          body_path: docs/releases/v2.11.0.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

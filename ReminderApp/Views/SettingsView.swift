@@ -1,20 +1,17 @@
 import SwiftUI
 import SwiftData
 
-/// 设置页：同步/AI/关于（版本号 + 检查更新 + 更新日志）
+/// 设置页：实时 6 款奶油漫风纸张色板切换 + 外观模式 + 同步/诊断/备份/更新
 struct SettingsView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var reminders: [Reminder]
+    @Environment(\.comic) private var comic
 
     @State private var updateInfo: AppUpdateInfo?
     @State private var checking = false
     @State private var resultMsg: String?
     @State private var isError = false
-    // v2.0.4: 手动语言切换（与 App 根视图共享同一 UserDefaults key，切换即全局重建）
+
     @AppStorage(AppLanguageManager.key) private var appLanguage = AppLanguage.system.rawValue
-    // v2.1.1: 手动主题（0=跟随系统 1=浅色 2=深色；与 App 根视图共享 ThemeStore.key）
     @AppStorage(ThemeStore.key) private var themeMode = 0
-    // v2.4.0: 主题色板索引（切换后根视图 .id() 重建即时生效）
     @AppStorage(ThemeStore.colorKey) private var themeColor = 0
 
     private var appVersion: String {
@@ -23,301 +20,236 @@ struct SettingsView: View {
         return "\(short) (\(build))"
     }
 
-    @Environment(\.soft) private var soft
-
     var body: some View {
-        ScrollView {
-            VStack(spacing: ThemeTokens.settingsGroupGap) {
-                settingsGroup {
-                    settingsPickerRow {
-                        Picker("语言".localized, selection: $appLanguage) {
-                            ForEach(AppLanguage.allCases) { lang in
-                                Text(lang.displayName).tag(lang.rawValue)
-                            }
-                        }
-                        .pickerStyle(.navigationLink)
-                    }
-                }
+        VStack(spacing: 0) {
+            HStack {
+                ComicBrandTitle(text: "设置".localized, size: 20, showShard: true)
+                Spacer()
+                Text(comic.paperName)
+                    .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                    .foregroundStyle(comic.muted)
+            }
+            .padding(.horizontal, ThemeTokens.gutter)
+            .padding(.vertical, 10)
 
-                settingsGroup {
-                    settingsPickerRow {
-                        Picker("外观".localized, selection: $themeMode) {
-                            Text("跟随系统".localized).tag(0)
-                            Text("浅色".localized).tag(1)
-                            Text("深色".localized).tag(2)
-                        }
-                        .pickerStyle(.navigationLink)
-                    }
-                    settingsDivider
-                    HStack(spacing: 10) {
-                        Text("主题色".localized)
-                            .font(SoftType.body)
-                            .foregroundStyle(soft.text)
-                        Spacer(minLength: 8)
-                        ForEach(Array(ThemeTokens.palettes.enumerated()), id: \.offset) { index, palette in
-                            Button { themeColor = index } label: {
-                                ZStack {
-                                    Circle()
-                                        .fill(palette.primary)
-                                        .frame(width: ThemeTokens.settingsThemeDot, height: ThemeTokens.settingsThemeDot)
-                                    if themeColor == index {
-                                        Image(systemName: "checkmark")
-                                            .font(.caption2.weight(.bold))
-                                            .foregroundStyle(.white)
-                                    }
+            ComicHairline(outer: true)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    appearanceAndPaletteCard
+                    featureLinksCard
+                    aboutCard
+
+                    Text("支持循环提醒 · 同步 · 在线升级".localized)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(comic.muted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 4)
+                }
+                .padding(.horizontal, ThemeTokens.gutter)
+                .padding(.top, 14)
+                .padding(.bottom, 28)
+            }
+        }
+        .background(ComicCanvas())
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
+        .alert(
+            "检查更新",
+            isPresented: Binding(
+                get: { resultMsg != nil },
+                set: { if !$0 { resultMsg = nil } }
+            )
+        ) {
+            if let info = updateInfo {
+                Button("前往下载".localized) {
+                    if info.ipaURL != nil { downloading(to: info) }
+                    else { UIApplication.shared.open(info.releaseURL) }
+                }
+            }
+            Button("好".localized, role: .cancel) { resultMsg = nil }
+        } message: {
+            Text((resultMsg ?? "").localized)
+        }
+    }
+
+    private var appearanceAndPaletteCard: some View {
+        ComicCard(cut: ThemeTokens.cardCut, padding: 18) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("外观模式".localized)
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(comic.muted)
+                    Spacer()
+                    HStack(spacing: 14) {
+                        ForEach([(0, "跟随系统"), (1, "浅色"), (2, "深色")], id: \.0) { mode, label in
+                            let active = themeMode == mode
+                            Button { themeMode = mode } label: {
+                                VStack(spacing: 2) {
+                                    Text(label.localized)
+                                        .font(.system(size: 13.5, weight: active ? .heavy : .medium, design: .rounded))
+                                        .foregroundStyle(active ? comic.ink : comic.muted)
+                                    Rectangle()
+                                        .fill(active ? comic.accent : Color.clear)
+                                        .frame(width: 18, height: 2)
                                 }
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel(["青碧", "活力蓝", "玫粉", "暖橙", "森林绿", "深空蓝紫"][index])
                         }
                     }
-                    .frame(maxWidth: .infinity, minHeight: ThemeTokens.settingsRowH)
-                    .padding(.horizontal, ThemeTokens.settingsRowPadX)
+                }
+
+                ComicHairline(outer: false)
+
+                HStack {
+                    Text("界面语言".localized)
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(comic.muted)
+                    Spacer()
+                    Picker("语言".localized, selection: $appLanguage) {
+                        ForEach(AppLanguage.allCases) { lang in
+                            Text(lang.displayName).tag(lang.rawValue)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
+                ComicHairline(outer: false)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("主题纸色".localized)
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(comic.muted)
+
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 3), alignment: .leading, spacing: 12) {
+                        ForEach(Array(ComicPalette.specs.enumerated()), id: \.offset) { index, spec in
+                            let selected = themeColor == index
+                            Button { themeColor = index } label: {
+                                HStack(spacing: 7) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color(hex: spec.accent))
+                                            .frame(width: 15, height: 15)
+                                        if selected {
+                                            Circle()
+                                                .fill(Color(hex: spec.onAccent))
+                                                .frame(width: 5.5, height: 5.5)
+                                        }
+                                    }
+                                    Text(spec.name.localized)
+                                        .font(.system(size: 13.5, weight: selected ? .heavy : .medium, design: .rounded))
+                                        .foregroundStyle(selected ? comic.ink : comic.muted)
+                                        .lineLimit(1)
+                                }
+                                .padding(.vertical, 4)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(spec.name.localized)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var featureLinksCard: some View {
+        ComicCard(cut: ThemeTokens.cardCut, padding: 18) {
+            VStack(alignment: .leading, spacing: 14) {
+                NavigationLink { SyncSettingsView() } label: { navRow("WebDAV 同步".localized, icon: "arrow.triangle.2.circlepath") }.buttonStyle(.plain)
+                ComicHairline(outer: false)
+                NavigationLink { AISettingsView() } label: { navRow("AI 助手设置".localized, icon: "sparkles") }.buttonStyle(.plain)
+                ComicHairline(outer: false)
+                NavigationLink { DiagnosticsView() } label: { navRow("提醒诊断".localized, icon: "stethoscope") }.buttonStyle(.plain)
+                ComicHairline(outer: false)
+                NavigationLink { LocalBackupsView() } label: { navRow("本地备份".localized, icon: "externaldrive") }.buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var aboutCard: some View {
+        ComicCard(cut: ThemeTokens.cardCut, padding: 18) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Label("版本".localized, systemImage: "app.badge")
+                        .font(.system(size: 14.5, weight: .bold, design: .rounded))
+                        .foregroundStyle(comic.ink)
+                    Spacer()
+                    Text(appVersion)
+                        .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(comic.muted)
+                }
+
+                ComicHairline(outer: false)
+
+                Button { checkForUpdates() } label: {
+                    HStack {
+                        Label("检查更新".localized, systemImage: "arrow.clockwise")
+                            .font(.system(size: 14.5, weight: .bold, design: .rounded))
+                            .foregroundStyle(comic.ink)
+                        Spacer()
+                        if checking { ProgressView().controlSize(.small) }
+                        else {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(comic.muted)
+                        }
+                    }
                     .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .disabled(checking)
 
-                settingsGroup {
-                    NavigationLink { SyncSettingsView() } label: {
-                        settingsRow("WebDAV 同步", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .buttonStyle(.plain)
-                }
+                ComicHairline(outer: false)
 
-                settingsGroup {
-                    NavigationLink { DiagnosticsView() } label: {
-                        settingsRow("提醒诊断", systemImage: "stethoscope")
-                    }
-                    .buttonStyle(.plain)
-                    settingsDivider
-                    NavigationLink { LocalBackupsView() } label: {
-                        settingsRow("本地备份", systemImage: "externaldrive")
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                settingsGroup {
-                    NavigationLink { AISettingsView() } label: {
-                        settingsRow("AI 助手设置", systemImage: "sparkles")
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                settingsGroup {
-                    settingsRow("版本", systemImage: "app.badge") {
-                        Text(appVersion)
-                            .font(SoftType.body)
-                            .foregroundStyle(soft.muted)
-                    }
-                    settingsDivider
-                    Button { checkForUpdates() } label: {
-                        settingsRow("检查更新", systemImage: "arrow.clockwise") {
-                            if checking { ProgressView() }
-                        }
-                    }
-                    .disabled(checking)
-                    .buttonStyle(.plain)
-                    settingsDivider
-                    NavigationLink { ChangelogView() } label: {
-                        settingsRow("更新日志", systemImage: "doc.text")
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Text("支持循环提醒 · 同步 · 在线升级".localized)
-                    .font(SoftType.caption)
-                    .foregroundStyle(soft.muted)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 8)
+                NavigationLink { ChangelogView() } label: { navRow("更新日志".localized, icon: "doc.text") }.buttonStyle(.plain)
             }
-            .padding(.horizontal, ThemeTokens.gutter)
-            .padding(.top, 4)
-            .padding(.bottom, 24)
-        }
-        .background(PaperCanvas())
-        .navigationTitle("设置".localized)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(soft.canvas, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text("设置".localized)
-                    .font(SoftType.title)
-                    .foregroundStyle(soft.text)
-            }
-        }
-            .alert(
-                "检查更新",
-                isPresented: Binding(
-                    get: { resultMsg != nil },
-                    set: { if !$0 { resultMsg = nil } }
-                )
-            ) {
-                if let info = updateInfo {
-                    Button("前往下载".localized) {
-                        if let ipa = info.ipaURL {
-                            // 自签：下载到本地文件 App
-                            downloading(to: info)
-                        } else {
-                            UIApplication.shared.open(info.releaseURL)
-                        }
-                    }
-                }
-                Button("好".localized, role: .cancel) { resultMsg = nil }
-            } message: {
-                Text((resultMsg ?? "").localized)
-            }
-    }
-
-    private func settingsGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        SoftShadowCard(kind: .card, radius: ThemeTokens.radiusCard) {
-            VStack(alignment: .leading, spacing: 0) {
-                content()
-            }
-            .padding(.vertical, ThemeTokens.settingsGroupPadY)
-            .foregroundStyle(soft.text)
         }
     }
 
-    private var settingsDivider: some View {
-        Rectangle()
-            .fill(soft.track)
-            .frame(height: 1)
-            .padding(.leading, ThemeTokens.settingsRowPadX)
-    }
-
-    private func settingsPickerRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .font(SoftType.body)
-            .tint(soft.text)
-            .frame(maxWidth: .infinity, minHeight: ThemeTokens.settingsRowH, alignment: .leading)
-            .padding(.horizontal, ThemeTokens.settingsRowPadX)
-            .contentShape(Rectangle())
-    }
-
-    private func settingsRow<Trailing: View>(
-        _ title: String,
-        systemImage: String,
-        dual: Bool = false,
-        @ViewBuilder trailing: () -> Trailing
-    ) -> some View {
-        HStack(spacing: 12) {
-            Label(title.localized, systemImage: systemImage)
-                .font(SoftType.body)
-                .foregroundStyle(soft.text)
-            Spacer(minLength: 8)
-            trailing()
+    private func navRow(_ title: String, icon: String) -> some View {
+        HStack {
+            Label(title, systemImage: icon)
+                .font(.system(size: 14.5, weight: .bold, design: .rounded))
+                .foregroundStyle(comic.ink)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(comic.muted)
         }
-        .frame(maxWidth: .infinity, minHeight: dual ? ThemeTokens.settingsRowH2 : ThemeTokens.settingsRowH, alignment: .center)
-        .padding(.horizontal, ThemeTokens.settingsRowPadX)
-        .padding(.vertical, dual ? ThemeTokens.settingsRowPadY2 : 0)
         .contentShape(Rectangle())
-    }
-
-    private func settingsRow(_ title: String, systemImage: String) -> some View {
-        settingsRow(title, systemImage: systemImage) { EmptyView() }
     }
 
     private func checkForUpdates() {
         checking = true
         Task {
             guard let info = await UpdateService.checkLatest() else {
-                checking = false
-                isError = true
-                resultMsg = "检查更新失败，请检查网络后重试"
-                return
+                checking = false; isError = true
+                resultMsg = "检查更新失败，请检查网络后重试"; return
             }
             checking = false
             if info.isNewer {
                 updateInfo = info
                 resultMsg = Localized("发现新版本 v%@，当前 v%@。", info.latestVersion, UpdateService.currentVersion)
             } else {
-                isError = false
-                updateInfo = nil
+                isError = false; updateInfo = nil
                 resultMsg = Localized("当前已是最新版本 v%@", UpdateService.currentVersion)
             }
         }
     }
 
     private func downloading(to info: AppUpdateInfo) {
-        resultMsg = "正在下载 .ipa… 完成后请到「文件」App-我的 iPhone-循环提醒 用自签工具安装。"
+        resultMsg = "正在下载 .ipa… 完成后请到「文件」App 用自签工具安装。"
         Task {
-            guard let ipa = info.ipaURL else { return }
+            guard info.ipaURL != nil else { return }
             do {
                 let url = try await UpdateService.downloadIpa(info: info)
-                resultMsg = Localized("已下载：%@。打开「文件」App → 我的 iPhone → 循环提醒 → 用 AltStore/爱思等自签工具安装。", url.lastPathComponent)
+                resultMsg = Localized("已下载：%@。打开「文件」App → 我的 iPhone → 循环提醒安装。", url.lastPathComponent)
             } catch {
                 isError = true
                 resultMsg = Localized("下载失败：%@", error.localizedDescription)
             }
         }
     }
-}
-
-// MARK: - 更新日志
-
-struct ChangelogView: View {
-    var body: some View {
-        List {
-            ForEach(changelog, id: \.version) { entry in
-                Section(header: Text(entry.version)) {
-                    ForEach(entry.items, id: \.self) { item in
-                        Text("· \(item)")
-                            .font(.subheadline)
-                    }
-                }
-            }
-        }
-        .navigationTitle("更新日志".localized)
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private struct ChangelogEntry {
-        let version: String
-        let items: [String]
-    }
-
-    private let changelog: [ChangelogEntry] = [
-        ChangelogEntry(version: "v2.10.0", items: [
-            "全新 Warm-Paper & Deep-Teal 视觉体系，统一浅/深色卡片边框与高对比打卡反馈",
-            "修复切换主题色/语言后返回首页与列表被底栏遮挡问题，并打通本地备份恢复、新旧历双生日自动拆分及规则触发时间对齐",
-            "修复调休补班顺延、闰日与跨年腊月计算、规则周期日历标点、活跃重试防饥饿与统计漏掉口径",
-            "Release 构建严格剔除调试钩子，保持无签名 .ipa 与双端 WebDAV v4 删除同步协议不变",
-        ]),
-        ChangelogEntry(version: "v2.9.1", items: [
-            "完善本地化与同步基线回归验证（含 v2.7/v2.8 数据无损迁移）",
-        ]),
-        ChangelogEntry(version: "v2.9.0", items: [
-            "双端对齐增量同步代际、删除墓碑与并发动作防护",
-            "支持自定义重试间隔、勿扰时段与 AlarmKit 系统闹钟（iOS 26+）",
-        ]),
-        ChangelogEntry(version: "v2.5.0", items: [
-            "升级多套主题色板、统计热力图、连续打卡追踪与智能频率建议",
-        ]),
-        ChangelogEntry(version: "v1.9.2", items: [
-            "修复安卓端收不到更新提示（GitHub API 国内超时）",
-            "WebDAV 坚果云友好错误提示 + 「测试连接」按钮",
-        ]),
-        ChangelogEntry(version: "v1.9.1", items: [
-            "AI 支持创建规则提醒（每季度/每月/每年 第N周周X，如 1/4/7/10 月第一周周四报税）",
-            "首页菜单新增「检查更新」入口",
-        ]),
-        ChangelogEntry(version: "v1.9.0", items: [
-            "UI 优化：渐变概览卡、已完成划线、卡片圆角阴影",
-            "日历：滑动切月 + 月份选择器 + 回到今天",
-            "在线升级：自动检查 GitHub 最新版本，下载到本地安装",
-        ]),
-        ChangelogEntry(version: "v1.8.7", items: [
-            "小组件增强：农历日期格、倒计时、完成按钮、大尺寸",
-            "节假日联网补全：日历显示「休/班」",
-            "统计洞察：完成率、连续打卡、忘记时段、月历热力图",
-            ".ics 日历导出",
-            "设计令牌统一（主色青碧 #159A9C）",
-            "崩溃监控 + 埋点基础设施",
-        ]),
-    ]
-}
-
-#Preview {
-    SettingsView()
-        .modelContainer(for: [Reminder.self, ReminderRecord.self])
 }
